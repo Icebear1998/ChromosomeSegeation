@@ -6,20 +6,20 @@ import pandas as pd
 
 
 class ProteinDegradationSimulation:
-    def __init__(self, initial_state, k, n0, max_time):
-        self.k = k
-        self.state = initial_state
-        self.n0 = n0
+    def __init__(self, initial_state_list, k_list, n0_list, max_time):
+        self.k_list = k_list
+        self.state = initial_state_list.copy()
+        self.n0_list = n0_list
         self.max_time = max_time
         self.time = 0
         self.times = [0]
-        self.states = [initial_state.copy()]
+        self.states = [initial_state_list.copy()]
         self.seperate_times = [None, None, None]
 
     def simulate(self):
         while self.time < self.max_time:
             # Calculate propensities
-            propensities = [self.k[i] * self.state[i] for i in range(3)]
+            propensities = [self.k_list[i] * self.state[i] for i in range(3)]
             total_propensity = sum(propensities)
 
             if total_propensity == 0:
@@ -44,7 +44,7 @@ class ProteinDegradationSimulation:
 
             # Calculate seperate times
             for i in range(3):
-                if self.seperate_times[i] is None and self.state[i] < self.n0[i]:
+                if self.seperate_times[i] is None and self.state[i] < self.n0_list[i]:
                     self.seperate_times[i] = self.time
 
         # Set seperate times to max_time if not reached
@@ -94,30 +94,35 @@ def plot_comparison(simulations1, simulations2, max_time, label1, label2, ax, n0
     ax.plot(all_times, avg_states2, color='red',
             label=f'Average {label2}')  # Plot the average
 
-    # Find the time when the average number of proteins first drops below n0 for both sets of simulations
-    threshold_index1 = np.argmax(avg_states1 < n01)
-    threshold_index2 = np.argmax(avg_states2 < n02)
+    # Find the threshold time for each simulation
+    threshold_times1 = []
+    for i in range(len(simulations1)):
+        threshold_index = np.argmax(all_states1[i, :] < n01)
+        if threshold_index > 0:
+            threshold_times1.append(all_times[threshold_index])
 
-    delta_t_list = all_states1[:, threshold_index1] - \
-        all_states2[:, threshold_index2]
+    threshold_times2 = []
+    for i in range(len(simulations2)):
+        threshold_index = np.argmax(all_states2[i, :] < n02)
+        if threshold_index > 0:
+            threshold_times2.append(all_times[threshold_index])
 
-    if threshold_index1 > 0 and threshold_index2 > 0:
-        threshold_time1 = all_times[threshold_index1]
-        threshold_time2 = all_times[threshold_index2]
-        delta_t = threshold_time2 - threshold_time1
-        ax.axvline(threshold_time1, color='blue', linestyle='--',
-                   label=f'{label1} threshold at t={threshold_time1:.2f}')
-        ax.axvline(threshold_time2, color='red', linestyle='--',
-                   label=f'{label2} threshold at t={threshold_time2:.2f}')
-        ax.text((threshold_time1 + threshold_time2) / 2, n01 if n01 > n02 else n02,
+    if threshold_times1 and threshold_times2:
+        avg_threshold_time1 = np.mean(threshold_times1)
+        avg_threshold_time2 = np.mean(threshold_times2)
+
+        delta_t = avg_threshold_time1 - avg_threshold_time2
+        ax.axvline(avg_threshold_time1, color='blue', linestyle='--',
+                   label=f'{label1} threshold at t={avg_threshold_time1:.2f}')
+        ax.axvline(avg_threshold_time2, color='red', linestyle='--',
+                   label=f'{label2} threshold at t={avg_threshold_time2:.2f}')
+        ax.text((avg_threshold_time1 + avg_threshold_time2) / 2, n01 if n01 > n02 else n02,
                 f'Δt={delta_t:.2f}', color='black', verticalalignment='bottom')
 
     ax.set_xlabel('Time')  # Label the x-axis
     ax.set_ylabel('Number of Proteins')  # Label the y-axis
     ax.set_title(f'Comparison: {label1} vs {label2}')  # Add a title
     ax.legend()  # Add a legend
-
-    return delta_t_list
 
 
 if __name__ == "__main__":
@@ -178,25 +183,25 @@ if __name__ == "__main__":
     n03_mut_list = np.floor(np.clip(n03_mut_list, 0.01, n0_total))
     n0_mut_list = np.column_stack((n01_mut_list, n02_mut_list, n03_mut_list))
 
-    # Run simulations for Chromosomes (Wild-type)
+    # Run simulations for Wild-type
     simulations_wt = []
     seperate_times_wt = []
 
     for i in range(num_simulations):
         simulation = ProteinDegradationSimulation(
-            initial_proteins, k_wt, max_time, n0_wt_list[i])
+            initial_proteins, k_wt, n0_wt_list[i], max_time)
         times, states, seperate_times = simulation.simulate()
         simulations_wt.append((times, states))
         seperate_times_wt.append(seperate_times)
 
-    # Run simulations for Chromosome 1 (Mutant)
+    # Run simulations for Mutant
     simulations_mut = []
     seperate_times_mut = []
 
     for i in range(num_simulations):
         simulation = ProteinDegradationSimulation(
-            initial_proteins_chromosome1, k1_mut, max_time, n01_mut_list[i])
-        times, states, seperate_time = simulation.run()
+            initial_proteins, k_mut, n0_mut_list[i], max_time)
+        times, states, seperate_time = simulation.simulate()
         simulations_mut.append((times, states))
         seperate_times_mut.append(seperate_time)
 
@@ -205,14 +210,22 @@ if __name__ == "__main__":
     delta_t_list_mut = np.array(
         [[sep[0] - sep[1], sep[2] - sep[1]] for sep in seperate_times_mut])
 
+    # Extract times and the first state component from all simulations
+    simulations_chromosome1_mut = [
+        [times, [state[0] for state in states]] for times, states in simulations_mut]
+    simulations_chromosome2_mut = [
+        [times, [state[1] for state in states]] for times, states in simulations_mut]
+    simulations_chromosome3_mut = [
+        [times, [state[2] for state in states]] for times, states in simulations_mut]
+
     fig, axs = plt.subplots(1, 2, figsize=(15, 6))
     # Plot comparison between Chromosome 1 and Chromosome 2
-    plot_comparison(simulations_wt, simulations_mut, max_time,
-                    'Wild-type', 'Mutant', axs[0], n01_wt_mean, n02_wt_mean)
+    plot_comparison(simulations_chromosome1_mut, simulations_chromosome2_mut, max_time,
+                    'Chromosome 1', 'Chromosome 2', axs[0], n01_mut_mean, n02_mut_mean)
 
-    # Plot comparison between Chromosome 2 and Chromosome 3
-    plot_comparison(simulations_wt, simulations_mut, max_time,
-                    'Wild-type', 'Mutant', axs[1], n03_wt_mean, n02_wt_mean)
+    # Plot comparison between Chromosome 3 and Chromosome 2
+    plot_comparison(simulations_chromosome3_mut, simulations_chromosome2_mut, max_time,
+                    'Chromosome 3', 'Chromosome 2', axs[1], n03_mut_mean, n02_mut_mean)
 
     plt.tight_layout()
     plt.show()  # Show the plot
@@ -221,8 +234,8 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(1, 2, figsize=(15, 6))
 
     # Histogram for delta_t1
-    mu1, std1 = norm.fit(delta_t_list_wt[0, :])
-    axs[0].hist(delta_t_list_wt[0, :], bins=20,
+    mu1, std1 = norm.fit(delta_t_list_wt[:, 0])
+    axs[0].hist(delta_t_list_wt[:, 0], bins=20,
                 density=True, alpha=0.2, color='blue')
     xmin1, xmax1 = axs[0].get_xlim()
     x1 = np.linspace(xmin1, xmax1, 100)
@@ -232,8 +245,8 @@ if __name__ == "__main__":
     axs[0].text(mu1, max(p1), f'μ={mu1:.2f}, σ={std1:.2f}',
                 color='black', verticalalignment='bottom')
 
-    mu1, std1 = norm.fit(delta_t_list_mut[0, :])
-    axs[0].hist(delta_t_list_mut[0, :], bins=20,
+    mu1, std1 = norm.fit(delta_t_list_mut[:, 0])
+    axs[0].hist(delta_t_list_mut[:, 0], bins=20,
                 density=True, alpha=0.2, color='orange')
     xmin1, xmax1 = axs[0].get_xlim()
     x1 = np.linspace(xmin1, xmax1, 100)
@@ -266,8 +279,8 @@ if __name__ == "__main__":
         f'Histogram of Δt (Chromosome 1 vs Chromosome 2)\nN1={initial_proteins_chromosome1}, N2={initial_proteins_chromosome2}')
 
     # Histogram for delta_t2
-    mu2, std2 = norm.fit(delta_t_list_wt[1, :])
-    axs[1].hist(delta_t_list_wt[1, :], bins=20,
+    mu2, std2 = norm.fit(delta_t_list_wt[:, 1])
+    axs[1].hist(delta_t_list_wt[:, 1], bins=20,
                 density=True, alpha=0.2, color='blue')
     xmin2, xmax2 = axs[1].get_xlim()
     x2 = np.linspace(xmin2, xmax2, 100)
@@ -277,8 +290,8 @@ if __name__ == "__main__":
     axs[1].text(mu2, max(p2), f'μ={mu2:.2f}, σ={std2:.2f}',
                 color='black', verticalalignment='bottom')
 
-    mu2, std2 = norm.fit(delta_t_list_mut[1, :])
-    axs[1].hist(delta_t_list_mut[1, :], bins=20,
+    mu2, std2 = norm.fit(delta_t_list_mut[:, 1])
+    axs[1].hist(delta_t_list_mut[:, 1], bins=20,
                 density=True, alpha=0.2, color='orange')
     xmin2, xmax2 = axs[1].get_xlim()
     x2 = np.linspace(xmin2, xmax2, 100)
