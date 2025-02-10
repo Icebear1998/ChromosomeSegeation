@@ -128,8 +128,8 @@ def plot_comparison(simulations1, simulations2, max_time, label1, label2, ax, n0
 if __name__ == "__main__":
     # Parameters for the simulations
     initial_proteins_chromosome1 = 100  # Initial number of proteins for Chromosome 1
-    initial_proteins_chromosome2 = 120  # Initial number of proteins for Chromosome 2
-    initial_proteins_chromosome3 = 350  # Initial number of proteins for Chromosome 3
+    initial_proteins_chromosome2 = 400  # Initial number of proteins for Chromosome 2
+    initial_proteins_chromosome3 = 400  # Initial number of proteins for Chromosome 3
     initial_proteins = [initial_proteins_chromosome1,
                         initial_proteins_chromosome2, initial_proteins_chromosome3]
     max_time = 150  # Maximum simulation time
@@ -149,9 +149,9 @@ if __name__ == "__main__":
 
     n0_total = 10  # Total number of threshold proteins
     # Threshold number of proteins for Chromosome 1 (Wild-type)
-    n01_wt_mean = 2.14
+    n01_wt_mean = 2
     # Threshold number of proteins for Chromosome 2 (Wild-type)
-    n02_wt_mean = 3
+    n02_wt_mean = 3.9
     n03_wt_mean = n0_total - n01_wt_mean - n02_wt_mean
     n01_mut_mean = 3  # Threshold number of proteins for Chromosome 1 (Mutant)
     n02_mut_mean = 5  # Threshold number of proteins for Chromosome 2 (Mutant)
