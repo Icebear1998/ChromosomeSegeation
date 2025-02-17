@@ -128,7 +128,7 @@ if __name__ == "__main__":
     initial_proteins_chromosome2 = 120  # Initial number of proteins for Chromosome 2
     initial_proteins_chromosome3 = 350  # Initial number of proteins for Chromosome 3
     max_time = 150  # Maximum simulation time
-    num_simulations = 10  # Number of simulations to run
+    num_simulations = 100  # Number of simulations to run
 
     # Wild-type parameters
     k1_wt = 0.1  # Degradation rate
@@ -241,7 +241,6 @@ if __name__ == "__main__":
         seperate_times_chromosome1_mut) - np.array(seperate_times_chromosome2_mut)
     delta_t2_list_mut = np.array(
         seperate_times_chromosome3_mut) - np.array(seperate_times_chromosome2_mut)
-    print(delta_t1_list_wt)
     fig, axs = plt.subplots(1, 2, figsize=(15, 6))
 
     # Plot comparison between Chromosome 1 and Chromosome 2
