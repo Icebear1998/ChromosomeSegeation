@@ -29,19 +29,19 @@ def f_X(x, k1, n1, N1, k2, n2, N2):
 
 # Objective function for simultaneous optimization
 def objective_weighted(params, mu_X_exp12, sigma_X_exp12, mu_X_exp32, sigma_X_exp32, w_mu, w_sigma):
-    k1, n1, N1, k2, n2, N2, k3, n3, N3 = params
+    k, n1, N1, n2, N2, n3, N3 = params
 
     # Chromosome 1 vs 2
-    mu_tau1 = mean_tau(k1, n1, N1)
-    mu_tau2 = mean_tau(k2, n2, N2)
-    sigma_tau1_squared = var_tau(k1, n1, N1)
-    sigma_tau2_squared = var_tau(k2, n2, N2)
+    mu_tau1 = mean_tau(k, n1, N1)
+    mu_tau2 = mean_tau(k, n2, N2)
+    sigma_tau1_squared = var_tau(k, n1, N1)
+    sigma_tau2_squared = var_tau(k, n2, N2)
     mu_X_theory12 = mu_tau1 - mu_tau2
     sigma_X_theory12 = np.sqrt(sigma_tau1_squared + sigma_tau2_squared)
 
     # Chromosome 2 vs 3
-    mu_tau3 = mean_tau(k3, n3, N3)
-    sigma_tau3_squared = var_tau(k3, n3, N3)
+    mu_tau3 = mean_tau(k, n3, N3)
+    sigma_tau3_squared = var_tau(k, n3, N3)
     mu_X_theory32 = mu_tau3 - mu_tau2
     sigma_X_theory32 = np.sqrt(sigma_tau2_squared + sigma_tau3_squared)
 
@@ -66,11 +66,11 @@ sigma_X_exp32 = np.std(experimental_data_wt32)
 
 # Parameter bounds
 bounds = [(0.01, 0.5), (2, 15), (100, 400),  # Chromosome 1
-          (0.01, 0.5), (2, 15), (100, 400),  # Chromosome 2
-          (0.01, 0.5), (2, 15), (100, 400)]  # Chromosome 3
+          (2, 15), (100, 400),  # Chromosome 2
+          (2, 15), (100, 400)]  # Chromosome 3
 
 # Initial guess
-params_initial = [0.1, 3, 100, 0.1, 4, 120, 0.1, 4, 350]
+#params_initial = [0.1, 3, 100, 4, 120, 4, 350]
 
 # Global optimization
 result_de = differential_evolution(
@@ -105,7 +105,7 @@ else:
     params_optimized = result_de.x  # Fallback to global result
     print("Local refinement failed. Using global optimization results.")
 
-k1_est, n1_est, N1_est, k2_est, n2_est, N2_est, k3_est, n3_est, N3_est = params_optimized
+k_est, n1_est, N1_est, n2_est, N2_est, n3_est, N3_est = params_optimized
 N1_est = round(N1_est)
 N2_est = round(N2_est)
 N3_est = round(N3_est)
@@ -121,14 +121,14 @@ xmin, xmax = ax[0].get_xlim()
 x_values = np.linspace(xmin, xmax, 100)
 p_exp = norm.pdf(x_values, mu_exp, std_exp)
 ax[0].plot(x_values, p_exp, 'blue', linewidth=2, label='Experimental Gaussian Fit')
-f_x_values12 = np.array([f_X(xi, k1_est, n1_est, N1_est, k2_est, n2_est, N2_est) for xi in x_values])
+f_x_values12 = np.array([f_X(xi, k_est, n1_est, N1_est, k_est, n2_est, N2_est) for xi in x_values])
 f_x_values12 /= integrate.trapezoid(f_x_values12, x_values)  # Normalize
 ax[0].plot(x_values, f_x_values12, 'red', alpha = 0.5, linewidth=2, label='Estimated f_X(x)')
 ax[0].set_xlabel("Difference in Separation Time (Chromosome 1 - Chromosome 2)")
 ax[0].set_ylabel("Density")
 ax[0].set_title("Chromosome 1 vs 2")
-params_text_12 = f"k1={k1_est:.2f}, n1={n1_est:.2f}, N1={N1_est:.2f}\n" \
-                 f"k2={k2_est:.2f}, n2={n2_est:.2f}, N2={N2_est:.2f}"
+params_text_12 = f"k1={k_est:.2f}, n1={n1_est:.2f}, N1={N1_est:.2f}\n" \
+                 f"k2={k_est:.2f}, n2={n2_est:.2f}, N2={N2_est:.2f}"
 ax[0].text(0.05, 0.95, params_text_12, transform=ax[0].transAxes, fontsize=10, verticalalignment='top')
 ax[0].legend()
 ax[0].grid()
@@ -140,14 +140,14 @@ xmin, xmax = ax[1].get_xlim()
 x_values = np.linspace(xmin, xmax, 100)
 p_exp = norm.pdf(x_values, mu_exp, std_exp)
 ax[1].plot(x_values, p_exp, 'blue', linewidth=2, label='Experimental Gaussian Fit')
-f_x_values32 = np.array([f_X(xi, k3_est, n3_est, N3_est, k2_est, n2_est, N2_est) for xi in x_values])
+f_x_values32 = np.array([f_X(xi, k_est, n3_est, N3_est, k_est, n2_est, N2_est) for xi in x_values])
 f_x_values32 /= integrate.trapezoid(f_x_values32, x_values)  # Normalize
 ax[1].plot(x_values, f_x_values32, 'red', alpha = 0.5, linewidth=2, label='Estimated f_X(x)')
 ax[1].set_xlabel("Difference in Separation Time (Chromosome 3 - Chromosome 2)")
 ax[1].set_ylabel("Density")
 ax[1].set_title("Chromosome 3 vs 2")
-params_text_32 = f"k2={k2_est:.2f}, n2={n2_est:.2f}, N2={N2_est:.2f}\n" \
-                 f"k3={k3_est:.2f}, n3={n3_est:.2f}, N3={N3_est:.2f}"
+params_text_32 = f"k2={k_est:.2f}, n2={n2_est:.2f}, N2={N2_est:.2f}\n" \
+                 f"k3={k_est:.2f}, n3={n3_est:.2f}, N3={N3_est:.2f}"
 ax[1].text(0.05, 0.95, params_text_32, transform=ax[1].transAxes, fontsize=10, verticalalignment='top')
 ax[1].legend()
 ax[1].grid()

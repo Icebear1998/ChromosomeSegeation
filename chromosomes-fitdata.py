@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from chromosome_Gillespie4 import ProteinDegradationSimulation
 
 
-def cost_function(params, initial_proteins, k, max_time, num_simulations, experimental_data12, experimental_data23):
-    n01_mean, n02_mean, n03_mean = params
+def cost_function(params, initial_proteins, max_time, num_simulations, experimental_data12, experimental_data23):
+    k, n01_mean, n02_mean, n03_mean = params
 
     initial_proteins1, initial_proteins2, initial_proteins3 = initial_proteins
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     initial_proteins = [initial_proteins_chromosome1,
                         initial_proteins_chromosome2, initial_proteins_chromosome3]
     max_time = 150  # Maximum simulation time
-    num_simulations = 5  # Number of simulations to run
+    num_simulations = 10  # Number of simulations to run
     # Wild-type parameters
     k1_wt = 0.1  # Degradation rate
     k2_wt = 0.1  # Degradation rate
@@ -88,29 +88,29 @@ if __name__ == "__main__":
 
     # Initial guess for the parameters
     # Initial guess for wild-type degradation rates and thresholds
-    initial_guess_wt = [4, 3, 5]
+    initial_guess_wt = [k_wt, 4, 3, 5]
     # Initial guess for mutant degradation rates and thresholds
-    initial_guess_mut = [4, 3, 5]
+    initial_guess_mut = [k_mut, 4, 3, 5]
 
     # Define bounds for the parameters
-    bounds_wt = [(1, 5), (1, 5), (1, 5)]
-    bounds_mut = [(1, 5), (1, 5), (1, 5)]
+    bounds_wt = [(0.02, 0.4), (1, 5), (1, 5), (1, 5)]
+    bounds_mut = [(0.02, 0.4), (1, 5), (1, 5), (1, 5)]
 
     # Optimize the parameters for wild-type using basinhopping
     minimizer_kwargs_wt = {"method": "L-BFGS-B", "bounds": bounds_wt, "args": (
-        initial_proteins, k_wt, max_time, num_simulations, experimental_data_wt12, experimental_data_wt23)}
+        initial_proteins, max_time, num_simulations, experimental_data_wt12, experimental_data_wt23)}
 
     # result_wt = basinhopping(cost_function, initial_guess_wt,
     #                          minimizer_kwargs=minimizer_kwargs_wt, niter=5)
 
     # Optimize the parameters for wild-type using minimize with L-BFGS-B method
     result_wt = minimize(cost_function, initial_guess_wt, args=(
-        initial_proteins, k_wt, max_time, num_simulations, experimental_data_wt12, experimental_data_wt23), method='L-BFGS-B', bounds=bounds_wt)
+        initial_proteins, max_time, num_simulations, experimental_data_wt12, experimental_data_wt23), method='L-BFGS-B', bounds=bounds_wt)
 
-    n01_wt_opt, n02_wt_opt, n03_wt_opt = result_wt.x
+    k_opt, n01_wt_opt, n02_wt_opt, n03_wt_opt = result_wt.x
 
     print(
-        f'Optimized parameters for wild-type: n01={n01_wt_opt}, n02={n02_wt_opt}, n03={n03_wt_opt}')
+        f'Optimized parameters for wild-type: k = {k_opt}, n01={n01_wt_opt}, n02={n02_wt_opt}, n03={n03_wt_opt}')
 
     # Optimize the parameters for mutant using basinhopping
     # minimizer_kwargs_mut = {"method": "L-BFGS-B", "bounds": bounds_mut, "args": (
