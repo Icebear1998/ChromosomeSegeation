@@ -25,7 +25,7 @@ class ProteinDegradationSimulation:
         times = [time]
         seperate_time = 0
 
-        while time < self.max_time and state > 0:
+        while time < self.max_time and state > self.n0:
             # 0 2: Calculate the reaction propensities, ak(N).
             a = self.propensity_function(state)
             if a == 0:
@@ -53,7 +53,12 @@ class ProteinDegradationSimulation:
 
             if state == self.n0:
                 seperate_time = time
+                # if (seperate_time > self.max_time):
+                #     print(f"seperate_time={seperate_time}",
+                #           self.initial_proteins, time - tau, tau)
 
+        if seperate_time == 0:
+            print(f"seperate_time={seperate_time}")
         return times, states, seperate_time
 
 
@@ -151,7 +156,7 @@ if __name__ == "__main__":
     n03_mut_mean = n0_total - n01_mut_mean - n02_mut_mean
 
     # Generate threshold values with Gaussian distribution
-    np.random.seed(42)  # For reproducibility
+    # np.random.seed(42)  # For reproducibility
     n01_wt_list = np.random.normal(
         loc=n01_wt_mean, scale=1, size=num_simulations)
     n02_wt_list = np.random.normal(
@@ -241,111 +246,147 @@ if __name__ == "__main__":
         seperate_times_chromosome1_mut) - np.array(seperate_times_chromosome2_mut)
     delta_t2_list_mut = np.array(
         seperate_times_chromosome3_mut) - np.array(seperate_times_chromosome2_mut)
-    fig, axs = plt.subplots(1, 2, figsize=(15, 6))
 
-    # Plot comparison between Chromosome 1 and Chromosome 2
-    plot_comparison(simulations_chromosome1_mut, simulations_chromosome2_mut,
-                    max_time, 'Chromosome 1', 'Chromosome 2', axs[0], n01_mut_mean, n02_mut_mean)
+    # fig, axs = plt.subplots(1, 2, figsize=(15, 6))
 
-    # Plot comparison between Chromosome 2 and Chromosome 3
-    plot_comparison(simulations_chromosome3_mut, simulations_chromosome2_mut,
-                    max_time, 'Chromosome 2', 'Chromosome 3', axs[1], n03_mut_mean, n02_mut_mean)
+    # # Plot comparison between Chromosome 1 and Chromosome 2
+    # plot_comparison(simulations_chromosome1_mut, simulations_chromosome2_mut,
+    #                 max_time, 'Chromosome 1', 'Chromosome 2', axs[0], n01_mut_mean, n02_mut_mean)
 
-    plt.tight_layout()
-    plt.show()  # Show the plot
+    # # Plot comparison between Chromosome 2 and Chromosome 3
+    # plot_comparison(simulations_chromosome3_mut, simulations_chromosome2_mut,
+    #                 max_time, 'Chromosome 2', 'Chromosome 3', axs[1], n03_mut_mean, n02_mut_mean)
+
+    # plt.tight_layout()
+    # plt.show()  # Show the plot
+
+    # fig, axs = plt.subplots(1, 2, figsize=(15, 6))
+    # # Plot comparison between Chromosome 1 and Chromosome 2
+    # plot_comparison(simulations_chromosome1_wt, simulations_chromosome2_wt,
+    #                 max_time, 'Chromosome 1', 'Chromosome 2', axs[0], n01_mut_mean, n02_mut_mean)
+
+    # # Plot comparison between Chromosome 2 and Chromosome 3
+    # plot_comparison(simulations_chromosome3_wt, simulations_chromosome2_wt,
+    #                 max_time, 'Chromosome 2', 'Chromosome 3', axs[1], n03_mut_mean, n02_mut_mean)
+
+    # plt.tight_layout()
+    # plt.show()  # Show the plot
 
     # Plot histograms of the differences and fit them with Gaussian curves
-    fig, axs = plt.subplots(1, 2, figsize=(15, 6))
-
-    # Histogram for delta_t1
-    mu1, std1 = norm.fit(delta_t1_list_wt)
-    axs[0].hist(delta_t1_list_wt, bins=20,
+    fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    axs[0].hist(seperate_times_chromosome1_wt, bins=20,
                 density=True, alpha=0.2, color='blue')
-    xmin1, xmax1 = axs[0].get_xlim()
-    x1 = np.linspace(xmin1, xmax1, 100)
-    p1 = norm.pdf(x1, mu1, std1)
-    axs[0].plot(x1, p1, 'blue', linewidth=2, label='Wild-type model')
-    axs[0].plot([], [], ' ', label=f'k1(wt)={k1_wt:.2f}, k2(wt)={k2_wt:.2f}')
-    axs[0].text(mu1, max(p1), f'μ={mu1:.2f}, σ={std1:.2f}',
-                color='black', verticalalignment='bottom')
-
-    mu1, std1 = norm.fit(delta_t1_list_mut)
-    axs[0].hist(delta_t1_list_mut, bins=20,
+    axs[1].hist(seperate_times_chromosome2_wt, bins=20,
+                density=True, alpha=0.2, color='red')
+    axs[2].hist(seperate_times_chromosome3_wt, bins=20,
                 density=True, alpha=0.2, color='orange')
-    xmin1, xmax1 = axs[0].get_xlim()
-    x1 = np.linspace(xmin1, xmax1, 100)
-    p1 = norm.pdf(x1, mu1, std1)
-    axs[0].plot(x1, p1, 'orange', linewidth=2, label='Mutant model')
-    axs[0].plot(
-        [], [], ' ', label=f'k1(mut)={k1_mut:.2f}, k2(mut)={k2_mut:.2f}')
-    axs[0].text(mu1, max(p1), f'μ={mu1:.2f}, σ={std1:.2f}',
-                color='black', verticalalignment='bottom')
-
-    # Read experimental data from Excel file
-    df = pd.read_excel('Chromosome_diff.xlsx')
-    experimental_data_wt = df['SCSdiff_Wildtype12'].dropna().tolist()
-    experimental_data_mut = df['SCSdiff_Mutant12'].dropna().tolist()
-    axs[0].hist(experimental_data_wt, bins=20,
-                alpha=0.15, color='k', density=True)
-    axs[0].hist(experimental_data_mut, bins=20,
-                alpha=0.15, color='darkgray', density=True)
-    mu1, std1 = norm.fit(experimental_data_wt)
-    x1 = np.linspace(xmin1, xmax1, 100)
-    p1 = norm.pdf(x1, mu1, std1)
-    axs[0].plot(x1, p1, 'k', linewidth=2, label='Wild-type data')
-    mu1, std1 = norm.fit(experimental_data_mut)
-    x1 = np.linspace(xmin1, xmax1, 100)
-    p1 = norm.pdf(x1, mu1, std1)
-    axs[0].plot(x1, p1, 'darkgray', linewidth=2, label='Mutant data')
-
-    axs[0].legend()
-    axs[0].set_title(
-        f'Histogram of Δt (Chromosome 1 vs Chromosome 2)\nN1={initial_proteins_chromosome1}, N2={initial_proteins_chromosome2}')
-
-    # Histogram for delta_t2
-    mu2, std2 = norm.fit(delta_t2_list_wt)
-    axs[1].hist(delta_t2_list_wt, bins=20,
-                density=True, alpha=0.2, color='blue')
-    xmin2, xmax2 = axs[1].get_xlim()
-    x2 = np.linspace(xmin2, xmax2, 100)
-    p2 = norm.pdf(x2, mu2, std2)
-    axs[1].plot(x2, p2, 'blue', linewidth=2, label='Wild-type model')
-    axs[1].plot([], [], ' ', label=f'k2(wt)={k2_wt:.2f}, k3(wt)={k3_wt:.2f}')
-    axs[1].text(mu2, max(p2), f'μ={mu2:.2f}, σ={std2:.2f}',
-                color='black', verticalalignment='bottom')
-
-    mu2, std2 = norm.fit(delta_t2_list_mut)
-    axs[1].hist(delta_t2_list_mut, bins=20,
-                density=True, alpha=0.2, color='orange')
-    xmin2, xmax2 = axs[1].get_xlim()
-    x2 = np.linspace(xmin2, xmax2, 100)
-    p2 = norm.pdf(x2, mu2, std2)
-    axs[1].plot(x2, p2, 'orange', linewidth=2, label='Mutant model')
-    axs[1].plot(
-        [], [], ' ', label=f'k2(mut)={k2_mut:.2f}, k3(mut)={k3_mut:.2f}')
-    axs[1].text(mu2, max(p2), f'μ={mu2:.2f}, σ={std2:.2f}',
-                color='black', verticalalignment='bottom')
-
-    # Read experimental data from Excel file
-    df = pd.read_excel('Chromosome_diff.xlsx')
-    experimental_data_wt = df['SCSdiff_Wildtype23'].dropna().tolist()
-    experimental_data_mut = df['SCSdiff_Mutant23'].dropna().tolist()
-    axs[1].hist(experimental_data_wt, bins=20,
-                alpha=0.15, color='k', density=True)
-    axs[1].hist(experimental_data_mut, bins=20,
-                alpha=0.15, color='darkgray', density=True)
-    mu2, std2 = norm.fit(experimental_data_wt)
-    x2 = np.linspace(xmin2, xmax2, 100)
-    p2 = norm.pdf(x2, mu2, std2)
-    axs[1].plot(x2, p2, 'k', linewidth=2, label='Wild-type data')
-    mu2, std2 = norm.fit(experimental_data_mut)
-    x2 = np.linspace(xmin2, xmax2, 100)
-    p2 = norm.pdf(x2, mu2, std2)
-    axs[1].plot(x2, p2, 'darkgray', linewidth=2, label='Mutant data')
-
-    axs[1].legend()
-    axs[1].set_title(
-        f'Histogram of Δt (Chromosome 2 vs Chromosome 3)\nN2={initial_proteins_chromosome2}, N3={initial_proteins_chromosome3}')
 
     plt.tight_layout()
     plt.show()  # Show the plot
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    axs[0].hist(seperate_times_chromosome1_mut, bins=20,
+                density=True, alpha=0.2, color='blue')
+    axs[1].hist(seperate_times_chromosome2_mut, bins=20,
+                density=True, alpha=0.2, color='red')
+    axs[2].hist(seperate_times_chromosome3_mut, bins=20,
+                density=True, alpha=0.2, color='orange')
+
+    plt.tight_layout()
+    plt.show()  # Show the plot
+
+    # # Plot histograms of the differences and fit them with Gaussian curves
+    # fig, axs = plt.subplots(1, 2, figsize=(15, 6))
+
+    # # Histogram for delta_t1
+    # mu1, std1 = norm.fit(delta_t1_list_wt)
+    # axs[0].hist(delta_t1_list_wt, bins=20,
+    #             density=True, alpha=0.2, color='blue')
+    # xmin1, xmax1 = axs[0].get_xlim()
+    # x1 = np.linspace(xmin1, xmax1, 100)
+    # p1 = norm.pdf(x1, mu1, std1)
+    # axs[0].plot(x1, p1, 'blue', linewidth=2, label='Wild-type model')
+    # axs[0].plot([], [], ' ', label=f'k1(wt)={k1_wt:.2f}, k2(wt)={k2_wt:.2f}')
+    # axs[0].text(mu1, max(p1), f'μ={mu1:.2f}, σ={std1:.2f}',
+    #             color='black', verticalalignment='bottom')
+
+    # mu1, std1 = norm.fit(delta_t1_list_mut)
+    # axs[0].hist(delta_t1_list_mut, bins=20,
+    #             density=True, alpha=0.2, color='orange')
+    # xmin1, xmax1 = axs[0].get_xlim()
+    # x1 = np.linspace(xmin1, xmax1, 100)
+    # p1 = norm.pdf(x1, mu1, std1)
+    # axs[0].plot(x1, p1, 'orange', linewidth=2, label='Mutant model')
+    # axs[0].plot(
+    #     [], [], ' ', label=f'k1(mut)={k1_mut:.2f}, k2(mut)={k2_mut:.2f}')
+    # axs[0].text(mu1, max(p1), f'μ={mu1:.2f}, σ={std1:.2f}',
+    #             color='black', verticalalignment='bottom')
+
+    # # Read experimental data from Excel file
+    # df = pd.read_excel('Chromosome_diff.xlsx')
+    # experimental_data_wt = df['SCSdiff_Wildtype12'].dropna().tolist()
+    # experimental_data_mut = df['SCSdiff_Mutant12'].dropna().tolist()
+    # axs[0].hist(experimental_data_wt, bins=20,
+    #             alpha=0.15, color='k', density=True)
+    # axs[0].hist(experimental_data_mut, bins=20,
+    #             alpha=0.15, color='darkgray', density=True)
+    # mu1, std1 = norm.fit(experimental_data_wt)
+    # x1 = np.linspace(xmin1, xmax1, 100)
+    # p1 = norm.pdf(x1, mu1, std1)
+    # axs[0].plot(x1, p1, 'k', linewidth=2, label='Wild-type data')
+    # mu1, std1 = norm.fit(experimental_data_mut)
+    # x1 = np.linspace(xmin1, xmax1, 100)
+    # p1 = norm.pdf(x1, mu1, std1)
+    # axs[0].plot(x1, p1, 'darkgray', linewidth=2, label='Mutant data')
+
+    # axs[0].legend()
+    # axs[0].set_title(
+    #     f'Histogram of Δt (Chromosome 1 vs Chromosome 2)\nN1={initial_proteins_chromosome1}, N2={initial_proteins_chromosome2}')
+
+    # # Histogram for delta_t2
+    # mu2, std2 = norm.fit(delta_t2_list_wt)
+    # axs[1].hist(delta_t2_list_wt, bins=20,
+    #             density=True, alpha=0.2, color='blue')
+    # xmin2, xmax2 = axs[1].get_xlim()
+    # x2 = np.linspace(xmin2, xmax2, 100)
+    # p2 = norm.pdf(x2, mu2, std2)
+    # axs[1].plot(x2, p2, 'blue', linewidth=2, label='Wild-type model')
+    # axs[1].plot([], [], ' ', label=f'k2(wt)={k2_wt:.2f}, k3(wt)={k3_wt:.2f}')
+    # axs[1].text(mu2, max(p2), f'μ={mu2:.2f}, σ={std2:.2f}',
+    #             color='black', verticalalignment='bottom')
+
+    # mu2, std2 = norm.fit(delta_t2_list_mut)
+    # axs[1].hist(delta_t2_list_mut, bins=20,
+    #             density=True, alpha=0.2, color='orange')
+    # xmin2, xmax2 = axs[1].get_xlim()
+    # x2 = np.linspace(xmin2, xmax2, 100)
+    # p2 = norm.pdf(x2, mu2, std2)
+    # axs[1].plot(x2, p2, 'orange', linewidth=2, label='Mutant model')
+    # axs[1].plot(
+    #     [], [], ' ', label=f'k2(mut)={k2_mut:.2f}, k3(mut)={k3_mut:.2f}')
+    # axs[1].text(mu2, max(p2), f'μ={mu2:.2f}, σ={std2:.2f}',
+    #             color='black', verticalalignment='bottom')
+
+    # # Read experimental data from Excel file
+    # df = pd.read_excel('Chromosome_diff.xlsx')
+    # experimental_data_wt = df['SCSdiff_Wildtype23'].dropna().tolist()
+    # experimental_data_mut = df['SCSdiff_Mutant23'].dropna().tolist()
+    # axs[1].hist(experimental_data_wt, bins=20,
+    #             alpha=0.15, color='k', density=True)
+    # axs[1].hist(experimental_data_mut, bins=20,
+    #             alpha=0.15, color='darkgray', density=True)
+    # mu2, std2 = norm.fit(experimental_data_wt)
+    # x2 = np.linspace(xmin2, xmax2, 100)
+    # p2 = norm.pdf(x2, mu2, std2)
+    # axs[1].plot(x2, p2, 'k', linewidth=2, label='Wild-type data')
+    # mu2, std2 = norm.fit(experimental_data_mut)
+    # x2 = np.linspace(xmin2, xmax2, 100)
+    # p2 = norm.pdf(x2, mu2, std2)
+    # axs[1].plot(x2, p2, 'darkgray', linewidth=2, label='Mutant data')
+
+    # axs[1].legend()
+    # axs[1].set_title(
+    #     f'Histogram of Δt (Chromosome 2 vs Chromosome 3)\nN2={initial_proteins_chromosome2}, N3={initial_proteins_chromosome3}')
+
+    # plt.tight_layout()
+    # plt.show()  # Show the plot

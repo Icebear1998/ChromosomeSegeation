@@ -44,8 +44,11 @@ class ProteinDegradationSimulation:
 
             # Calculate seperate times
             for i in range(3):
-                if self.seperate_times[i] is None and self.state[i] < self.n0_list[i]:
+                if self.seperate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.seperate_times[i] = self.time
+                    if (self.seperate_times[i] > self.max_time):
+                        print(f"seperate_time={self.seperate_times[i]}",
+                              i, self.time - tau, tau)
 
         # Set seperate times to max_time if not reached
         for i in range(3):
@@ -133,7 +136,7 @@ if __name__ == "__main__":
     initial_proteins = [initial_proteins_chromosome1,
                         initial_proteins_chromosome2, initial_proteins_chromosome3]
     max_time = 150  # Maximum simulation time
-    num_simulations = 200  # Number of simulations to run
+    num_simulations = 100  # Number of simulations to run
 
     # Wild-type parameters
     k1_wt = 0.1  # Degradation rate
@@ -158,7 +161,7 @@ if __name__ == "__main__":
     n03_mut_mean = n0_total - n01_mut_mean - n02_mut_mean
 
     # Generate threshold values with Gaussian distribution
-    np.random.seed(42)  # For reproducibility
+    # np.random.seed(42)  # For reproducibility
     n01_wt_list = np.random.normal(
         loc=n01_wt_mean, scale=1, size=num_simulations)
     n02_wt_list = np.random.normal(
@@ -218,6 +221,14 @@ if __name__ == "__main__":
     simulations_chromosome3_mut = [
         [times, [state[2] for state in states]] for times, states in simulations_mut]
 
+    # Extract times and the first state component from all simulations
+    simulations_chromosome1_wt = [
+        [times, [state[0] for state in states]] for times, states in simulations_wt]
+    simulations_chromosome2_wt = [
+        [times, [state[1] for state in states]] for times, states in simulations_wt]
+    simulations_chromosome3_wt = [
+        [times, [state[2] for state in states]] for times, states in simulations_wt]
+
     fig, axs = plt.subplots(1, 2, figsize=(15, 6))
     # Plot comparison between Chromosome 1 and Chromosome 2
     plot_comparison(simulations_chromosome1_mut, simulations_chromosome2_mut, max_time,
@@ -229,6 +240,40 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()  # Show the plot
+
+    fig, axs = plt.subplots(1, 2, figsize=(15, 6))
+    # Plot comparison between Chromosome 1 and Chromosome 2
+    plot_comparison(simulations_chromosome1_wt, simulations_chromosome2_wt, max_time,
+                    'Chromosome 1', 'Chromosome 2', axs[0], n01_wt_mean, n02_wt_mean)
+
+    # Plot comparison between Chromosome 3 and Chromosome 2
+    plot_comparison(simulations_chromosome3_wt, simulations_chromosome2_wt, max_time,
+                    'Chromosome 3', 'Chromosome 2', axs[1], n03_wt_mean, n02_wt_mean)
+
+    plt.tight_layout()
+    plt.show()  # Show the plot
+
+    # fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    # axs[0].hist(np.array(seperate_times_wt)[:, 0], bins=20,
+    #             density=True, alpha=0.2, color='blue')
+    # axs[1].hist(np.array(seperate_times_wt)[:, 1], bins=20,
+    #             density=True, alpha=0.2, color='red')
+    # axs[2].hist(np.array(seperate_times_wt)[:, 2], bins=20,
+    #             density=True, alpha=0.2, color='orange')
+
+    # plt.tight_layout()
+    # plt.show()  # Show the plot
+
+    # fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    # axs[0].hist(np.array(seperate_times_mut)[:, 0], bins=20,
+    #             density=True, alpha=0.2, color='blue')
+    # axs[1].hist(np.array(seperate_times_mut)[:, 1], bins=20,
+    #             density=True, alpha=0.2, color='red')
+    # axs[2].hist(np.array(seperate_times_mut)[:, 2], bins=20,
+    #             density=True, alpha=0.2, color='orange')
+
+    # plt.tight_layout()
+    # plt.show()  # Show the plot
 
     # Plot histograms of the differences and fit them with Gaussian curves
     fig, axs = plt.subplots(1, 2, figsize=(15, 6))
