@@ -1,68 +1,65 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.special import digamma, polygamma
 from scipy.optimize import differential_evolution, minimize
 from scipy.stats import norm
 from scipy import integrate
+import math
 
-# Define the moments of the gamma distribution
-
-
-def mean_tau(k, n, N):
-    return (digamma(N + 1) - digamma(n + 1)) / (k * (n + 1))
+# Define the PDF of separation time f_tau(t; k, n, N)
 
 
-def var_tau(k, n, N):
-    return (polygamma(1, n + 1) - polygamma(1, N + 1)) / (k**2 * (n + 1)**2)
+def f_tau(t, k, n, N):
+    if t < 0 or N - n - 1 < 0:
+        return 0
+    coeff = k * math.factorial(int(N)) / (math.factorial(int(n))
+                                          * math.factorial(int(N - n - 1)))
+    return coeff * np.exp(-(n + 1) * k * t) * (1 - np.exp(-k * t))**(N - n - 1)
 
-# Theoretical PDF f_X(x)
-
-
-def f_X(x, k1, n1, N1, k2, n2, N2):
-    mu_tau1 = mean_tau(k1, n1, N1)
-    mu_tau2 = mean_tau(k2, n2, N2)
-    sigma_tau1_squared = var_tau(k1, n1, N1)
-    sigma_tau2_squared = var_tau(k2, n2, N2)
-
-    mu_X_theory = mu_tau1 - mu_tau2
-    sigma_X_theory_squared = sigma_tau1_squared + sigma_tau2_squared
-
-    coeff = 1 / np.sqrt(2 * np.pi * sigma_X_theory_squared)
-    exponent = -0.5 * ((x - mu_X_theory)**2 / sigma_X_theory_squared)
-    return coeff * np.exp(exponent)
-
-# Objective function for simultaneous optimization
+# Compute the PDF of X = tau1 - tau2 using numerical convolution
 
 
-def objective_weighted(params, n1, N1, mu_X_exp12, sigma_X_exp12, mu_X_exp32, sigma_X_exp32, w_mu, w_sigma):
+def f_X_numerical(x, k1, n1, N1, k2, n2, N2):
+    def integrand(t): return f_tau(t, k1, n1, N1) * f_tau(t - x, k2, n2, N2)
+    lower_limit = max(0, x)
+    result, _ = integrate.quad(integrand, lower_limit, np.inf, limit=100)
+    return result
+
+# Objective function for optimization using numerical f_X
+
+
+def objective_numerical(params, n1, N1, experimental_data12, experimental_data32):
     k, r1, R1, r2, R2 = params
 
     # Chromosome 1 vs 2
     n2 = r1 * n1
     N2 = R1 * N1
-    mu_tau1 = mean_tau(k, n1, N1)
-    mu_tau2 = mean_tau(k, n2, N2)
-    sigma_tau1_squared = var_tau(k, n1, N1)
-    sigma_tau2_squared = var_tau(k, n2, N2)
-    mu_X_theory12 = mu_tau1 - mu_tau2
-    sigma_X_theory12 = np.sqrt(sigma_tau1_squared + sigma_tau2_squared)
+    x_values = np.linspace(-30, 30, 200)
+    try:
+        f_x_numerical_values12 = np.array(
+            [f_X_numerical(x, k, n1, N1, k, n2, N2) for x in x_values])
+        f_x_numerical_values12 /= np.trapz(f_x_numerical_values12, x_values)
+    except ValueError:
+        return np.inf
 
     # Chromosome 2 vs 3
     n3 = r2 * n1
     N3 = R2 * N1
-    mu_tau3 = mean_tau(k, n3, N3)
-    sigma_tau3_squared = var_tau(k, n3, N3)
-    mu_X_theory32 = mu_tau3 - mu_tau2
-    sigma_X_theory32 = np.sqrt(sigma_tau2_squared + sigma_tau3_squared)
+    try:
+        f_x_numerical_values32 = np.array(
+            [f_X_numerical(x, k, n3, N3, k, n2, N2) for x in x_values])
+        f_x_numerical_values32 /= np.trapz(f_x_numerical_values32, x_values)
+    except ValueError:
+        return np.inf
 
-    # Errors
-    error_mu_12 = w_mu * (mu_X_theory12 - mu_X_exp12)**2
-    error_sigma_12 = w_sigma * (sigma_X_theory12 - sigma_X_exp12)**2
-    error_mu_32 = w_mu * (mu_X_theory32 - mu_X_exp32)**2
-    error_sigma_32 = w_sigma * (sigma_X_theory32 - sigma_X_exp32)**2
+    # Compute the likelihood of the experimental data given the numerical f_X
+    likelihood12 = np.sum(np.interp(experimental_data12,
+                          x_values, f_x_numerical_values12))
+    likelihood32 = np.sum(np.interp(experimental_data32,
+                          x_values, f_x_numerical_values32))
 
-    return error_mu_12 + error_sigma_12 + error_mu_32 + error_sigma_32
+    # Return the negative log-likelihood (to minimize)
+    return -np.log(likelihood12 + likelihood32)
 
 
 # Read experimental data
@@ -70,25 +67,18 @@ df = pd.read_excel('Chromosome_diff.xlsx')
 experimental_data_wt12 = df['SCSdiff_Wildtype12'].dropna().tolist()
 experimental_data_wt32 = df['SCSdiff_Wildtype23'].dropna().tolist()
 
-# Experimental moments
-mu_X_exp12 = np.mean(experimental_data_wt12)
-sigma_X_exp12 = np.std(experimental_data_wt12)
-mu_X_exp32 = np.mean(experimental_data_wt32)
-sigma_X_exp32 = np.std(experimental_data_wt32)
-
 # Fixed parameters
 n1 = 4  # Fixed value for n1
 N1 = 100  # Fixed value for N1
 
 # Parameter bounds for k, r1, R1, r2, R2
-bounds = [(0.01, 0.5), (0.1, 5), (0.1, 5), (0.1, 5), (0.1, 5)]
+bounds = [(0.01, 0.5), (0.1, 5), (0.1, 1.5), (0.1, 5), (0.1, 1.5)]
 
 # Global optimization
 result_de = differential_evolution(
-    objective_weighted,
+    objective_numerical,
     bounds=bounds,
-    args=(n1, N1, mu_X_exp12, sigma_X_exp12,
-          mu_X_exp32, sigma_X_exp32, 1.0, 1.0),
+    args=(n1, N1, experimental_data_wt12, experimental_data_wt32),
     strategy='best1bin',
     maxiter=2000,
     popsize=20,
@@ -102,10 +92,9 @@ else:
 
 # Perform local refinement
 result_refined = minimize(
-    objective_weighted,
+    objective_numerical,
     result_de.x,
-    args=(n1, N1, mu_X_exp12, sigma_X_exp12,
-          mu_X_exp32, sigma_X_exp32, 1.0, 1.0),
+    args=(n1, N1, experimental_data_wt12, experimental_data_wt32),
     bounds=bounds,
     method='L-BFGS-B',
     options={'maxiter': 1000, 'ftol': 1e-9}
@@ -138,11 +127,13 @@ def plot_results(experimental_data_wt12, experimental_data_wt32, k_est, n1_est, 
     p_exp = norm.pdf(x_values, mu_exp, std_exp)
     ax[0].plot(x_values, p_exp, 'blue', linewidth=2,
                label='Experimental Gaussian Fit')
-    f_x_values12 = np.array(
-        [f_X(xi, k_est, n1_est, N1_est, k_est, n2_est, N2_est) for xi in x_values])
-    f_x_values12 /= integrate.trapezoid(f_x_values12, x_values)  # Normalize
-    ax[0].plot(x_values, f_x_values12, 'red', alpha=0.5,
-               linewidth=2, label='Estimated f_X(x)')
+    f_x_numerical_values12 = np.array([f_X_numerical(
+        xi, k_est, n1_est, N1_est, k_est, n2_est, N2_est) for xi in x_values])
+    # Normalize
+    f_x_numerical_values12 /= integrate.trapezoid(
+        f_x_numerical_values12, x_values)
+    ax[0].plot(x_values, f_x_numerical_values12, 'red',
+               alpha=0.5, linewidth=2, label='Numerical f_X(x)')
     ax[0].set_xlabel(
         "Difference in Separation Time (Chromosome 1 - Chromosome 2)")
     ax[0].set_ylabel("Density")
@@ -163,11 +154,13 @@ def plot_results(experimental_data_wt12, experimental_data_wt32, k_est, n1_est, 
     p_exp = norm.pdf(x_values, mu_exp, std_exp)
     ax[1].plot(x_values, p_exp, 'blue', linewidth=2,
                label='Experimental Gaussian Fit')
-    f_x_values32 = np.array(
-        [f_X(xi, k_est, n3_est, N3_est, k_est, n2_est, N2_est) for xi in x_values])
-    f_x_values32 /= integrate.trapezoid(f_x_values32, x_values)  # Normalize
-    ax[1].plot(x_values, f_x_values32, 'red', alpha=0.5,
-               linewidth=2, label='Estimated f_X(x)')
+    f_x_numerical_values32 = np.array([f_X_numerical(
+        xi, k_est, n3_est, N3_est, k_est, n2_est, N2_est) for xi in x_values])
+    # Normalize
+    f_x_numerical_values32 /= integrate.trapezoid(
+        f_x_numerical_values32, x_values)
+    ax[1].plot(x_values, f_x_numerical_values32, 'red',
+               alpha=0.5, linewidth=2, label='Numerical f_X(x)')
     ax[1].set_xlabel(
         "Difference in Separation Time (Chromosome 3 - Chromosome 2)")
     ax[1].set_ylabel("Density")
