@@ -74,13 +74,13 @@ f_x_numerical_values = [f_X_numerical(
 f_x_numerical_values = np.array(f_x_numerical_values)
 f_x_numerical_values /= np.trapz(f_x_numerical_values, x_values)
 
-# Compute f_X(x) using the theoretical estimate over the range of x values
-f_x_estimate_values = [f_X_estimate(
-    x, k1, n1, N1, k2, n2, N2) for x in x_values]
+# # Compute f_X(x) using the theoretical estimate over the range of x values
+# f_x_estimate_values = [f_X_estimate(
+#     x, k1, n1, N1, k2, n2, N2) for x in x_values]
 
-# Normalize the PDF (ensure it integrates to 1)
-f_x_estimate_values = np.array(f_x_estimate_values)
-f_x_estimate_values /= np.trapz(f_x_estimate_values, x_values)
+# # Normalize the PDF (ensure it integrates to 1)
+# f_x_estimate_values = np.array(f_x_estimate_values)
+# f_x_estimate_values /= np.trapz(f_x_estimate_values, x_values)
 
 # Stochastic simulation using ProteinDegradationSimulation
 initial_proteins1 = N1
@@ -116,9 +116,9 @@ plt.figure(figsize=(10, 6))
 plt.plot(x_values, f_x_numerical_values,
          label="Numerically Integrated PDF", color='blue')
 
-# Plot the theoretical estimate result
-plt.plot(x_values, f_x_estimate_values,
-         label="Theoretical Estimate PDF", color='green', linestyle='--')
+# # Plot the theoretical estimate result
+# plt.plot(x_values, f_x_estimate_values,
+#          label="Theoretical Estimate PDF", color='green', linestyle='--')
 
 # Plot the stochastic simulation result
 plt.hist(delta_t1, bins=30, density=True, alpha=0.5,
@@ -132,7 +132,7 @@ plt.text(0.05, 0.95, params_text, fontsize=10, transform=plt.gca().transAxes,
 
 plt.xlabel("Difference in Separation Time (X = tau1 - tau2)")
 plt.ylabel("Density")
-plt.title("Comparison of Numerical Integration, Theoretical Estimate, and Stochastic Simulation")
+plt.title("Comparison of Numerical Integration, and Stochastic Simulation")
 plt.legend()
 plt.grid()
 plt.show()
