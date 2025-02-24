@@ -1,181 +1,287 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.optimize import differential_evolution, minimize
-from scipy.stats import norm
-from scipy import integrate
-import math
+from scipy.optimize import minimize
+from scipy.integrate import quad
+from math import exp, isfinite
+from scipy.special import gamma
 
-# Define the PDF of separation time f_tau(t; k, n, N)
+# If your Chrom3–Chrom2 data is actually Chrom2–Chrom3, set True:
+FLIP_CHROM3_DATA = False
 
+###############################################################################
+# 1) Gamma-based single-chromosome PDF with domain checks & clamping
+###############################################################################
+def f_tau_gamma(t, k, n, N):
+    """
+    Single-chromosome PDF for the (n+1)-th event among N exponentials at rate k.
+    Returns 0 if invalid or if numeric overflow occurs.
+    """
+    if t < 0:
+        return 0.0
+    if (k <= 0) or (n < 0) or (N <= n):
+        return 0.0
+    
+    try:
+        comb_factor = gamma(N + 1.0) / (gamma(n + 1.0)*gamma(N - n))
+    except (ValueError, OverflowError):
+        return 0.0
+    
+    base = 1.0 - np.exp(-k*t)
+    if base < 1e-15:
+        base = 1e-15  # clamp to avoid 0^exponent
+    exponent = (N - n - 1.0)
+    if exponent < 0:
+        return 0.0
+    
+    val = k * comb_factor * np.exp(-(n+1.0)*k*t) * (base ** exponent)
+    if (not isfinite(val)) or (val < 0):
+        return 0.0
+    return val
 
-def f_tau(t, k, n, N):
-    if t < 0 or N - n - 1 < 0:
-        return 0
-    coeff = k * math.factorial(int(N)) / (math.factorial(int(n))
-                                          * math.factorial(int(N - n - 1)))
-    return coeff * np.exp(-(n + 1) * k * t) * (1 - np.exp(-k * t))**(N - n - 1)
+###############################################################################
+# 2) Difference PDF f_diff_gamma(x; k1,n1,N1, k2,n2,N2)
+###############################################################################
+def f_diff_gamma(x, k1, n1, N1, k2, n2, N2):
+    lower = max(0.0, x)
+    def integrand(t):
+        return f_tau_gamma(t,     k1, n1, N1) \
+             * f_tau_gamma(t - x, k2, n2, N2)
+    try:
+        val, _ = quad(integrand, lower, np.inf, limit=300)
+        if (not np.isfinite(val)) or (val < 0):
+            return 0.0
+        return val
+    except (ValueError, OverflowError):
+        return 0.0
 
-# Compute the PDF of X = tau1 - tau2 using numerical convolution
-
-
-def f_X_numerical(x, k1, n1, N1, k2, n2, N2):
-    def integrand(t): return f_tau(t, k1, n1, N1) * f_tau(t - x, k2, n2, N2)
-    lower_limit = max(0, x)
-    result, _ = integrate.quad(integrand, lower_limit, np.inf, limit=100)
-    return result
-
-# Objective function for optimization using numerical f_X
-
-
-def objective_numerical(params, n1, N1, experimental_data12, experimental_data32):
-    k, r1, R1, r2, R2 = params
-
-    # Chromosome 1 vs 2
+###############################################################################
+# 3) Objective function (Chrom1–Chrom2 + Chrom3–Chrom2),
+#    but (R1, R2) are externally fixed. We optimize over (k, r1, r2).
+###############################################################################
+def combined_objective_k_r1_r2(vars_k_r1_r2, R1_fixed, R2_fixed,
+                               data12, data32, n1, N1, x_grid):
+    """
+    vars_k_r1_r2 = [k, r1, r2]
+    R1_fixed, R2_fixed are given from the small grid.
+    
+    We derive:
+      n2 = r1*n1, N2 = R1_fixed*N1
+      n3 = r2*n1, N3 = R2_fixed*N1
+    
+    Then compute -log-likelihood for data12 and data32.
+    """
+    k, r1, r2 = vars_k_r1_r2
+    
     n2 = r1 * n1
-    N2 = R1 * N1
-    x_values = np.linspace(-30, 30, 200)
-    try:
-        f_x_numerical_values12 = np.array(
-            [f_X_numerical(x, k, n1, N1, k, n2, N2) for x in x_values])
-        f_x_numerical_values12 /= np.trapz(f_x_numerical_values12, x_values)
-    except ValueError:
-        return np.inf
-
-    # Chromosome 2 vs 3
+    N2 = R1_fixed * N1
     n3 = r2 * n1
-    N3 = R2 * N1
-    try:
-        f_x_numerical_values32 = np.array(
-            [f_X_numerical(x, k, n3, N3, k, n2, N2) for x in x_values])
-        f_x_numerical_values32 /= np.trapz(f_x_numerical_values32, x_values)
-    except ValueError:
+    N3 = R2_fixed * N1
+    
+    # Chrom1–Chrom2
+    pdf12 = np.array([
+        f_diff_gamma(x, k, n1, N1, k, n2, N2) 
+        for x in x_grid
+    ])
+    area12 = np.trapz(pdf12, x_grid)
+    if area12 < 1e-15:
         return np.inf
+    pdf12 /= area12
+    vals12 = np.interp(data12, x_grid, pdf12, left=0, right=0)
+    if np.any(vals12 <= 0):
+        return np.inf
+    
+    # Chrom3–Chrom2
+    pdf32 = np.array([
+        f_diff_gamma(x, k, n3, N3, k, n2, N2)
+        for x in x_grid
+    ])
+    area32 = np.trapz(pdf32, x_grid)
+    if area32 < 1e-15:
+        return np.inf
+    pdf32 /= area32
+    vals32 = np.interp(data32, x_grid, pdf32, left=0, right=0)
+    if np.any(vals32 <= 0):
+        return np.inf
+    
+    # Negative log-likelihood
+    return -np.sum(np.log(vals12)) - np.sum(np.log(vals32))
 
-    # Compute the likelihood of the experimental data given the numerical f_X
-    likelihood12 = np.sum(np.interp(experimental_data12,
-                          x_values, f_x_numerical_values12))
-    likelihood32 = np.sum(np.interp(experimental_data32,
-                          x_values, f_x_numerical_values32))
-
-    # Return the negative log-likelihood (to minimize)
-    return -np.log(likelihood12 + likelihood32)
-
-
-# Read experimental data
-df = pd.read_excel('Chromosome_diff.xlsx')
-experimental_data_wt12 = df['SCSdiff_Wildtype12'].dropna().tolist()
-experimental_data_wt32 = df['SCSdiff_Wildtype23'].dropna().tolist()
-
-# Fixed parameters
-n1 = 4  # Fixed value for n1
-N1 = 100  # Fixed value for N1
-
-# Parameter bounds for k, r1, R1, r2, R2
-bounds = [(0.01, 0.5), (0.1, 5), (0.1, 1.5), (0.1, 5), (0.1, 1.5)]
-
-# Global optimization
-result_de = differential_evolution(
-    objective_numerical,
-    bounds=bounds,
-    args=(n1, N1, experimental_data_wt12, experimental_data_wt32),
-    strategy='best1bin',
-    maxiter=2000,
-    popsize=20,
-    tol=1e-7
-)
-
-if result_de.success:
-    print("Global optimization succeeded.")
-else:
-    print("Global optimization failed. Proceeding with fallback.")
-
-# Perform local refinement
-result_refined = minimize(
-    objective_numerical,
-    result_de.x,
-    args=(n1, N1, experimental_data_wt12, experimental_data_wt32),
-    bounds=bounds,
-    method='L-BFGS-B',
-    options={'maxiter': 1000, 'ftol': 1e-9}
-)
-
-if result_refined.success:
-    params_optimized = result_refined.x
-    print("Local refinement succeeded.")
-else:
-    params_optimized = result_de.x  # Fallback to global result
-    print("Local refinement failed. Using global optimization results.")
-
-k_est, r1_est, R1_est, r2_est, R2_est = params_optimized
-n2_est = r1_est * n1
-N2_est = round(R1_est * N1)
-n3_est = r2_est * n1
-N3_est = round(R2_est * N1)
-print("Optimized parameters:", params_optimized)
-
-
-def plot_results(experimental_data_wt12, experimental_data_wt32, k_est, n1_est, N1_est, n2_est, N2_est, n3_est, N3_est):
-    fig, ax = plt.subplots(1, 2, figsize=(14, 5))
-
-    # Chromosome 1 vs 2
-    mu_exp, std_exp = norm.fit(experimental_data_wt12)
-    ax[0].hist(experimental_data_wt12, bins=20, density=True,
-               alpha=0.2, color='blue', label='Experimental Data')
-    xmin, xmax = ax[0].get_xlim()
-    x_values = np.linspace(xmin, xmax, 100)
-    p_exp = norm.pdf(x_values, mu_exp, std_exp)
-    ax[0].plot(x_values, p_exp, 'blue', linewidth=2,
-               label='Experimental Gaussian Fit')
-    f_x_numerical_values12 = np.array([f_X_numerical(
-        xi, k_est, n1_est, N1_est, k_est, n2_est, N2_est) for xi in x_values])
-    # Normalize
-    f_x_numerical_values12 /= integrate.trapezoid(
-        f_x_numerical_values12, x_values)
-    ax[0].plot(x_values, f_x_numerical_values12, 'red',
-               alpha=0.5, linewidth=2, label='Numerical f_X(x)')
-    ax[0].set_xlabel(
-        "Difference in Separation Time (Chromosome 1 - Chromosome 2)")
-    ax[0].set_ylabel("Density")
-    ax[0].set_title("Chromosome 1 vs 2")
-    params_text_12 = f"k1={k_est:.2f}, n1={n1_est:.2f}, N1={N1_est:.2f}\n" \
-                     f"k2={k_est:.2f}, n2={n2_est:.2f}, N2={N2_est:.2f}"
-    ax[0].text(0.05, 0.95, params_text_12, transform=ax[0].transAxes,
-               fontsize=10, verticalalignment='top')
+###############################################################################
+# 4) Main "Hybrid" approach
+###############################################################################
+def main():
+    #  a) Read data
+    df = pd.read_excel("Chromosome_diff.xlsx")
+    data12 = df['SCSdiff_Wildtype12'].dropna().values
+    data32 = df['SCSdiff_Wildtype23'].dropna().values
+    
+    # If your data for Chrom3–Chrom2 is actually (Chrom2–Chrom3), flip sign:
+    if FLIP_CHROM3_DATA:
+        data32 = -data32
+    
+    # b) Fix chromosome1 params
+    n1 = 4.0
+    N1 = 100.0
+    
+    # c) Prepare a broad x_grid
+    x_grid = np.linspace(-80, 80, 301)
+    
+    # d) We'll define small discrete sets for R1, R2
+    R1_candidates = np.round(np.arange(0.5, 2.51, 0.25), 2)  # e.g. 0.50, 0.75, 1.00, ...
+    R2_candidates = np.round(np.arange(0.5, 5.01, 0.5), 2)  # e.g. 0.50, 1.00, 1.50, ...
+    
+    # e) We'll do local optimization over [k, r1, r2] for each grid cell (R1,R2)
+    param_bounds = [
+        (0.01, 0.5),  # k
+        (0.1,  5.0),  # r1
+        (0.1,  5.0),  # r2
+    ]
+    
+    best_obj = np.inf
+    best_solution = None
+    
+    for R1_fixed in R1_candidates:
+        for R2_fixed in R2_candidates:
+            # Define a local objective that only depends on [k, r1, r2],
+            # with R1_fixed, R2_fixed closed over.
+            def local_obj_k_r1_r2(vars_):
+                return combined_objective_k_r1_r2(
+                    vars_, R1_fixed, R2_fixed,
+                    data12, data32, n1, N1, x_grid
+                )
+            
+            # pick an initial guess for [k, r1, r2]
+            x0 = [0.1, 1.0, 1.0]
+            
+            # local optimization
+            res = minimize(
+                local_obj_k_r1_r2,
+                x0,
+                method='L-BFGS-B',
+                bounds=param_bounds,
+                options={'maxiter': 300, 'disp': False}
+            )
+            
+            if res.success and res.fun < best_obj:
+                best_obj = res.fun
+                # store the combined solution: (k, r1, r2, R1_fixed, R2_fixed)
+                best_solution = (res.x[0], res.x[1], res.x[2], R1_fixed, R2_fixed)
+    
+    if best_solution is None:
+        print("No valid solution found in the (R1, R2) grid.")
+        return
+    
+    k_opt, r1_opt, r2_opt, R1_opt, R2_opt = best_solution
+    print("Best negative log-likelihood:", best_obj)
+    print(f"Best parameters:\n"
+          f"  k={k_opt:.4f}, r1={r1_opt:.4f}, R1={R1_opt:.2f}\n"
+          f"  r2={r2_opt:.4f}, R2={R2_opt:.2f}")
+    
+    # f) Evaluate final PDF & plot
+    n2_opt = r1_opt * n1
+    N2_opt = R1_opt * N1
+    n3_opt = r2_opt * n1
+    N3_opt = R2_opt * N1
+    
+    pdf12 = np.array([
+        f_diff_gamma(x, k_opt, n1, N1, k_opt, n2_opt, N2_opt) 
+        for x in x_grid
+    ])
+    area12 = np.trapz(pdf12, x_grid)
+    if area12>1e-15:
+        pdf12 /= area12
+    
+    pdf32 = np.array([
+        f_diff_gamma(x, k_opt, n3_opt, N3_opt, k_opt, n2_opt, N2_opt) 
+        for x in x_grid
+    ])
+    area32 = np.trapz(pdf32, x_grid)
+    if area32>1e-15:
+        pdf32 /= area32
+    
+    fig, ax = plt.subplots(1,2, figsize=(12,5))
+    
+    ax[0].hist(data12, bins=30, density=True, alpha=0.4, label='data12')
+    ax[0].plot(x_grid, pdf12, 'r-', label='model pdf12')
+    ax[0].set_title("Chrom1 - Chrom2")
     ax[0].legend()
-    ax[0].grid()
-
-    # Chromosome 2 vs 3
-    mu_exp, std_exp = norm.fit(experimental_data_wt32)
-    ax[1].hist(experimental_data_wt32, bins=20, density=True,
-               alpha=0.2, color='blue', label='Experimental Data')
-    xmin, xmax = ax[1].get_xlim()
-    x_values = np.linspace(xmin, xmax, 100)
-    p_exp = norm.pdf(x_values, mu_exp, std_exp)
-    ax[1].plot(x_values, p_exp, 'blue', linewidth=2,
-               label='Experimental Gaussian Fit')
-    f_x_numerical_values32 = np.array([f_X_numerical(
-        xi, k_est, n3_est, N3_est, k_est, n2_est, N2_est) for xi in x_values])
-    # Normalize
-    f_x_numerical_values32 /= integrate.trapezoid(
-        f_x_numerical_values32, x_values)
-    ax[1].plot(x_values, f_x_numerical_values32, 'red',
-               alpha=0.5, linewidth=2, label='Numerical f_X(x)')
-    ax[1].set_xlabel(
-        "Difference in Separation Time (Chromosome 3 - Chromosome 2)")
-    ax[1].set_ylabel("Density")
-    ax[1].set_title("Chromosome 3 vs 2")
-    params_text_32 = f"k2={k_est:.2f}, n2={n2_est:.2f}, N2={N2_est:.2f}\n" \
-                     f"k3={k_est:.2f}, n3={n3_est:.2f}, N3={N3_est:.2f}"
-    ax[1].text(0.05, 0.95, params_text_32, transform=ax[1].transAxes,
-               fontsize=10, verticalalignment='top')
+    
+    ax[1].hist(data32, bins=30, density=True, alpha=0.4, label='data32')
+    ax[1].plot(x_grid, pdf32, 'r-', label='model pdf32')
+    ax[1].set_title("Chrom3 - Chrom2")
     ax[1].legend()
-    ax[1].grid()
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # g) Run the stochastic simulation with best parameters, compare
+    run_stochastic_simulation_and_plot(
+        k_opt, r1_opt, R1_opt,
+        r2_opt, R2_opt,
+        data12, data32,
+        n1, N1
+    )
 
+###############################################################################
+# Stochastic Simulation
+###############################################################################
+from chromosome_Gillespie4 import run_simulations, generate_threshold_values
+
+def run_stochastic_simulation_and_plot(k_opt, r1_opt, R1_opt, r2_opt, R2_opt, 
+                                       data12, data32,
+                                       n1, N1,
+                                       max_time=150, num_sim=500):
+    """
+    Use the best-fit (k_opt, r1_opt, R1_opt, r2_opt, R2_opt) to run a Gillespie-like 
+    simulation. Then compare sim difference times to the experimental data hist.
+    """
+    n2_opt = r1_opt*n1
+    N2_opt = R1_opt*N1
+    n3_opt = r2_opt*n1
+    N3_opt = R2_opt*N1
+    
+    initial_proteins1 = N1
+    initial_proteins2 = N2_opt
+    initial_proteins3 = 350  # or any known / used
+    initial_proteins = [initial_proteins1, initial_proteins2, initial_proteins3]
+    
+    # If your code requires rates for each chromosome:
+    rates = [k_opt, k_opt, k_opt]
+    
+    n0_total = 10
+    n01_mean = n1
+    n02_mean = n2_opt
+    # if you only track 2 thresholds, pass [n01_mean, n02_mean]
+    n0_list = generate_threshold_values([n01_mean, n02_mean], n0_total, num_sim)
+    
+    simulations, separate_times = run_simulations(
+        initial_proteins, rates, n0_list, max_time, num_sim
+    )
+    
+    # separate_times[i] => [sep1, sep2, sep3]
+    # so Chrom1 - Chrom2 => sep[0] - sep[1], Chrom3 - Chrom2 => sep[2] - sep[1]
+    delta_t12 = [sep[0] - sep[1] for sep in separate_times]
+    delta_t32 = [sep[2] - sep[1] for sep in separate_times]
+    
+    # Plot sim vs data
+    fig, ax = plt.subplots(1,2, figsize=(12,5))
+    
+    ax[0].hist(delta_t12, bins=30, density=True, alpha=0.4, label='Sim data12')
+    ax[0].hist(data12, bins=30, density=True, alpha=0.4, label='Exp data12')
+    ax[0].set_title("Stochastic Sim vs Exp (Chrom1–Chrom2)")
+    ax[0].legend()
+    
+    ax[1].hist(delta_t32, bins=30, density=True, alpha=0.4, label='Sim data32')
+    ax[1].hist(data32, bins=30, density=True, alpha=0.4, label='Exp data32')
+    ax[1].set_title("Stochastic Sim vs Exp (Chrom3–Chrom2)")
+    ax[1].legend()
+    
     plt.tight_layout()
     plt.show()
 
-
-# Call the plot_results function
-plot_results(experimental_data_wt12, experimental_data_wt32,
-             k_est, n1, N1, n2_est, N2_est, n3_est, N3_est)
+###############################################################################
+# Run
+###############################################################################
+if __name__=="__main__":
+    main()
