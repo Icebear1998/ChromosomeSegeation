@@ -1,13 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-from chromosomes import function
-from chromosomes_Gillespie import ProteinDegradationSimulation
+from Chromosomes_Theory import f_tau_analytic
+from Chromosomes_Gillespie import ProteinDegradationSimulation
 
 
 def run_theoretical(t, k, n, N):
     """Calculate theoretical f_tau values"""
-    return [function(n, ti, k) for ti in t]
+    return [f_tau_analytic(n, ti, k) for ti in t]
 
 
 def run_stochastic(k, n, N, max_time, num_simulations=2000):

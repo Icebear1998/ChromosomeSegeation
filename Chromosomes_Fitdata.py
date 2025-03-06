@@ -3,7 +3,7 @@ import pandas as pd
 from scipy.optimize import basinhopping, minimize
 from scipy.stats import norm
 import matplotlib.pyplot as plt
-from chromosome_Gillespie4 import ProteinDegradationSimulation
+from Chromosome_Gillespie4 import ProteinDegradationSimulation
 
 
 def cost_function(params, initial_proteins, max_time, num_simulations, experimental_data12, experimental_data23):

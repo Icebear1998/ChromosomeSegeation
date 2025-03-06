@@ -3,7 +3,7 @@ import scipy.integrate as integrate
 import matplotlib.pyplot as plt
 import math
 from scipy.special import gamma  # for the gamma-based coefficients
-from chromosome_Gillespie4 import ProteinDegradationSimulation, generate_threshold_values, run_simulations
+from Chromosome_Gillespie4 import ProteinDegradationSimulation, generate_threshold_values, run_simulations
 
 ###############################################################################
 # 1) Factorial-based single-chromosome PDF f_tau(t; k, n, N)

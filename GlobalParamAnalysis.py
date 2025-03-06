@@ -1,56 +1,12 @@
 import numpy as np
-from math import log
+from math import log, exp
 from scipy.integrate import quad
 from scipy.special import gamma
-
+from Chromosomes_Theory import f_diff
 # Updated import from SALib
 from SALib.sample import sobol
 from SALib.analyze import sobol as sobol_analyze
 
-def f_tau(t, k, n, N):
-    """
-    Single-chromosome PDF:
-      f_tau(t) = k * [Gamma(N+1)/(Gamma(n+1)*Gamma(N-n))] 
-                 * exp(- (n+1)*k * t)
-                 * [1 - exp(-k*t)]^( (N-n-1) ),  for t >= 0
-    
-    We skip invalid combos or negative results.
-    """
-    if t < 0:
-        return 0.0
-    # Check domain for gamma arguments
-    if (N < n) or (n < 0):
-        return 0.0
-    try:
-        comb_factor = gamma(N + 1.0) / (gamma(n + 1.0) * gamma(N - n))
-    except (ValueError, OverflowError):
-        return 0.0
-    
-    val = k * comb_factor \
-          * np.exp(-(n+1.0)*k*t) \
-          * (1.0 - np.exp(-k*t))**( (N - n - 1.0) )
-    if not np.isfinite(val) or (val < 0):
-        return 0.0
-    return val
-
-def f_diff(z, k, n1, N1, n2, N2):
-    """
-    Difference PDF: X = tau1 - tau2
-    f_X(z) = ∫ f_tau1(t)*f_tau2(t-z) dt, from t=max(0,z) to ∞.
-    """
-    lower_limit = max(0.0, z)
-    
-    def integrand(t):
-        return f_tau(t, k, n1, N1) * f_tau(t - z, k, n2, N2)
-    
-    # Attempt integration; if it fails, we return a small number or 0
-    try:
-        val, _ = quad(integrand, lower_limit, np.inf, epsabs=1e-8, epsrel=1e-8)
-    except (ValueError, OverflowError):
-        return 0.0
-    if not np.isfinite(val):
-        return 0.0
-    return val
 
 def mean_diff(k, n1, N1, n2, N2):
     """
@@ -70,19 +26,18 @@ def mean_diff(k, n1, N1, n2, N2):
     return total
 
 ###############################################################################
-# Define the SALib problem
+# Define the SALib problem (k is now in log-space)
 ###############################################################################
 problem = {
     "num_vars": 5,
-    "names": ["k", "n1", "N1", "n2", "N2"],
-    # Ensure your bounds are physically valid: we want N>n. 
-    # For demonstration, we do a broad range, but you can refine:
+    "names": ["log_k", "n1", "N1", "n2", "N2"],
+    # Bounds for k are now in log-space
     "bounds": [
-        [0.02, 0.2],   # k
-        [1.0, 9.0],    # n1
-        [10.0, 20.0],  # N1   (ensures N1>n1 from these ranges, if we want)
-        [1.0, 9.0],    # n2
-        [10.0, 20.0]   # N2   (similarly ensures N2>n2)
+        [log(0.02), log(0.5)],  # log(k) bounds
+        [1.0, 9.0],             # n1
+        [100.0, 300.0],         # N1
+        [1.0, 9.0],             # n2
+        [100.0, 300.0]          # N2
     ]
 }
 
@@ -101,11 +56,12 @@ param_values = sobol.sample(problem, N, calc_second_order=True)
 ###############################################################################
 Y = []
 for row in param_values:
-    k_, n1_, N1_, n2_, N2_ = row
+    log_k, n1_, N1_, n2_, N2_ = row
+    k_ = exp(log_k)  # Convert log-scale back to linear scale
     
     # If you want to ensure N>n strictly, you can skip or clamp invalid combos:
     if (N1_ <= n1_) or (N2_ <= n2_) or (n1_ < 0) or (n2_ < 0):
-        # skip or set a fallback
+        # Skip or set a fallback
         Y.append(0.0)
         continue
     

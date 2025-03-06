@@ -110,7 +110,7 @@ for p in params_list:
     }
 
 ###############################################################################
-# 6) Plot
+# 6) Plot single parameter sensitivity
 ###############################################################################
 nrows = len(params_list)
 fig, axes = plt.subplots(nrows, 1, figsize=(8, 3*nrows), sharex=True)
@@ -136,5 +136,89 @@ axes[-1].set_xlabel("z (difference)")
 plt.tight_layout()
 
 # Save the plot to a file
-plt.savefig('paramana.png') # Saves as PNG by default
+plt.savefig('Results/paramana_single.png') # Saves as PNG by default
+plt.show()
+
+###############################################################################
+# 7) Analyze combinations of parameters
+###############################################################################
+combinations = [
+    ("n1", "n2"),
+    ("n1", "N1"),
+    ("N1", "N2")
+]
+
+results_comb = {}
+for p1, p2 in combinations:
+    base_val1 = params_baseline[p1]
+    base_val2 = params_baseline[p2]
+    
+    # +10% for both
+    plus_val1 = base_val1 * (1.0 + perturb_fraction)
+    plus_val2 = base_val2 * (1.0 + perturb_fraction)
+    
+    # -10% for both
+    minus_val1 = base_val1 * (1.0 - perturb_fraction)
+    minus_val2 = base_val2 * (1.0 - perturb_fraction)
+    
+    # Construct dicts for combinations
+    params_plus_plus = dict(params_baseline)
+    params_plus_plus[p1] = plus_val1
+    params_plus_plus[p2] = plus_val2
+    fX_plus_plus = compute_fX(params_plus_plus, zvals)
+    
+    params_minus_minus = dict(params_baseline)
+    params_minus_minus[p1] = minus_val1
+    params_minus_minus[p2] = minus_val2
+    fX_minus_minus = compute_fX(params_minus_minus, zvals)
+    
+    params_plus_minus = dict(params_baseline)
+    params_plus_minus[p1] = plus_val1
+    params_plus_minus[p2] = minus_val2
+    fX_plus_minus = compute_fX(params_plus_minus, zvals)
+    
+    params_minus_plus = dict(params_baseline)
+    params_minus_plus[p1] = minus_val1
+    params_minus_plus[p2] = plus_val2
+    fX_minus_plus = compute_fX(params_minus_plus, zvals)
+    
+    results_comb[(p1, p2)] = {
+        "plus_plus": fX_plus_plus,
+        "minus_minus": fX_minus_minus,
+        "plus_minus": fX_plus_minus,
+        "minus_plus": fX_minus_plus
+    }
+
+###############################################################################
+# 8) Plot combinations of parameters
+###############################################################################
+nrows_comb = len(combinations)
+fig_comb, axes_comb = plt.subplots(nrows_comb, 1, figsize=(8, 3*nrows_comb), sharex=True)
+
+if nrows_comb == 1:
+    axes_comb = [axes_comb]  # so we can iterate
+
+for i, (p1, p2) in enumerate(combinations):
+    ax = axes_comb[i]
+    
+    ax.plot(zvals, fX_baseline, label="Baseline", color="black")
+    ax.plot(zvals, results_comb[(p1, p2)]["plus_plus"],
+            label=f"{p1} +{int(perturb_fraction*100)}%, {p2} +{int(perturb_fraction*100)}%", linestyle="--")
+    ax.plot(zvals, results_comb[(p1, p2)]["minus_minus"],
+            label=f"{p1} -{int(perturb_fraction*100)}%, {p2} -{int(perturb_fraction*100)}%", linestyle=":")
+    ax.plot(zvals, results_comb[(p1, p2)]["plus_minus"],
+            label=f"{p1} +{int(perturb_fraction*100)}%, {p2} -{int(perturb_fraction*100)}%", linestyle="-.")
+    ax.plot(zvals, results_comb[(p1, p2)]["minus_plus"],
+            label=f"{p1} -{int(perturb_fraction*100)}%, {p2} +{int(perturb_fraction*100)}%", linestyle="-.")
+    
+    ax.set_title(f"Sensitivity: {p1} and {p2}")
+    ax.set_ylabel("f_X(z)")
+    ax.legend()
+
+axes_comb[-1].set_xlabel("z (difference)")
+
+plt.tight_layout()
+
+# Save the plot to a file
+plt.savefig('Results/paramana_comb.png') # Saves as PNG by default
 plt.show()
