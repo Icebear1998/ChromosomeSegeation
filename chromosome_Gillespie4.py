@@ -22,7 +22,7 @@ class ProteinDegradationSimulation:
             propensities = [self.k_list[i] * self.state[i] for i in range(3)]
             total_propensity = sum(propensities)
 
-            if total_propensity == 0:
+            if total_propensity <= 0:
                 break
 
             # Determine time to next reaction
