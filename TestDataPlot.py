@@ -6,8 +6,8 @@ from NumericalOptimiration import run_stochastic_simulation_and_plot
 
 
 df = pd.read_excel("Data/Chromosome_diff.xlsx")
-data12 = df['SCSdiff_Wildtype12'].dropna().values
-data32 = df['SCSdiff_Wildtype23'].dropna().values
+data12 = df['Wildtype12'].dropna().values
+data32 = df['Wildtype32'].dropna().values
 
 x_grid = np.linspace(-80, 80, 301)
 

@@ -22,6 +22,7 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
 
     # Ensure n2 and N2 are integers
     if np.isnan(n2) or np.isnan(N2):
+        print(f"NaN detected in n2 or N2: n2={n2}, N2={N2}")
         return np.inf
     n2 = int(round(n2))
     N2 = int(round(N2))
@@ -38,10 +39,12 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
     ])
     area12 = np.trapz(pdf12, x_grid)
     if area12 < 1e-15 or np.any(np.isnan(pdf12)):
+        print(f"Invalid area12 or NaN in pdf12: area12={area12}, pdf12={pdf12}")
         return np.inf
     pdf12 /= area12
     vals12 = np.interp(data12, x_grid, pdf12, left=0, right=0)
     if np.any(vals12 <= 0) or np.any(np.isnan(vals12)):
+        print(f"Invalid vals12: vals12={vals12}")
         return np.inf
 
     # Chrom3–Chrom2
@@ -51,10 +54,12 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
     ])
     area32 = np.trapz(pdf32, x_grid)
     if area32 < 1e-15 or np.any(np.isnan(pdf32)):
+        print(f"Invalid area32 or NaN in pdf32: area32={area32}, pdf32={pdf32}")
         return np.inf
     pdf32 /= area32
     vals32 = np.interp(data32, x_grid, pdf32, left=0, right=0)
     if np.any(vals32 <= 0) or np.any(np.isnan(vals32)):
+        print(f"Invalid vals32: vals32={vals32}")
         return np.inf
 
     # Negative log-likelihood
@@ -80,15 +85,15 @@ def main():
 
     # d) We'll define small discrete sets for R1, R2
     # e.g. 0.50, 0.75, 1.00, ...
-    R21_candidates = np.round(np.arange(0.25, 2.51, 0.25), 2)
+    R21_candidates = np.round(np.arange(0.5, 2.51, 0.25), 2)
     # e.g. 0.50, 1.00, 1.50, ...
-    R23_candidates = np.round(np.arange(0.25, 2.51, 0.25), 2)
+    R23_candidates = np.round(np.arange(0.5, 2.51, 0.25), 2)
 
     # e) We'll do local optimization over [k, r1, r2] for each grid cell (R1,R2)
     param_bounds = [
         (5, 20),     # n2
-        (80, 200),   # N2
-        (0.01, 0.3),  # k
+        (80, 100),   # N2
+        (0.02, 0.3),  # k
         (0.5,  2.0),  # r1
         (0.5,  2.0),  # r2
     ]
@@ -114,7 +119,7 @@ def main():
                 x0,
                 method='L-BFGS-B',
                 bounds=param_bounds,
-                options={'maxiter': 300, 'disp': False}
+                options={'maxiter': 50, 'disp': False}
             )
 
             if res.success and res.fun < best_obj:
