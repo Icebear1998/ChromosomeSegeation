@@ -21,6 +21,8 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
     n2, N2, k, r21, r23 = vars_
 
     # Ensure n2 and N2 are integers
+    if np.isnan(n2) or np.isnan(N2):
+        return np.inf
     n2 = int(round(n2))
     N2 = int(round(N2))
 
@@ -35,11 +37,11 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
         for x in x_grid
     ])
     area12 = np.trapz(pdf12, x_grid)
-    if area12 < 1e-15:
+    if area12 < 1e-15 or np.any(np.isnan(pdf12)):
         return np.inf
     pdf12 /= area12
     vals12 = np.interp(data12, x_grid, pdf12, left=0, right=0)
-    if np.any(vals12 <= 0):
+    if np.any(vals12 <= 0) or np.any(np.isnan(vals12)):
         return np.inf
 
     # Chrom3–Chrom2
@@ -48,11 +50,11 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
         for x in x_grid
     ])
     area32 = np.trapz(pdf32, x_grid)
-    if area32 < 1e-15:
+    if area32 < 1e-15 or np.any(np.isnan(pdf32)):
         return np.inf
     pdf32 /= area32
     vals32 = np.interp(data32, x_grid, pdf32, left=0, right=0)
-    if np.any(vals32 <= 0):
+    if np.any(vals32 <= 0) or np.any(np.isnan(vals32)):
         return np.inf
 
     # Negative log-likelihood
@@ -66,8 +68,8 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
 def main():
     #  a) Read data
     df = pd.read_excel("Data/Chromosome_diff.xlsx")
-    data12 = df['SCSdiff_Wildtype12'].dropna().values
-    data32 = df['SCSdiff_Wildtype23'].dropna().values
+    data12 = df['Wildtype12'].dropna().values
+    data32 = df['Wildtype32'].dropna().values
 
     # If your data for Chrom3–Chrom2 is actually (Chrom2–Chrom3), flip sign:
     if FLIP_CHROM3_DATA:
@@ -80,7 +82,7 @@ def main():
     # e.g. 0.50, 0.75, 1.00, ...
     R21_candidates = np.round(np.arange(0.25, 2.51, 0.25), 2)
     # e.g. 0.50, 1.00, 1.50, ...
-    R23_candidates = np.round(np.arange(0.25, 5.01, 0.25), 2)
+    R23_candidates = np.round(np.arange(0.25, 2.51, 0.25), 2)
 
     # e) We'll do local optimization over [k, r1, r2] for each grid cell (R1,R2)
     param_bounds = [
