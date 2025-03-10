@@ -18,17 +18,20 @@ FLIP_CHROM3_DATA = False
 
 
 def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
-
     n2, N2, k, r21, r23 = vars_
 
-    n1 = r21 * n2
-    N1 = R21_fixed * N2
-    n3 = r23 * n2
-    N3 = R23_fixed * N2
+    # Ensure n2 and N2 are integers
+    n2 = int(round(n2))
+    N2 = int(round(N2))
+
+    n1 = int(round(r21 * n2))
+    N1 = int(round(R21_fixed * N2))
+    n3 = int(round(r23 * n2))
+    N3 = int(round(R23_fixed * N2))
 
     # Chrom1–Chrom2
     pdf12 = np.array([
-        f_diff(x, k, n1, N1, k, n2, N2)
+        f_diff(x, k, n1, N1, n2, N2)
         for x in x_grid
     ])
     area12 = np.trapz(pdf12, x_grid)
@@ -41,7 +44,7 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
 
     # Chrom3–Chrom2
     pdf32 = np.array([
-        f_diff(x, k, n3, N3, k, n2, N2)
+        f_diff(x, k, n3, N3, n2, N2)
         for x in x_grid
     ])
     area32 = np.trapz(pdf32, x_grid)
@@ -71,19 +74,19 @@ def main():
         data32 = -data32
 
     # c) Prepare a broad x_grid
-    x_grid = np.linspace(-80, 80, 301)
+    x_grid = np.linspace(-100, 100, 301)
 
     # d) We'll define small discrete sets for R1, R2
     # e.g. 0.50, 0.75, 1.00, ...
-    R21_candidates = np.round(np.arange(0.5, 2.51, 0.25), 2)
+    R21_candidates = np.round(np.arange(0.25, 2.51, 0.25), 2)
     # e.g. 0.50, 1.00, 1.50, ...
-    R23_candidates = np.round(np.arange(0.5, 5.01, 0.5), 2)
+    R23_candidates = np.round(np.arange(0.25, 5.01, 0.25), 2)
 
     # e) We'll do local optimization over [k, r1, r2] for each grid cell (R1,R2)
     param_bounds = [
-        (2, 10),     # n2
-        (80, 300),   # N2
-        (0.01, 0.5),  # k
+        (5, 20),     # n2
+        (80, 200),   # N2
+        (0.01, 0.3),  # k
         (0.5,  2.0),  # r1
         (0.5,  2.0),  # r2
     ]
@@ -132,11 +135,11 @@ def main():
     # f) Evaluate final PDF & plot
     n1_opt = r21_opt * n2_opt
     N1_opt = R21_opt * N2_opt
-    n3_opt = r23_opt * n1_opt
-    N3_opt = R23_opt * N1_opt
+    n3_opt = r23_opt * n2_opt
+    N3_opt = R23_opt * N2_opt
 
     pdf12 = np.array([
-        f_diff(x, k_opt, n1_opt, N1_opt, k_opt, n2_opt, N2_opt)
+        f_diff(x, k_opt, n1_opt, N1_opt, n2_opt, N2_opt)
         for x in x_grid
     ])
     area12 = np.trapz(pdf12, x_grid)
@@ -144,7 +147,7 @@ def main():
         pdf12 /= area12
 
     pdf32 = np.array([
-        f_diff(x, k_opt, n3_opt, N3_opt, k_opt, n2_opt, N2_opt)
+        f_diff(x, k_opt, n3_opt, N3_opt, n2_opt, N2_opt)
         for x in x_grid
     ])
     area32 = np.trapz(pdf32, x_grid)
@@ -175,10 +178,10 @@ def main():
         n2_opt, N2_opt
     )
 
-
 ###############################################################################
 # Stochastic Simulation
 ###############################################################################
+
 
 def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt,
                                        data12, data32,
@@ -241,9 +244,3 @@ def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt
 ###############################################################################
 if __name__ == "__main__":
     main()
-
-# Best negative log-likelihood: 1134.341497412577
-# Best parameters:
-#   n2=10.00, N2=98.96
-#   k=0.0278, r1=0.5251, R1=0.50
-#   r2=1.1022, R2=1.50
