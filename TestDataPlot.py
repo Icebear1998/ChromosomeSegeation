@@ -10,7 +10,7 @@ def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt
                                        n2_opt, N2_opt,
                                        max_time=150, num_sim=500):
     """
-    Use the best-fit (k_opt, r1_opt, R1_opt, r2_opt, R2_opt) to run a Gillespie-like 
+    Use the best-fit (k_opt, r1_opt, R1_opt, r2_opt, R2_opt) to run a Gillespie-like
     simulation. Then compare sim difference times to the experimental data hist.
     """
     n1_opt = r21_opt * n2_opt
@@ -63,30 +63,30 @@ def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt
 
 if __name__ == "__main__":
 
-    df = pd.read_excel("Data/Chromosome_diff.xlsx")
-    data12 = df['SCSdiff_Wildtype12'].dropna().values
-    data32 = df['SCSdiff_Wildtype23'].dropna().values
+df = pd.read_excel("Data/Chromosome_diff.xlsx")
+data12 = df['Wildtype12'].dropna().values
+data32 = df['Wildtype32'].dropna().values
 
-    x_grid = np.linspace(-80, 80, 301)
+x_grid = np.linspace(-80, 80, 301)
 
-    n2_opt = 10.00
-    N2_opt = 100
-    k_opt = 0.0283
-    r21_opt = 0.5
-    R21_opt = 0.50
-    r23_opt = 0.9
-    R23_opt = 1.25
-    n1_opt = r21_opt * n2_opt
-    N1_opt = R21_opt * N2_opt
-    n3_opt = r23_opt * n1_opt
-    N3_opt = R23_opt * N1_opt
+n2_opt = 10.00
+N2_opt = 100
+k_opt = 0.0283
+r21_opt = 0.5
+R21_opt = 0.50
+r23_opt = 0.9
+R23_opt = 1.25
+n1_opt = r21_opt * n2_opt
+N1_opt = R21_opt * N2_opt
+n3_opt = r23_opt * n1_opt
+N3_opt = R23_opt * N1_opt
 
-    pdf12 = np.array([
-        f_diff(x, k_opt, n1_opt, N1_opt, n2_opt, N2_opt)
-        for x in x_grid
-    ])
-    area12 = np.trapz(pdf12, x_grid)
-    if area12 > 1e-15:
+ pdf12 = np.array([
+      f_diff(x, k_opt, n1_opt, N1_opt, n2_opt, N2_opt)
+      for x in x_grid
+      ])
+  area12 = np.trapz(pdf12, x_grid)
+   if area12 > 1e-15:
         pdf12 /= area12
 
     pdf32 = np.array([

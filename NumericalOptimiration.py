@@ -30,10 +30,13 @@ def combined_objective(vars_, data12, data32, x_grid):
     ])
     area12 = np.trapz(pdf12, x_grid)
     if area12 < 1e-15 or np.any(np.isnan(pdf12)):
+        print(
+            f"Invalid area12 or NaN in pdf12: area12={area12}, pdf12={pdf12}")
         return np.inf
     pdf12 /= area12
     vals12 = np.interp(data12, x_grid, pdf12, left=0, right=0)
     if np.any(vals12 <= 0) or np.any(np.isnan(vals12)):
+        print(f"Invalid vals12: vals12={vals12}")
         return np.inf
 
     # Chrom3–Chrom2
@@ -43,10 +46,13 @@ def combined_objective(vars_, data12, data32, x_grid):
     ])
     area32 = np.trapz(pdf32, x_grid)
     if area32 < 1e-15 or np.any(np.isnan(pdf32)):
+        print(
+            f"Invalid area32 or NaN in pdf32: area32={area32}, pdf32={pdf32}")
         return np.inf
     pdf32 /= area32
     vals32 = np.interp(data32, x_grid, pdf32, left=0, right=0)
     if np.any(vals32 <= 0) or np.any(np.isnan(vals32)):
+        print(f"Invalid vals32: vals32={vals32}")
         return np.inf
 
     # Negative log-likelihood
@@ -69,8 +75,8 @@ def main():
     # d) Define parameter bounds for optimization
     param_bounds = [
         (5, 20),     # n2
-        (80, 200),   # N2
-        (0.01, 0.3),  # k
+        (80, 100),   # N2
+        (0.02, 0.3),  # k
         (0.5,  2.0),  # r1
         (0.5,  2.0),  # r2
         (0.5, 2.5),  # R21

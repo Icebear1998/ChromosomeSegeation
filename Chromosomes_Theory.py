@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-from scipy.integrate import quad
+from scipy.integrate import quad, IntegrationWarning
 from scipy.special import gamma
+import warnings
 
 N = 100
 
@@ -29,22 +30,33 @@ def f_tau(t, k, n, N):
 
 def f_diff(z, k, n1, N1, n2, N2):
     """
-    Difference PDF: X = tau1 - tau2
-    f_X(z) = ∫ f_tau1(t)*f_tau2(t-z) dt, from t=max(0,z) to ∞.
+    Compute the difference distribution f_X(z) for given parameters.
     """
-    lower_limit = max(0.0, z)
-
+    comb_factor = (N1**n1) * (N2**n2) / (gamma(n1+1) * gamma(n2+1))
+    
     def integrand(t):
-        return f_tau(t, k, n1, N1) * f_tau(t - z, k, n2, N2)
-
-    # Attempt integration; if it fails, we return a small number or 0
-    try:
-        val, _ = quad(integrand, lower_limit, np.inf, epsabs=1e-8, epsrel=1e-8)
-    except (ValueError, OverflowError):
+        try:
+            exp_term = np.exp(-t) * np.exp(-k*t*z)
+            if np.isinf(exp_term) or np.isnan(exp_term):
+                return 0.0
+            return t**(n1+n2-1) * exp_term
+        except OverflowError:
+            return 0.0
+    
+    lower_limit = 0
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error', category=IntegrationWarning)
+        try:
+            val, _ = quad(integrand, lower_limit, np.inf, epsabs=1e-8, epsrel=1e-8)
+        except IntegrationWarning:
+            val = np.nan
+        except Exception as e:
+            val = np.nan
+    
+    if np.isnan(val):
         return 0.0
-    if not np.isfinite(val):
-        return 0.0
-    return val
+    
+    return k * comb_factor * val
 
 
 def plot_chromosomes():
