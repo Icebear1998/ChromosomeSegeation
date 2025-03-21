@@ -132,3 +132,21 @@ if __name__ == "__main__":
 #   n2=10, N2=100
 #   k=0.0100, r1=1.0000, R1=1.00
 #   r2=1.0000, R2=1.00
+
+# Best negative log-likelihood: 1876.4369864729974
+# Best parameters:
+#   n2=10, N2=100
+#   k=0.0100, r1=1.0000, R1=1.00
+#   r2=1.0000, R2=1.00
+
+# Best negative log-likelihood: 1139.349823606604
+# Best parameters:
+#   n2=5.00, N2=100.00
+#   k=0.0365, r1=1.0000, R1=1.00
+#   r2=1.0000, R2=1.50
+
+# Best negative log-likelihood: 1139.3498236066043
+# Best parameters:
+#   n2=5.00, N2=100.00
+#   k=0.0365, r1=1.0000, R1=1.00
+#   r2=1.0000, R2=1.50

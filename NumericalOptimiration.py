@@ -15,13 +15,13 @@ FLIP_CHROM3_DATA = False
 def combined_objective(vars_, data12, data32, x_grid):
     n2, N2, k, r21, r23, R21, R23 = vars_
 
-    n2 = int(round(n2))
-    N2 = int(round(N2))
+    n2 = int(round(np.random.normal(n2, 1, 1)[0]))
+    N2 = int(round(np.random.normal(N2, 10, 1)[0]))
 
-    n1 = int(round(r21 * n2))
-    N1 = int(round(R21 * N2))
-    n3 = int(round(r23 * n2))
-    N3 = int(round(R23 * N2))
+    n1 = int(round(np.random.normal(r21*n2, 1, 1)[0]))
+    N1 = int(round(np.random.normal(R21*N2, 10, 1)[0]))
+    n3 = int(round(np.random.normal(r23*n2, 1, 1)[0]))
+    N3 = int(round(np.random.normal(R23*N2, 10, 1)[0]))
 
     # Chrom1–Chrom2
     pdf12 = np.array([f_diff(x, k, n1, N1, n2, N2) for x in x_grid])
@@ -55,8 +55,8 @@ def combined_objective(vars_, data12, data32, x_grid):
 def main():
     # a) Read data
     df = pd.read_excel("Data/Chromosome_diff.xlsx")
-    data12 = df['SCSdiff_Wildtype12'].dropna().values
-    data32 = df['SCSdiff_Wildtype23'].dropna().values
+    data12 = df['Wildtype12'].dropna().values
+    data32 = df['Wildtype32'].dropna().values
 
     # Flip sign for Chrom3–Chrom2 if needed:
     if FLIP_CHROM3_DATA:
@@ -77,7 +77,7 @@ def main():
     ]
 
     # e) Initial guess for [n2, N2, k, r1, r2, R21, R23]
-    x0 = [10, 100, 0.1, 1.0, 1.0, 1.0, 1.0]
+    x0 = [10, 100, 0.0278, 0.5251, 0.50, 1.1022, 1.50]
 
     # f) Perform global optimization
     res = minimize(
@@ -95,8 +95,8 @@ def main():
 
     # Extract optimized parameters
     n2_opt, N2_opt, k_opt, r21_opt, r23_opt, R21_opt, R23_opt = res.x
-    n2_opt = int(round(n2_opt))
-    N2_opt = int(round(N2_opt))
+    n2_opt = n2_opt
+    N2_opt = N2_opt
     print("Best negative log-likelihood:", res.fun)
     print(f"Best parameters:\n"
           f"  n2={n2_opt}, N2={N2_opt}\n"
