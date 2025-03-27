@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from Chromosomes_Theory import f_diff
+from Chromosomes_Theory import f_diff_gamma
 from Chromosome_Gillespie4 import run_simulations, generate_threshold_values
 
 
@@ -82,13 +82,13 @@ if __name__ == "__main__":
     N3_opt = R23_opt * N1_opt
 
     pdf12 = np.array(
-        [f_diff(x, k_opt, n1_opt, N1_opt, n2_opt, N2_opt) for x in x_grid])
+        [f_diff_gamma(x, k_opt, n1_opt, N1_opt, n2_opt, N2_opt) for x in x_grid])
     area12 = np.trapz(pdf12, x_grid)
     if area12 > 1e-15:
         pdf12 /= area12
 
     pdf32 = np.array(
-        [f_diff(x, k_opt, n3_opt, N3_opt, n2_opt, N2_opt)for x in x_grid])
+        [f_diff_gamma(x, k_opt, n3_opt, N3_opt, n2_opt, N2_opt)for x in x_grid])
     area32 = np.trapz(pdf32, x_grid)
     if area32 > 1e-15:
         pdf32 /= area32

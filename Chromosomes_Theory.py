@@ -10,7 +10,7 @@ N = 100
 
 
 def f_tau_analytic(n, t, k):
-    return k * math.factorial(N) / (np.math.factorial(n) * np.math.factorial(N-n-1))\
+    return k * math.factorial(N) / (math.factorial(n) * math.factorial(N-n-1))\
         * (np.exp(-(n+1)*k*t))*(1-np.exp(-k*t))**(N-n-1)
 
 
@@ -43,11 +43,30 @@ def f_tau_gamma(t, k, n, N):
 ###############################################################################
 
 
-def f_diff(x, k, n1, N1, n2, N2):
+def f_diff_gamma(x, k, n1, N1, n2, N2):
     lower_bound = max(0.0, x)
 
     def integrand(t):
         return f_tau_gamma(t, k, n1, N1) * f_tau_gamma(t - x, k, n2, N2)
+
+    try:
+        val, _ = quad(integrand, lower_bound, np.inf,
+                      limit=300, epsabs=1e-8, epsrel=1e-8)
+        if not np.isfinite(val) or val < 0:
+            return 0.0
+        return val
+    except (ValueError, OverflowError, IntegrationWarning):
+        return 0.0
+
+
+def f_diff_analytic(x, k, n1, N1, n2, N2):
+    """
+    Compute the difference PDF analytically using f_tau_analytic.
+    """
+    lower_bound = max(0.0, x)
+
+    def integrand(t):
+        return f_tau_analytic(n1, t, k) * f_tau_analytic(n2, t - x, k)
 
     try:
         val, _ = quad(integrand, lower_bound, np.inf,
@@ -75,5 +94,34 @@ def plot_chromosomes():
     plt.show()
 
 
+def plot_compare_f_diff():
+    """
+    Plot and compare f_diff_gamma and f_diff_analytic.
+    """
+    x_values = np.linspace(-20, 20, 100)  # Range of x values
+    k = 0.1  # Example degradation rate
+    n1, N1 = 5, 100  # Parameters for Chromosome 1
+    n2, N2 = 4, 100  # Parameters for Chromosome 2
+
+    # Compute f_diff_gamma and f_diff_analytic
+    f_diff_gamma_values = [f_diff_gamma(
+        x, k, n1, N1, n2, N2) for x in x_values]
+    f_diff_analytic_values = [f_diff_analytic(
+        x, k, n1, N1, n2, N2) for x in x_values]
+
+    # Plot the results
+    plt.figure(figsize=(10, 6))
+    plt.plot(x_values, f_diff_gamma_values,
+             label="f_diff_gamma", linestyle='-', color='blue')
+    plt.plot(x_values, f_diff_analytic_values,
+             label="f_diff_analytic", linestyle='--', color='red')
+    plt.xlabel("x")
+    plt.ylabel("f_diff")
+    plt.title("Comparison of f_diff_gamma and f_diff_analytic")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
 if __name__ == "__main__":
-    plot_chromosomes()
+    plot_compare_f_diff()

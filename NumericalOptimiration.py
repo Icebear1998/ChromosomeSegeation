@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize, differential_evolution
-from Chromosomes_Theory import f_diff
+from Chromosomes_Theory import f_diff_gamma
 
 # If your Chrom3–Chrom2 data is actually Chrom2–Chrom3, set True:
 FLIP_CHROM3_DATA = False
@@ -22,7 +22,7 @@ def combined_objective(vars_, data12, data32, x_grid):
     N3 = max(R23 * N2, 1)
 
     # Chrom1–Chrom2
-    pdf12 = np.array([f_diff(x, k, n1, N1, n2, N2) for x in x_grid])
+    pdf12 = np.array([f_diff_gamma(x, k, n1, N1, n2, N2) for x in x_grid])
     area12 = np.trapz(pdf12, x_grid)
     if area12 < 1e-15 or np.any(np.isnan(pdf12)):
         return np.inf
@@ -32,7 +32,7 @@ def combined_objective(vars_, data12, data32, x_grid):
         return np.inf
 
     # Chrom3–Chrom2
-    pdf32 = np.array([f_diff(x, k, n3, N3, n2, N2) for x in x_grid])
+    pdf32 = np.array([f_diff_gamma(x, k, n3, N3, n2, N2) for x in x_grid])
     area32 = np.trapz(pdf32, x_grid)
     if area32 < 1e-15 or np.any(np.isnan(pdf32)):
         return np.inf
