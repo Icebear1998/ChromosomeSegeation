@@ -25,20 +25,28 @@ def combined_objective(vars_, data12, data32, x_grid):
     pdf12 = np.array([f_diff_gamma(x, k, n1, N1, n2, N2) for x in x_grid])
     area12 = np.trapz(pdf12, x_grid)
     if area12 < 1e-15 or np.any(np.isnan(pdf12)):
+        print("Invalid pdf12 or area12. Parameters:")
+        print("n1 =", n1, "N1 =", N1, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
     pdf12 /= max(area12, 1e-15)  # Avoid division by zero
     vals12 = np.interp(data12, x_grid, pdf12, left=0, right=0)
     if np.any(vals12 <= 0) or np.any(np.isnan(vals12)):
+        print("Invalid vals12. Parameters:")
+        print("n1 =", n1, "N1 =", N1, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
 
     # Chrom3–Chrom2
     pdf32 = np.array([f_diff_gamma(x, k, n3, N3, n2, N2) for x in x_grid])
     area32 = np.trapz(pdf32, x_grid)
     if area32 < 1e-15 or np.any(np.isnan(pdf32)):
+        print("Invalid pdf32 or area32. Parameters:")
+        print("n3 =", n3, "N3 =", N3, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
     pdf32 /= max(area32, 1e-15)  # Avoid division by zero
     vals32 = np.interp(data32, x_grid, pdf32, left=0, right=0)
     if np.any(vals32 <= 0) or np.any(np.isnan(vals32)):
+        print("Invalid vals32. Parameters:")
+        print("n3 =", n3, "N3 =", N3, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
 
     return -np.sum(np.log(vals12)) - np.sum(np.log(vals32))

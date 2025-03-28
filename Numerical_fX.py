@@ -103,14 +103,15 @@ initial_proteins2 = N2
 initial_proteins3 = 350
 initial_proteins = [initial_proteins1, initial_proteins2, initial_proteins3]
 max_time = 150
-num_simulations = 500
+num_simulations = 1000
 
 # Generate threshold values with Gaussian distribution
 n0_total = 10
 n01_mean = n1
 n02_mean = n2
 n03_mean = n0_total - n01_mean - n02_mean  # not used if only 2 thresholds?
-n0_list = generate_threshold_values([n01_mean, n02_mean], n0_total, num_simulations)
+# n0_list = generate_threshold_values([n01_mean, n02_mean], n0_total, num_simulations)
+n0_list = np.array([[n01_mean, n02_mean, n03_mean] for _ in range(num_simulations)])
 
 # Run simulations
 simulations, separate_times = run_simulations(

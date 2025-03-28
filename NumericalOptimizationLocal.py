@@ -33,10 +33,14 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
     ])
     area12 = np.trapz(pdf12, x_grid)
     if area12 < 1e-15:
+        print("Invalid pdf12 or area12. Parameters:")
+        print("n1 =", n1, "N1 =", N1, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
     pdf12 /= area12
     vals12 = np.interp(data12, x_grid, pdf12, left=0, right=0)
     if np.any(vals12 <= 0):
+        print("Invalid vals12. Parameters:")
+        print("n1 =", n1, "N1 =", N1, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
 
     # Chrom3–Chrom2
@@ -46,10 +50,14 @@ def combined_objective(vars_, R21_fixed, R23_fixed, data12, data32, x_grid):
     ])
     area32 = np.trapz(pdf32, x_grid)
     if area32 < 1e-15:
+        print("Invalid pdf32 or area32. Parameters:")
+        print("n3 =", n3, "N3 =", N3, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
     pdf32 /= area32
     vals32 = np.interp(data32, x_grid, pdf32, left=0, right=0)
     if np.any(vals32 <= 0):
+        print("Invalid vals32. Parameters:")
+        print("n3 =", n3, "N3 =", N3, "n2 =", n2, "N2 =", N2, "k =", k)
         return np.inf
 
     # Negative log-likelihood
@@ -134,9 +142,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# Best negative log-likelihood: 1134.341497412577
-# Best parameters:
-#   n2=10.00, N2=98.96
-#   k=0.0278, r1=0.5251, R1=0.50
-#   r2=1.1022, R2=1.50
