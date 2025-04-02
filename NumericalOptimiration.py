@@ -77,7 +77,7 @@ def main():
     ]
 
     # e) Initial guess for [n2, N2, k, r1, r2, R21, R23]
-    x0 = [10, 100, 0.0278, 0.5251, 0.50, 1.1022, 1.50]
+    x0 = [10, 100, 0.03, 0.5, 0.50, 1.3, 2.0]
 
     # f) Perform global optimization
     result = differential_evolution(

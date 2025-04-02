@@ -85,15 +85,15 @@ def main():
     # e.g. 0.50, 0.75, 1.00, ...
     R21_candidates = np.round(np.arange(0.5, 2.01, 0.25), 2)
     # e.g. 0.50, 1.00, 1.50, ...
-    R23_candidates = np.round(np.arange(0.5, 2.51, 0.5), 2)
+    R23_candidates = np.round(np.arange(0.5, 5.01, 0.25), 2)
 
     # e) We'll do local optimization over [k, r1, r2] for each grid cell (R1,R2)
     param_bounds = [
-        (5, 10),     # n2
-        (80, 200),   # N2
+        (2, 10),     # n2
+        (100, 400),   # N2
         (0.01, 0.3),  # k
-        (0.5,  2.0),  # r1
-        (0.5,  2.0),  # r2
+        (0.5,  4.0),  # r1
+        (0.5,  4.0),  # r2
     ]
 
     best_obj = np.inf

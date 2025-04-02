@@ -8,7 +8,7 @@ from Chromosome_Gillespie4 import run_simulations, generate_threshold_values
 def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt,
                                        data12, data32,
                                        n2_opt, N2_opt,
-                                       max_time=150, num_sim=500):
+                                       max_time=150, num_sim=1000):
     """
     Use the best-fit (k_opt, r1_opt, R1_opt, r2_opt, R2_opt) to run a Gillespie-like
     simulation. Then compare sim difference times to the experimental data hist.
@@ -69,13 +69,13 @@ if __name__ == "__main__":
 
     x_grid = np.linspace(-80, 80, 301)
 
-    n2_opt = 10.00
+    n2_opt = 10.0
     N2_opt = 100
-    k_opt = 0.0283
-    r21_opt = 0.5
+    k_opt = 0.0376
+    r21_opt = 0.5217
     R21_opt = 0.50
-    r23_opt = 0.9
-    R23_opt = 1.25
+    r23_opt = 1.6931
+    R23_opt = 2.50
     n1_opt = r21_opt * n2_opt
     N1_opt = R21_opt * N2_opt
     n3_opt = r23_opt * n1_opt
@@ -150,3 +150,15 @@ if __name__ == "__main__":
 #   n2=5.00, N2=100.00
 #   k=0.0365, r1=1.0000, R1=1.00
 #   r2=1.0000, R2=1.50
+
+# Best negative log-likelihood: 1133.3325581290803
+# Best parameters:
+#   n2=5.00, N2=100.11
+#   k=0.0376, r1=0.5217, R1=0.50
+#   r2=1.6931, R2=2.50
+
+# Best negative log-likelihood: 1132.2204025967908
+# Best parameters:
+#   n2=2.00, N2=100.13
+#   k=0.0570, r1=0.5000, R1=0.50
+#   r2=1.5696, R2=2.75
