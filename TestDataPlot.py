@@ -23,7 +23,7 @@ def compute_moments_mom(n1, N1, n2, N2, k):
 def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt,
                                        data12, data32,
                                        n2_opt, N2_opt,
-                                       max_time=150, num_sim=1000):
+                                       max_time=200, num_sim=2000):
     """
     Use the best-fit (k_opt, r21_opt, R21_opt, r23_opt, R23_opt) to run a Gillespie-like
     simulation. Then compare sim difference times to the experimental data hist.
@@ -55,40 +55,30 @@ def run_stochastic_simulation_and_plot(k_opt, r21_opt, R21_opt, r23_opt, R23_opt
     delta_t12 = [sep[0] - sep[1] for sep in separate_times]
     delta_t32 = [sep[2] - sep[1] for sep in separate_times]
 
-    # Plot sim vs data
-    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-
-    ax[0].hist(delta_t12, bins=14, density=True, alpha=0.4, label='Sim data12')
-    ax[0].hist(data12, bins=14, density=True, alpha=0.4, label='Exp data12')
-    ax[0].set_title("Stochastic Sim vs Exp (Chrom1–Chrom2)")
-    ax[0].legend()
-
-    ax[1].hist(delta_t32, bins=14, density=True, alpha=0.4, label='Sim data32')
-    ax[1].hist(data32, bins=14, density=True, alpha=0.4, label='Exp data32')
-    ax[1].set_title("Stochastic Sim vs Exp (Chrom3–Chrom2)")
-    ax[1].legend()
-
-    plt.tight_layout()
-    plt.show()
-    #fig.savefig('Results/simfit3.png', dpi=300, bbox_inches='tight')
+    return delta_t12, delta_t32
 
 if __name__ == "__main__":
     # Load data
     df = pd.read_excel("Data/Chromosome_diff.xlsx")
-    data12 = df['Wildtype12'].dropna().values
-    data32 = df['Wildtype32'].dropna().values
+    # data12 = df['Wildtype12'].dropna().values
+    # data32 = df['Wildtype32'].dropna().values
+    # data12 = df['DegRateMT12'].dropna().values
+    # data32 = df['DegRateMT32'].dropna().values
+    data12 = df['ThresholdMT12'].dropna().values
+    data32 = df['ThresholdMT32'].dropna().values
 
     # Define x_grid for plotting
-    x_grid = np.linspace(-100, 100, 401)
+    x_grid = np.linspace(-100, 140, 401)
 
     # Optimized parameters (replace with your actual optimized values)
-    n2_opt = 2.76
-    N2_opt = 398.40
-    k_opt = 0.0543
-    r21_opt = 0.54
-    R21_opt = 0.5
-    r23_opt = 2.2
-    R23_opt = 4.82
+    # Parameters: n2 = 5.39, N2 = 82.25, k = 0.0207, r21 = 1.75, r23 = 1.77, R21 = 1.29, R23 = 2.39
+    n2_opt = 5.39
+    N2_opt = 82.25
+    k_opt = 0.0207
+    r21_opt = 1.75
+    R21_opt = 1.29
+    r23_opt = 1.77
+    R23_opt = 2.39
 
     # Compute derived parameters
     n1_opt = r21_opt * n2_opt
@@ -104,30 +94,34 @@ if __name__ == "__main__":
     mean32, var32 = compute_moments_mom(n3_opt, N3_opt, n2_opt, N2_opt, k_opt)
     pdf32 = norm.pdf(x_grid, loc=mean32, scale=np.sqrt(var32))
 
-    # Plot experimental data vs MoM normal PDF
-    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-
-    ax[0].hist(data12, bins=16, density=True, alpha=0.4, label='data12')
-    ax[0].plot(x_grid, pdf12, 'r-', label='MoM Normal pdf12')
-    ax[0].set_title("Chrom1 - Chrom2")
-    ax[0].legend()
-
-    ax[1].hist(data32, bins=16, density=True, alpha=0.4, label='data32')
-    ax[1].plot(x_grid, pdf32, 'r-', label='MoM Normal pdf32')
-    ax[1].set_title("Chrom3 - Chrom2")
-    ax[1].legend()
-
-    plt.tight_layout()
-    plt.show()
-    #fig.savefig('Results/theoryfittest3.png', dpi=300, bbox_inches='tight')
-
     # Run stochastic simulation and plot
-    run_stochastic_simulation_and_plot(
+    delta_t12, delta_t32 = run_stochastic_simulation_and_plot(
         k_opt, r21_opt, R21_opt,
         r23_opt, R23_opt,
         data12, data32,
         n2_opt, N2_opt
     )
+
+    # Plot experimental data vs MoM normal PDF
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+
+    ax[0].hist(data12, bins=16, density=True, alpha=0.4, label='data12')
+    ax[0].hist(delta_t12, bins=16, density=True, alpha=0.4, label='Sim data12')
+    ax[0].plot(x_grid, pdf12, 'r-', label='MoM Normal pdf12')
+    ax[0].set_xlim(min(x_grid)-20, max(x_grid)+20)
+    ax[0].set_title("Chrom1 - Chrom2")
+    ax[0].legend()
+
+    ax[1].hist(data32, bins=16, density=True, alpha=0.4, label='data32')
+    ax[1].hist(delta_t32, bins=16, density=True, alpha=0.4, label='Sim data32')
+    ax[1].plot(x_grid, pdf32, 'r-', label='MoM Normal pdf32')
+    ax[1].set_xlim(min(x_grid)-20, max(x_grid)+20)
+    ax[1].set_title("Chrom3 - Chrom2")
+    ax[1].legend()
+
+    plt.tight_layout()
+    plt.show()
+    fig.savefig('Results/theoryfittest3.png', dpi=300, bbox_inches='tight')
 
 # Best negative log-likelihood: 1134.341497412577
 # Best parameters:

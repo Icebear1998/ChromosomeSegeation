@@ -3,8 +3,6 @@ import pandas as pd
 from scipy.optimize import minimize, differential_evolution
 from scipy.stats import norm
 
-# If your Chrom3–Chrom2 data is actually Chrom2–Chrom3, set True:
-FLIP_CHROM3_DATA = False
 
 ###############################################################################
 # 1) Compute MoM moments for f_X
@@ -63,13 +61,9 @@ def combined_objective(vars_, data12, data32):
 ###############################################################################
 def main():
     # a) Read data
-    df = pd.read_excel("Data/Chromosome_diff.xlsx")
-    data12 = df['Wildtype12'].dropna().values
-    data32 = df['Wildtype32'].dropna().values
-
-    # Flip sign for Chrom3–Chrom2 if needed
-    if FLIP_CHROM3_DATA:
-        data32 = -data32
+    df = pd.read_excel("Data/All_strains_SCStimes.xlsx")
+    data12 = df['wildtype12'].dropna().values
+    data32 = df['wildtype32'].dropna().values
 
     # b) Define parameter bounds for global optimization (loose constraints)
     param_bounds = [
