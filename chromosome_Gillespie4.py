@@ -56,13 +56,18 @@ class ProteinDegradationSimulation:
 
 
 def generate_threshold_values(n0_mean, n0_total, num_simulations):
-    n01_list = np.random.normal(loc=n0_mean[0], scale=1, size=num_simulations)
-    n02_list = np.random.normal(loc=n0_mean[1], scale=1, size=num_simulations)
-    n03_list = n0_total - n01_list - n02_list
+    # n01_list = np.random.normal(loc=n0_mean[0], scale=1, size=num_simulations)
+    # n02_list = np.random.normal(loc=n0_mean[1], scale=1, size=num_simulations)
+    # n03_list = n0_total - n01_list - n02_list
 
-    n01_list = np.floor(np.clip(n01_list, 0.01, n0_total))
-    n02_list = np.floor(np.clip(n02_list, 0.01, n0_total))
-    n03_list = np.floor(np.clip(n03_list, 0.01, n0_total))
+
+    # n01_list = np.floor(np.clip(n01_list, 0.01, n0_total))
+    # n02_list = np.floor(np.clip(n02_list, 0.01, n0_total))
+    # n03_list = np.floor(np.clip(n03_list, 0.01, n0_total))
+
+    n01_list = n0_mean[0] * np.ones(num_simulations)
+    n02_list = n0_mean[1] * np.ones(num_simulations)
+    n03_list = n0_total - n01_list - n02_list
     n0_list = np.column_stack((n01_list, n02_list, n03_list))
     return n0_list
 
