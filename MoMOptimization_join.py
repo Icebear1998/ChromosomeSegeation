@@ -6,17 +6,19 @@ from scipy.stats import norm
 ###############################################################################
 # 1) Compute MoM moments for f_X
 ###############################################################################
+
+
 def compute_moments_mom(n1, N1, n2, N2, k):
     sum1_T1 = sum(1/m for m in range(int(n1) + 1, int(N1) + 1))
     sum1_T2 = sum(1/m for m in range(int(n2) + 1, int(N2) + 1))
     sum2_T1 = sum(1/(m**2) for m in range(int(n1) + 1, int(N1) + 1))
     sum2_T2 = sum(1/(m**2) for m in range(int(n2) + 1, int(N2) + 1))
-    
+
     mean_T1 = sum1_T1 / k
     mean_T2 = sum1_T2 / k
     var_T1 = sum2_T1 / (k**2)
     var_T2 = sum2_T2 / (k**2)
-    
+
     mean_X = mean_T1 - mean_T2
     var_X = var_T1 + var_T2
     return mean_X, var_X
@@ -24,86 +26,98 @@ def compute_moments_mom(n1, N1, n2, N2, k):
 ###############################################################################
 # 2) Joint objective function for all datasets
 ###############################################################################
+
+
 def joint_objective(params, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                   data_degrate12, data_degrate32, data_initial12, data_initial32):
+                    data_degrate12, data_degrate32, data_initial12, data_initial32):
     # Unpack parameters
     n2, N2, k, r21, r23, R21, R23, alpha, beta_k, gamma = params
-    
+
     # Derived wild-type parameters
     n1 = max(r21 * n2, 1)
     n3 = max(r23 * n2, 1)
     N1 = max(R21 * N2, 1)
     N3 = max(R23 * N2, 1)
-    
+
     total_nll = 0.0
-    
+
     # Wild-Type (Chrom1–Chrom2 and Chrom3–Chrom2)
     mean_wt12, var_wt12 = compute_moments_mom(n1, N1, n2, N2, k)
     pdf_wt12 = norm.pdf(data_wt12, loc=mean_wt12, scale=np.sqrt(var_wt12))
     if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_wt12))
-    
+
     mean_wt32, var_wt32 = compute_moments_mom(n3, N3, n2, N2, k)
     pdf_wt32 = norm.pdf(data_wt32, loc=mean_wt32, scale=np.sqrt(var_wt32))
     if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_wt32))
-    
+
     # Threshold Mutant
-    n1_th = max(n1 - alpha, 1)
-    n2_th = max(n2 - alpha, 1)
-    n3_th = max(n3 - alpha, 1)
-    
+    n1_th = max(n1 * alpha, 1)
+    n2_th = max(n2 * alpha, 1)
+    n3_th = max(n3 * alpha, 1)
+
     mean_th12, var_th12 = compute_moments_mom(n1_th, N1, n2_th, N2, k)
-    pdf_th12 = norm.pdf(data_threshold12, loc=mean_th12, scale=np.sqrt(var_th12))
+    pdf_th12 = norm.pdf(data_threshold12, loc=mean_th12,
+                        scale=np.sqrt(var_th12))
     if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_th12))
-    
+
     mean_th32, var_th32 = compute_moments_mom(n3_th, N3, n2_th, N2, k)
-    pdf_th32 = norm.pdf(data_threshold32, loc=mean_th32, scale=np.sqrt(var_th32))
+    pdf_th32 = norm.pdf(data_threshold32, loc=mean_th32,
+                        scale=np.sqrt(var_th32))
     if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_th32))
-    
+
     # Degradation Rate Mutant
     k_deg = max(beta_k * k, 0.001)
-    
+    if beta_k * k < 0.001:
+        print("Warning: beta_k * k is less than 0.001, setting k_deg to 0.001")
+
     mean_deg12, var_deg12 = compute_moments_mom(n1, N1, n2, N2, k_deg)
-    pdf_deg12 = norm.pdf(data_degrate12, loc=mean_deg12, scale=np.sqrt(var_deg12))
+    pdf_deg12 = norm.pdf(data_degrate12, loc=mean_deg12,
+                         scale=np.sqrt(var_deg12))
     if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_deg12))
-    
+
     mean_deg32, var_deg32 = compute_moments_mom(n3, N3, n2, N2, k_deg)
-    pdf_deg32 = norm.pdf(data_degrate32, loc=mean_deg32, scale=np.sqrt(var_deg32))
+    pdf_deg32 = norm.pdf(data_degrate32, loc=mean_deg32,
+                         scale=np.sqrt(var_deg32))
     if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_deg32))
-    
+
     # Initial Proteins Mutant
-    N1_init = max(N1 - gamma, 1)
-    N2_init = max(N2 - gamma, 1)
-    N3_init = max(N3 - gamma, 1)
-    
+    N1_init = max(N1 * gamma, 1)
+    N2_init = max(N2 * gamma, 1)
+    N3_init = max(N3 * gamma, 1)
+
     mean_init12, var_init12 = compute_moments_mom(n1, N1_init, n2, N2_init, k)
-    pdf_init12 = norm.pdf(data_initial12, loc=mean_init12, scale=np.sqrt(var_init12))
+    pdf_init12 = norm.pdf(data_initial12, loc=mean_init12,
+                          scale=np.sqrt(var_init12))
     if np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_init12))
-    
+
     mean_init32, var_init32 = compute_moments_mom(n3, N3_init, n2, N2_init, k)
-    pdf_init32 = norm.pdf(data_initial32, loc=mean_init32, scale=np.sqrt(var_init32))
+    pdf_init32 = norm.pdf(data_initial32, loc=mean_init32,
+                          scale=np.sqrt(var_init32))
     if np.any(pdf_init32 <= 0) or np.any(np.isnan(pdf_init32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_init32))
-    
+
     return total_nll
 
 ###############################################################################
 # 3) Helper function to get rounded parameters
 ###############################################################################
+
+
 def get_rounded_parameters(params):
     n2, N2, k, r21, r23, R21, R23, alpha, beta_k, gamma = params
     n1 = max(r21 * n2, 1)
@@ -127,6 +141,8 @@ def get_rounded_parameters(params):
 ###############################################################################
 # 4) Main function for optimization
 ###############################################################################
+
+
 def main():
     # a) Read data
     df = pd.read_excel("Data/All_strains_SCStimes.xlsx")
@@ -143,23 +159,24 @@ def main():
     bounds = [
         (3, 30),     # n2
         (80, 500),   # N2
-        (0.02, 0.4), # k
+        (0.02, 0.4),  # k
         (0.3, 2.5),  # r21
         (0.3, 2.5),  # r23
         (0.4, 2.5),  # R21
         (0.4, 5.0),  # R23
-        (0.5, 5.0),    # alpha
+        (0.1, 1.0),    # alpha
         (0.1, 1.0),  # beta_k
-        (5, 50.0),  # gamma
+        (0.01, 1.0),  # gamma
     ]
 
     # c) Global optimization to find top 5 solutions
     population_solutions = []
+
     def callback(xk, convergence):
         population_solutions.append((joint_objective(xk, data_wt12, data_wt32,
-                                                    data_threshold12, data_threshold32,
-                                                    data_degrate12, data_degrate32,
-                                                    data_initial12, data_initial32), xk.copy()))
+                                                     data_threshold12, data_threshold32,
+                                                     data_degrate12, data_degrate32,
+                                                     data_initial12, data_initial32), xk.copy()))
 
     result = differential_evolution(
         joint_objective,
@@ -188,7 +205,8 @@ def main():
                 break
 
     if len(top_5_solutions) < 5:
-        print(f"Warning: Only {len(top_5_solutions)} distinct solutions found after rounding.")
+        print(
+            f"Warning: Only {len(top_5_solutions)} distinct solutions found after rounding.")
 
     print("\nTop 5 Solutions from Differential Evolution:")
     for i, (nll, params) in enumerate(top_5_solutions):
@@ -201,7 +219,8 @@ def main():
         print(f"Parameters: n2 = {n2:.2f}, N2 = {N2:.2f}, k = {k:.4f}, r21 = {r21:.2f}, "
               f"r23 = {r23:.2f}, R21 = {R21:.2f}, R23 = {R23:.2f}, alpha = {alpha:.2f}, "
               f"beta_k = {beta_k:.2f}, gamma = {gamma:.2f}")
-        print(f"Derived: n1 = {n1:.2f}, n3 = {n3:.2f}, N1 = {N1:.2f}, N3 = {N3:.2f}")
+        print(
+            f"Derived: n1 = {n1:.2f}, n3 = {n3:.2f}, N1 = {N1:.2f}, N3 = {N3:.2f}")
 
     # d) Local optimization to refine top 5 solutions
     refined_solutions = []
@@ -249,22 +268,26 @@ def main():
     n2_th = max(n2 - alpha, 1)
     n3_th = max(n3 - alpha, 1)
     mean_th12, var_th12 = compute_moments_mom(n1_th, N1, n2_th, N2, k)
-    pdf_th12 = norm.pdf(data_threshold12, loc=mean_th12, scale=np.sqrt(var_th12))
+    pdf_th12 = norm.pdf(data_threshold12, loc=mean_th12,
+                        scale=np.sqrt(var_th12))
     if not (np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12))):
         threshold_nll -= np.sum(np.log(pdf_th12))
     mean_th32, var_th32 = compute_moments_mom(n3_th, N3, n2_th, N2, k)
-    pdf_th32 = norm.pdf(data_threshold32, loc=mean_th32, scale=np.sqrt(var_th32))
+    pdf_th32 = norm.pdf(data_threshold32, loc=mean_th32,
+                        scale=np.sqrt(var_th32))
     if not (np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32))):
         threshold_nll -= np.sum(np.log(pdf_th32))
 
     degrate_nll = 0
     k_deg = max(beta_k * k, 0.001)
     mean_deg12, var_deg12 = compute_moments_mom(n1, N1, n2, N2, k_deg)
-    pdf_deg12 = norm.pdf(data_degrate12, loc=mean_deg12, scale=np.sqrt(var_deg12))
+    pdf_deg12 = norm.pdf(data_degrate12, loc=mean_deg12,
+                         scale=np.sqrt(var_deg12))
     if not (np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12))):
         degrate_nll -= np.sum(np.log(pdf_deg12))
     mean_deg32, var_deg32 = compute_moments_mom(n3, N3, n2, N2, k_deg)
-    pdf_deg32 = norm.pdf(data_degrate32, loc=mean_deg32, scale=np.sqrt(var_deg32))
+    pdf_deg32 = norm.pdf(data_degrate32, loc=mean_deg32,
+                         scale=np.sqrt(var_deg32))
     if not (np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32))):
         degrate_nll -= np.sum(np.log(pdf_deg32))
 
@@ -273,11 +296,13 @@ def main():
     N2_init = max(N2 - gamma, 1)
     N3_init = max(N3 - gamma, 1)
     mean_init12, var_init12 = compute_moments_mom(n1, N1_init, n2, N2_init, k)
-    pdf_init12 = norm.pdf(data_initial12, loc=mean_init12, scale=np.sqrt(var_init12))
+    pdf_init12 = norm.pdf(data_initial12, loc=mean_init12,
+                          scale=np.sqrt(var_init12))
     if not (np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12))):
         initial_nll -= np.sum(np.log(pdf_init12))
     mean_init32, var_init32 = compute_moments_mom(n3, N3_init, n2, N2_init, k)
-    pdf_init32 = norm.pdf(data_initial32, loc=mean_init32, scale=np.sqrt(var_init32))
+    pdf_init32 = norm.pdf(data_initial32, loc=mean_init32,
+                          scale=np.sqrt(var_init32))
     if not (np.any(pdf_init32 <= 0) or np.any(np.isnan(pdf_init32))):
         initial_nll -= np.sum(np.log(pdf_init32))
 
@@ -286,8 +311,10 @@ def main():
     print(f"Total Negative Log-Likelihood: {best_nll:.4f}")
     print(f"Wild-Type Negative Log-Likelihood: {wt_nll:.4f}")
     print(f"Threshold Mutant Negative Log-Likelihood: {threshold_nll:.4f}")
-    print(f"Degradation Rate Mutant Negative Log-Likelihood: {degrate_nll:.4f}")
-    print(f"Initial Proteins Mutant Negative Log-Likelihood: {initial_nll:.4f}")
+    print(
+        f"Degradation Rate Mutant Negative Log-Likelihood: {degrate_nll:.4f}")
+    print(
+        f"Initial Proteins Mutant Negative Log-Likelihood: {initial_nll:.4f}")
     print(f"Wild-Type Parameters: n1 = {n1:.2f}, n2 = {n2:.2f}, n3 = {n3:.2f}, "
           f"N1 = {N1:.2f}, N2 = {N2:.2f}, N3 = {N3:.2f}, k = {k:.4f}")
     print(f"Threshold Mutant: alpha = {alpha:.2f}")
@@ -314,6 +341,7 @@ def main():
         f.write(f"initial_nll: {initial_nll:.6f}\n")
         f.write(f"total_nll: {best_nll:.6f}\n")
     print("Optimized parameters saved to optimized_parameters.txt")
+
 
 if __name__ == "__main__":
     main()

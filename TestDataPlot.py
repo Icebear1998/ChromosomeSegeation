@@ -5,24 +5,27 @@ from scipy.stats import norm
 from Chromosome_Gillespie4 import run_simulations, generate_threshold_values
 
 # Compute MoM moments for f_X
+
+
 def compute_moments_mom(n1, N1, n2, N2, k):
     sum1_T1 = sum(1/m for m in range(int(n1) + 1, int(N1) + 1))
     sum1_T2 = sum(1/m for m in range(int(n2) + 1, int(N2) + 1))
     sum2_T1 = sum(1/(m**2) for m in range(int(n1) + 1, int(N1) + 1))
     sum2_T2 = sum(1/(m**2) for m in range(int(n2) + 1, int(N2) + 1))
-    
+
     mean_T1 = sum1_T1 / k
     mean_T2 = sum1_T2 / k
     var_T1 = sum2_T1 / (k**2)
     var_T2 = sum2_T2 / (k**2)
-    
+
     mean_X = mean_T1 - mean_T2
     var_X = var_T1 + var_T2
     return mean_X, var_X
 
+
 def run_stochastic_simulation(k, n1, n2, n3, N1, N2, N3,
-                                       data12, data32,
-                                       max_time=500, num_sim=1500):
+                              data12, data32,
+                              max_time=500, num_sim=1500):
     """
     Run a Gillespie-like simulation with the given parameters and compare to experimental data.
     """
@@ -41,6 +44,7 @@ def run_stochastic_simulation(k, n1, n2, n3, N1, N2, N3,
 
     return delta_t12, delta_t32
 
+
 def load_parameters(filename="optimized_parameters.txt"):
     """
     Read optimized parameters from a text file.
@@ -53,6 +57,7 @@ def load_parameters(filename="optimized_parameters.txt"):
             key, value = line.strip().split(": ")
             params[key] = float(value)
     return params
+
 
 def plot_results(params, dataset="wildtype", data_file="Data/All_strains_SCStimes.xlsx"):
     """
@@ -92,7 +97,8 @@ def plot_results(params, dataset="wildtype", data_file="Data/All_strains_SCStime
         N3 = max(params['N3'] - gamma, 1)
         k = params['k']
     else:
-        raise ValueError("Invalid dataset. Choose 'wildtype', 'threshold', 'degrate', or 'initial'.")
+        raise ValueError(
+            "Invalid dataset. Choose 'wildtype', 'threshold', 'degrate', or 'initial'.")
 
     # Define x_grid for plotting
     x_grid = np.linspace(-100, 140, 401)
@@ -111,28 +117,33 @@ def plot_results(params, dataset="wildtype", data_file="Data/All_strains_SCStime
     # Plot
     fig, ax = plt.subplots(1, 2, figsize=(12, 5))
 
-    ax[0].hist(data12, bins=16, density=True, alpha=0.4, label='Experimental data12')
-    ax[0].hist(delta_t12, bins=16, density=True, alpha=0.4, label='Simulated data12')
+    ax[0].hist(data12, bins=16, density=True,
+               alpha=0.4, label='Experimental data12')
+    ax[0].hist(delta_t12, bins=16, density=True,
+               alpha=0.4, label='Simulated data12')
     ax[0].plot(x_grid, pdf12, 'r-', label='MoM Normal pdf12')
     ax[0].set_xlim(min(x_grid)-20, max(x_grid)+20)
     ax[0].set_title(f"Chrom1 - Chrom2 ({dataset})")
     ax[0].legend()
 
-    ax[1].hist(data32, bins=16, density=True, alpha=0.4, label='Experimental data32')
-    ax[1].hist(delta_t32, bins=16, density=True, alpha=0.4, label='Simulated data32')
+    ax[1].hist(data32, bins=16, density=True,
+               alpha=0.4, label='Experimental data32')
+    ax[1].hist(delta_t32, bins=16, density=True,
+               alpha=0.4, label='Simulated data32')
     ax[1].plot(x_grid, pdf32, 'r-', label='MoM Normal pdf32')
     ax[1].set_xlim(min(x_grid)-20, max(x_grid)+20)
     ax[1].set_title(f"Chrom3 - Chrom2 ({dataset})")
     ax[1].legend()
 
     plt.tight_layout()
-    plt.savefig(f"plot_{dataset}_join2.png")
+    # plt.savefig(f"plot_{dataset}_join2.png")
     plt.show()
+
 
 if __name__ == "__main__":
     # Load optimized parameters
-    params = load_parameters("optimized_parameters_join2.txt")
+    params = load_parameters("optimized_parameters_joinUpdate.txt")
 
     # Plot for a specific dataset (e.g., 'threshold')
     # Change to 'wildtype', 'degrate', or 'initial' as needed
-    plot_results(params, dataset="initial")
+    plot_results(params, dataset="wildtype")
