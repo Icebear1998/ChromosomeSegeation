@@ -35,21 +35,28 @@ def wildtype_objective(vars_, data12, data32):
     n3 = max(r23 * n2, 1)
     N3 = max(R23 * N2, 1)
 
+    # Sample sizes
+    n12 = len(data12)
+    n32 = len(data32)
+
+    # Weight (adjustable, default 1.0)
+    weight = 1.0
+
     # Chrom1–Chrom2
     mean12, var12 = compute_moments_mom(n1, N1, n2, N2, k)
     pdf12 = norm.pdf(data12, loc=mean12, scale=np.sqrt(var12))
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12))
+    log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
     mean32, var32 = compute_moments_mom(n3, N3, n2, N2, k)
     pdf32 = norm.pdf(data32, loc=mean32, scale=np.sqrt(var32))
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32))
+    log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
-    return -(log_likelihood12 + log_likelihood32)
+    return -weight * (log_likelihood12 + log_likelihood32)
 
 ###############################################################################
 # 3) Objective functions for mutants
@@ -64,21 +71,28 @@ def threshold_objective(vars_, data12, data32, params_baseline):
     n2 = max(n2_wt * alpha, 1)
     n3 = max(n3_wt * alpha, 1)
 
+    # Sample sizes
+    n12 = len(data12)
+    n32 = len(data32)
+
+    # Weight (adjustable, default 1.0)
+    weight = 1.0
+
     # Chrom1–Chrom2
     mean12, var12 = compute_moments_mom(n1, N1_wt, n2, N2_wt, k_wt)
     pdf12 = norm.pdf(data12, loc=mean12, scale=np.sqrt(var12))
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12))
+    log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
     mean32, var32 = compute_moments_mom(n3, N3_wt, n2, N2_wt, k_wt)
     pdf32 = norm.pdf(data32, loc=mean32, scale=np.sqrt(var32))
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32))
+    log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
-    return -(log_likelihood12 + log_likelihood32)
+    return -weight * (log_likelihood12 + log_likelihood32)
 
 # Degradation rate mutant (optimize beta_k for k)
 
@@ -88,23 +102,30 @@ def degrate_objective(vars_, data12, data32, params_baseline):
     beta_k = vars_[0]
     k = max(beta_k * k_wt, 0.001)
     if (beta_k * k_wt < 0.001):
-        print("Warning: k is too small. Setting to 0.001")
+        print("Warning: k is too small, setting to 0.001")
+
+    # Sample sizes
+    n12 = len(data12)
+    n32 = len(data32)
+
+    # Weight (adjustable, default 1.0)
+    weight = 1.0
 
     # Chrom1–Chrom2
     mean12, var12 = compute_moments_mom(n1_wt, N1_wt, n2_wt, N2_wt, k)
     pdf12 = norm.pdf(data12, loc=mean12, scale=np.sqrt(var12))
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12))
+    log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
     mean32, var32 = compute_moments_mom(n3_wt, N3_wt, n2_wt, N2_wt, k)
     pdf32 = norm.pdf(data32, loc=mean32, scale=np.sqrt(var32))
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32))
+    log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
-    return -(log_likelihood12 + log_likelihood32)
+    return -weight * (log_likelihood12 + log_likelihood32)
 
 # Initial proteins mutant (optimize gamma for N1, N2, N3)
 
@@ -116,21 +137,28 @@ def initial_proteins_objective(vars_, data12, data32, params_baseline):
     N2 = max(N2_wt * gamma, 1)
     N3 = max(N3_wt * gamma, 1)
 
+    # Sample sizes
+    n12 = len(data12)
+    n32 = len(data32)
+
+    # Weight (adjustable, default 1.0)
+    weight = 1.0
+
     # Chrom1–Chrom2
     mean12, var12 = compute_moments_mom(n1_wt, N1, n2_wt, N2, k_wt)
     pdf12 = norm.pdf(data12, loc=mean12, scale=np.sqrt(var12))
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12))
+    log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
     mean32, var32 = compute_moments_mom(n3_wt, N3, n2_wt, N2, k_wt)
     pdf32 = norm.pdf(data32, loc=mean32, scale=np.sqrt(var32))
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32))
+    log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
-    return -(log_likelihood12 + log_likelihood32)
+    return -weight * (log_likelihood12 + log_likelihood32)
 
 ###############################################################################
 # 4) Helper function to get rounded parameters
@@ -243,7 +271,7 @@ def main():
         print(
             f"Parameters: n2 = {n2:.2f}, N2 = {N2:.2f}, k = {k:.4f}, r21 = {r21:.2f}, r23 = {r23:.2f}, R21 = {R21:.2f}, R23 = {R23:.2f}")
         print(
-            f"Derived: n1 = {n1:.2f}, n3 = {n3:.2f}, N1 = {N1:.2f}, N3 = {N3:.2f}")
+            f"Derived: n1 = {n1:.2f}, n3 = {n3:.2f}, N1 = {n1:.2f}, N3 = {N3:.2f}")
 
     # d) Local optimization to refine top 5 wild-type solutions
     refined_wt_solutions = []
@@ -280,6 +308,10 @@ def main():
         N3_wt = max(R23 * N2_wt, 1)
         params_baseline = (n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k)
 
+        # Compute unweighted wild-type NLL for reporting
+        wt_nll_unweighted = - \
+            wildtype_objective(wt_params, data_wt12, data_wt32)
+
         # Threshold mutant
         minimizer_kwargs = {
             "method": "L-BFGS-B",
@@ -299,9 +331,14 @@ def main():
         if result_threshold.lowest_optimization_result.success:
             threshold_nll = result_threshold.lowest_optimization_result.fun
             alpha = result_threshold.lowest_optimization_result.x[0]
+            # Compute unweighted NLL for reporting
+            threshold_nll_unweighted = - \
+                threshold_objective([alpha], data_threshold12,
+                                    data_threshold32, params_baseline)
         else:
             threshold_nll = np.inf
             alpha = np.nan
+            threshold_nll_unweighted = np.inf
 
         # Degradation rate mutant
         minimizer_kwargs = {
@@ -322,9 +359,14 @@ def main():
         if result_degrate.lowest_optimization_result.success:
             degrate_nll = result_degrate.lowest_optimization_result.fun
             beta_k = result_degrate.lowest_optimization_result.x[0]
+            # Compute unweighted NLL for reporting
+            degrate_nll_unweighted = - \
+                degrate_objective([beta_k], data_degrate12,
+                                  data_degrate32, params_baseline)
         else:
             degrate_nll = np.inf
             beta_k = np.nan
+            degrate_nll_unweighted = np.inf
 
         # Initial proteins mutant
         minimizer_kwargs = {
@@ -345,22 +387,31 @@ def main():
         if result_initial.lowest_optimization_result.success:
             initial_nll = result_initial.lowest_optimization_result.fun
             gamma = result_initial.lowest_optimization_result.x[0]
+            # Compute unweighted NLL for reporting
+            initial_nll_unweighted = - \
+                initial_proteins_objective(
+                    [gamma], data_initial12, data_initial32, params_baseline)
         else:
             initial_nll = np.inf
             gamma = np.nan
+            initial_nll_unweighted = np.inf
 
-        # Total negative log-likelihood
+        # Total negative log-likelihood (weighted for optimization)
         total_nll = wt_nll + threshold_nll + degrate_nll + initial_nll
+        # Total unweighted NLL for reporting
+        total_nll_unweighted = wt_nll_unweighted + threshold_nll_unweighted + \
+            degrate_nll_unweighted + initial_nll_unweighted
         overall_results.append({
             'wt_idx': wt_idx,
             'total_nll': total_nll,
-            'wt_nll': wt_nll,
+            'total_nll_unweighted': total_nll_unweighted,
+            'wt_nll': wt_nll_unweighted,
             'wt_params': wt_params,
-            'threshold_nll': threshold_nll,
+            'threshold_nll': threshold_nll_unweighted,
             'alpha': alpha,
-            'degrate_nll': degrate_nll,
+            'degrate_nll': degrate_nll_unweighted,
             'beta_k': beta_k,
-            'initial_nll': initial_nll,
+            'initial_nll': initial_nll_unweighted,
             'gamma': gamma,
         })
 
@@ -369,7 +420,10 @@ def main():
     best_result = overall_results[0]
 
     print("\nBest Overall Solution:")
-    print(f"Total Negative Log-Likelihood: {best_result['total_nll']:.4f}")
+    print(
+        f"Total Negative Log-Likelihood (Weighted): {best_result['total_nll']:.4f}")
+    print(
+        f"Total Negative Log-Likelihood (Unweighted): {best_result['total_nll_unweighted']:.4f}")
     print(f"Wild-Type Negative Log-Likelihood: {best_result['wt_nll']:.4f}")
     n2, N2, k, r21, r23, R21, R23 = best_result['wt_params']
     n1 = max(r21 * n2, 1)
@@ -386,7 +440,7 @@ def main():
           f"gamma = {best_result['gamma']:.2f}")
 
     # g) Save optimized parameters to a text file
-    with open("optimized_parameters_run3.txt", "w") as f:
+    with open("optimized_parameters_IndeUpdate.txt", "w") as f:
         f.write("# Wild-Type Parameters\n")
         f.write(f"n1: {n1:.6f}\n")
         f.write(f"n2: {n2:.6f}\n")
@@ -403,8 +457,8 @@ def main():
         f.write(f"threshold_nll: {best_result['threshold_nll']:.6f}\n")
         f.write(f"degrate_nll: {best_result['degrate_nll']:.6f}\n")
         f.write(f"initial_nll: {best_result['initial_nll']:.6f}\n")
-        f.write(f"total_nll: {best_result['total_nll']:.6f}\n")
-    print("Optimized parameters saved to optimized_parameters.txt")
+        f.write(f"total_nll: {best_result['total_nll_unweighted']:.6f}\n")
+    print("Optimized parameters saved to optimized_parameters_IndeUpdate.txt")
 
 
 if __name__ == "__main__":

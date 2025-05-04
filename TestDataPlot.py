@@ -146,4 +146,4 @@ if __name__ == "__main__":
 
     # Plot for a specific dataset (e.g., 'threshold')
     # Change to 'wildtype', 'degrate', or 'initial' as needed
-    plot_results(params, dataset="wildtype")
+    plot_results(params, dataset="initial")

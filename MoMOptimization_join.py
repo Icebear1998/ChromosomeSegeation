@@ -46,13 +46,13 @@ def joint_objective(params, data_wt12, data_wt32, data_threshold12, data_thresho
     pdf_wt12 = norm.pdf(data_wt12, loc=mean_wt12, scale=np.sqrt(var_wt12))
     if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_wt12))
+    total_nll -= np.sum(np.log(pdf_wt12)) / len(data_wt12)
 
     mean_wt32, var_wt32 = compute_moments_mom(n3, N3, n2, N2, k)
     pdf_wt32 = norm.pdf(data_wt32, loc=mean_wt32, scale=np.sqrt(var_wt32))
     if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_wt32))
+    total_nll -= np.sum(np.log(pdf_wt32)) / len(data_wt32)
 
     # Threshold Mutant
     n1_th = max(n1 * alpha, 1)
@@ -64,14 +64,14 @@ def joint_objective(params, data_wt12, data_wt32, data_threshold12, data_thresho
                         scale=np.sqrt(var_th12))
     if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_th12))
+    total_nll -= np.sum(np.log(pdf_th12)) / len(data_threshold12)
 
     mean_th32, var_th32 = compute_moments_mom(n3_th, N3, n2_th, N2, k)
     pdf_th32 = norm.pdf(data_threshold32, loc=mean_th32,
                         scale=np.sqrt(var_th32))
     if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_th32))
+    total_nll -= np.sum(np.log(pdf_th32)) / len(data_threshold32)
 
     # Degradation Rate Mutant
     k_deg = max(beta_k * k, 0.001)
@@ -83,14 +83,14 @@ def joint_objective(params, data_wt12, data_wt32, data_threshold12, data_thresho
                          scale=np.sqrt(var_deg12))
     if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_deg12))
+    total_nll -= np.sum(np.log(pdf_deg12)) / len(data_degrate12)
 
     mean_deg32, var_deg32 = compute_moments_mom(n3, N3, n2, N2, k_deg)
     pdf_deg32 = norm.pdf(data_degrate32, loc=mean_deg32,
                          scale=np.sqrt(var_deg32))
     if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_deg32))
+    total_nll -= np.sum(np.log(pdf_deg32)) / len(data_degrate32)
 
     # Initial Proteins Mutant
     N1_init = max(N1 * gamma, 1)
@@ -102,14 +102,14 @@ def joint_objective(params, data_wt12, data_wt32, data_threshold12, data_thresho
                           scale=np.sqrt(var_init12))
     if np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_init12))
+    total_nll -= np.sum(np.log(pdf_init12)) / len(data_initial12)
 
     mean_init32, var_init32 = compute_moments_mom(n3, N3_init, n2, N2_init, k)
     pdf_init32 = norm.pdf(data_initial32, loc=mean_init32,
                           scale=np.sqrt(var_init32))
     if np.any(pdf_init32 <= 0) or np.any(np.isnan(pdf_init32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_init32))
+    total_nll -= np.sum(np.log(pdf_init32)) / len(data_initial32)
 
     return total_nll
 
@@ -322,7 +322,7 @@ def main():
     print(f"Initial Proteins Mutant: gamma = {gamma:.2f}")
 
     # g) Save optimized parameters to a text file
-    with open("optimized_parameters_join2.txt", "w") as f:
+    with open("optimized_parameters_joinUpdate.txt", "w") as f:
         f.write("# Wild-Type Parameters\n")
         f.write(f"n1: {n1:.6f}\n")
         f.write(f"n2: {n2:.6f}\n")
