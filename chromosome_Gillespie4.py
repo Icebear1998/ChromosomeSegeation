@@ -223,11 +223,11 @@ if __name__ == "__main__":
         [[sep[0] - sep[1], sep[2] - sep[1]] for sep in seperate_times_mut])
 
     # Read experimental data from Excel file
-    df = pd.read_excel('Chromosome_diff.xlsx')
-    experimental_data_wt12 = df['SCSdiff_Wildtype12'].dropna().tolist()
-    experimental_data_mut12 = df['SCSdiff_Mutant12'].dropna().tolist()
-    experimental_data_wt23 = df['SCSdiff_Wildtype23'].dropna().tolist()
-    experimental_data_mut23 = df['SCSdiff_Mutant23'].dropna().tolist()
+    df = pd.read_excel('Data/All_strains_SCStimes.xlsx')
+    experimental_data_wt12 = df['wildtype12'].dropna().tolist()
+    experimental_data_mut12 = df['threshold12'].dropna().tolist()
+    experimental_data_wt23 = df['wildtype32'].dropna().tolist()
+    experimental_data_mut23 = df['threshold32'].dropna().tolist()
 
     fig, axs = plt.subplots(1, 2, figsize=(15, 6))
     # Plot comparison between experimental data and simulation for Wild-type
