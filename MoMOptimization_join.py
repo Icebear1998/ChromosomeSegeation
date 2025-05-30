@@ -8,7 +8,7 @@ from MoMCalculations import compute_moments_mom, compute_pdf_mom
 def joint_objective(params, mechanism, data_wt12, data_wt32, data_threshold12, data_threshold32,
                     data_degrate12, data_degrate32, data_initial12, data_initial32):
     # Unpack parameters
-    n2, N2, k, r21, r23, R21, R23, burst_size, alpha, beta_k, gamma = params
+    n2, N2, k, r21, r23, R21, R23, burst_size, alpha, beta_k, gamma,  = params
 
     # Derived wild-type parameters
     n1 = max(r21 * n2, 1)
@@ -118,7 +118,7 @@ def main():
     data_initial32 = df['initialProteins32'].dropna().values
 
     # b) Define mechanism and parameter bounds
-    mechanism = 'fixed_burst'  # Updated: Moved mechanism here for easy adjustment
+    mechanism = 'time_varying_k'  # Updated: Moved mechanism here for easy adjustment
     bounds = [
         (3, 30),     # n2
         (80, 500),   # N2
@@ -127,7 +127,8 @@ def main():
         (0.3, 2.5),  # r23
         (0.4, 2.5),  # R21
         (0.4, 5.0),  # R23
-        (1, 10),     # burst_size
+        #(1, 10),     # burst_size
+        (0.0001, 0.01)  # k_1 (for time_varying_k mechanism)
         (0.1, 1.0),    # alpha
         (0.1, 1.0),  # beta_k
         (0.01, 1.0),  # gamma
@@ -218,12 +219,12 @@ def main():
 
     # Compute individual negative log-likelihoods for reporting
     wt_nll = 0
-    mean_wt12, var_wt12 = compute_moments_mom(mechanism, n1, N1, n2, N2, k, k, burst_size)
-    pdf_wt12 = compute_pdf_mom(mechanism, data_wt12, n1, N1, n2, N2, k, k, burst_size)
+    mean_wt12, var_wt12 = compute_moments_mom(mechanism, n1, N1, n2, N2, k, burst_size)
+    pdf_wt12 = compute_pdf_mom(mechanism, data_wt12, n1, N1, n2, N2, k, burst_size)
     if not (np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12))):
         wt_nll -= np.sum(np.log(pdf_wt12))
-    mean_wt32, var_wt32 = compute_moments_mom(mechanism, n3, N3, n2, N2, k, k, burst_size)
-    pdf_wt32 = compute_pdf_mom(mechanism, data_wt32, n3, N3, n2, N2, k, k, burst_size)
+    mean_wt32, var_wt32 = compute_moments_mom(mechanism, n3, N3, n2, N2, k, burst_size)
+    pdf_wt32 = compute_pdf_mom(mechanism, data_wt32, n3, N3, n2, N2, k, burst_size)
     if not (np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32))):
         wt_nll -= np.sum(np.log(pdf_wt32))
 
@@ -231,23 +232,23 @@ def main():
     n1_th = max(n1 * alpha, 1)
     n2_th = max(n2 * alpha, 1)
     n3_th = max(n3 * alpha, 1)
-    mean_th12, var_th12 = compute_moments_mom(mechanism, n1_th, N1, n2_th, N2, k, k, burst_size)
-    pdf_th12 = compute_pdf_mom(mechanism, data_threshold12, n1_th, N1, n2_th, N2, k, k, burst_size)
+    mean_th12, var_th12 = compute_moments_mom(mechanism, n1_th, N1, n2_th, N2, k, burst_size)
+    pdf_th12 = compute_pdf_mom(mechanism, data_threshold12, n1_th, N1, n2_th, N2, k, burst_size)
     if not (np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12))):
         threshold_nll -= np.sum(np.log(pdf_th12))
-    mean_th32, var_th32 = compute_moments_mom(mechanism, n3_th, N3, n2_th, N2, k, k, burst_size)
-    pdf_th32 = compute_pdf_mom(mechanism, data_threshold32, n3_th, N3, n2_th, N2, k, k, burst_size)
+    mean_th32, var_th32 = compute_moments_mom(mechanism, n3_th, N3, n2_th, N2, k, burst_size)
+    pdf_th32 = compute_pdf_mom(mechanism, data_threshold32, n3_th, N3, n2_th, N2, k, burst_size)
     if not (np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32))):
         threshold_nll -= np.sum(np.log(pdf_th32))
 
     degrate_nll = 0
     k_deg = max(beta_k * k, 0.001)
-    mean_deg12, var_deg12 = compute_moments_mom(mechanism, n1, N1, n2, N2, k_deg, k_deg, burst_size)
-    pdf_deg12 = compute_pdf_mom(mechanism, data_degrate12, n1, N1, n2, N2, k_deg, k_deg, burst_size)
+    mean_deg12, var_deg12 = compute_moments_mom(mechanism, n1, N1, n2, N2, k_deg, burst_size)
+    pdf_deg12 = compute_pdf_mom(mechanism, data_degrate12, n1, N1, n2, N2, k_deg, burst_size)
     if not (np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12))):
         degrate_nll -= np.sum(np.log(pdf_deg12))
-    mean_deg32, var_deg32 = compute_moments_mom(mechanism, n3, N3, n2, N2, k_deg, k_deg, burst_size)
-    pdf_deg32 = compute_pdf_mom(mechanism, data_degrate32, n3, N3, n2, N2, k_deg, k_deg, burst_size)
+    mean_deg32, var_deg32 = compute_moments_mom(mechanism, n3, N3, n2, N2, k_deg, burst_size)
+    pdf_deg32 = compute_pdf_mom(mechanism, data_degrate32, n3, N3, n2, N2, k_deg, burst_size)
     if not (np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32))):
         degrate_nll -= np.sum(np.log(pdf_deg32))
 
@@ -255,12 +256,12 @@ def main():
     N1_init = max(N1 * gamma, 1)
     N2_init = max(N2 * gamma, 1)
     N3_init = max(N3 * gamma, 1)
-    mean_init12, var_init12 = compute_moments_mom(mechanism, n1, N1_init, n2, N2_init, k, k, burst_size)
-    pdf_init12 = compute_pdf_mom(mechanism, data_initial12, n1, N1_init, n2, N2_init, k, k, burst_size)
+    mean_init12, var_init12 = compute_moments_mom(mechanism, n1, N1_init, n2, N2_init, k, burst_size)
+    pdf_init12 = compute_pdf_mom(mechanism, data_initial12, n1, N1_init, n2, N2_init, k, burst_size)
     if not (np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12))):
         initial_nll -= np.sum(np.log(pdf_init12))
-    mean_init32, var_init32 = compute_moments_mom(mechanism, n3, N3_init, n2, N2_init, k, k, burst_size)
-    pdf_init32 = compute_pdf_mom(mechanism, data_initial32, n3, N3_init, n2, N2_init, k, k, burst_size)
+    mean_init32, var_init32 = compute_moments_mom(mechanism, n3, N3_init, n2, N2_init, k, burst_size)
+    pdf_init32 = compute_pdf_mom(mechanism, data_initial32, n3, N3_init, n2, N2_init, k, burst_size)
     if not (np.any(pdf_init32 <= 0) or np.any(np.isnan(pdf_init32))):
         initial_nll -= np.sum(np.log(pdf_init32))
 

@@ -9,7 +9,7 @@ k: 0.009955
 burst_size: 7.915224
 wt_nll: 12698.159156
 # Mutant Parameters
-alpha: 1
+alpha: 0.17
 beta_k: 0.542171
 gamma: 0.343500
 threshold_nll: 1587.650178

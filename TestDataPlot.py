@@ -39,17 +39,17 @@ def apply_mutant_params(params, dataset):
     
     if dataset == "threshold":
         alpha = params['alpha']
-        n1 = max(params['n1'] - alpha, 1)
-        n2 = max(params['n2'] - alpha, 1)
-        n3 = max(params['n3'] - alpha, 1)
+        n1 = max(params['n1'] * alpha, 1)
+        n2 = max(params['n2'] * alpha, 1)
+        n3 = max(params['n3'] * alpha, 1)
     elif dataset == "degrate":
         beta_k = params['beta_k']
         k = max(beta_k * params['k'], 0.001)
     elif dataset == "initial":
         gamma = params['gamma']
-        N1 = max(params['N1'] - gamma, 1)
-        N2 = max(params['N2'] - gamma, 1)
-        N3 = max(params['N3'] - gamma, 1)
+        N1 = max(params['N1'] * gamma, 1)
+        N2 = max(params['N2'] * gamma, 1)
+        N3 = max(params['N3'] * gamma, 1)
     
     return n1, n2, n3, N1, N2, N3, k
 
@@ -88,7 +88,7 @@ def plot_results(params, dataset="wildtype", mechanism="simple", data_file="Data
     pdf32 = compute_pdf_mom(mechanism, x_grid, n3, N3, n2, N2, k, burst_size)
 
     delta_t12, delta_t32 = run_stochastic_simulation(
-        mechanism, k, n1, n2, n3, N1, N2, N3, burst_size
+        mechanism, k, n1, n2, n3, N1, N2, N3, burst_size, num_sim=1500
     )
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -111,8 +111,11 @@ def plot_results(params, dataset="wildtype", mechanism="simple", data_file="Data
     plt.show()
 
 if __name__ == "__main__":
-    params = load_parameters("Results/optimized_parameters_joinBurst.txt")
+    params = load_parameters("optimized_parameters_IndeBurst.txt")
     mechanisms = ['simple', 'fixed_burst']
     datasets = ['wildtype', 'threshold', 'degrate', 'initial']
     
-    plot_results(params, dataset=datasets[0], mechanism=mechanisms[1])
+    plot_results(params, dataset=datasets[2], mechanism=mechanisms[1])
+    # plot_results(params, dataset=datasets[1], mechanism=mechanisms[1])
+    # plot_results(params, dataset=datasets[2], mechanism=mechanisms[1])
+    # plot_results(params, dataset=datasets[3], mechanism=mechanisms[1])
