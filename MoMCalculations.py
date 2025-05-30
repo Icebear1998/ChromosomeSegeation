@@ -88,7 +88,7 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, mean_
         def mom_time_varying_k(N, n, k, k1):
             expected_time = 0
             variance = 0
-            for m in range(n + 1, N + 1):
+            for m in range(int(n + 1), int(N + 1)):
                 t_m = compute_tm(m, N, k, k1)
                 rate = kt(t_m, k, k1) * m
                 tau_mean = 1 / rate

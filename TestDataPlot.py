@@ -53,9 +53,9 @@ def apply_mutant_params(params, dataset):
     
     return n1, n2, n3, N1, N2, N3, k
 
-def run_stochastic_simulation(mechanism, k, n1, n2, n3, N1, N2, N3, burst_size, max_time=500, num_sim=1500):
+def run_stochastic_simulation(mechanism, k, n1, n2, n3, N1, N2, N3, k_1, max_time=500, num_sim=1500):
     initial_proteins = [N1, N2, N3]
-    rate_params = {'k_list': [k, k, k]} if mechanism == 'simple' else {'lambda_list': [k, k, k], 'burst_size': burst_size}
+    rate_params = {'k_list': [k, k, k]} if mechanism == 'simple' else {'k': k, 'k_1': k_1}
     n0_total = n1 + n2 + n3
     n0_list = generate_threshold_values([n1, n2], n0_total, num_sim)
 
@@ -81,14 +81,20 @@ def plot_results(params, dataset="wildtype", mechanism="simple", data_file="Data
     df = pd.read_excel(data_file)
     data12, data32 = load_dataset(df, dataset)
     n1, n2, n3, N1, N2, N3, k = apply_mutant_params(params, dataset)
-    burst_size = params.get('burst_size', 5)
+    if mechanism == 'time_varying_k':
+        k_1 = params.get('k_1', 0.001)
+        if k_1 <= 0:
+            raise ValueError("k_1 must be greater than 0 for time_varying_k mechanism.")
+    if mechanism == 'fixed_burst':
+        burst_size = params.get('burst_size', 5)
+
 
     x_grid = np.linspace(-100, 100, 401)
-    pdf12 = compute_pdf_mom(mechanism, x_grid, n1, N1, n2, N2, k, burst_size)
-    pdf32 = compute_pdf_mom(mechanism, x_grid, n3, N3, n2, N2, k, burst_size)
+    pdf12 = compute_pdf_mom(mechanism, x_grid, n1, N1, n2, N2, k, k_1=k_1)
+    pdf32 = compute_pdf_mom(mechanism, x_grid, n3, N3, n2, N2, k, k_1=k_1)
 
     delta_t12, delta_t32 = run_stochastic_simulation(
-        mechanism, k, n1, n2, n3, N1, N2, N3, burst_size, num_sim=1500
+        mechanism, k, n1, n2, n3, N1, N2, N3, k_1=k_1, num_sim=1500
     )
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -111,11 +117,11 @@ def plot_results(params, dataset="wildtype", mechanism="simple", data_file="Data
     plt.show()
 
 if __name__ == "__main__":
-    params = load_parameters("optimized_parameters_IndeBurst.txt")
-    mechanisms = ['simple', 'fixed_burst']
+    params = load_parameters("optimized_parameters_timeVaryingK.txt")
+    mechanisms = ['simple', 'fixed_burst', 'time_varying_k']
     datasets = ['wildtype', 'threshold', 'degrate', 'initial']
     
-    plot_results(params, dataset=datasets[2], mechanism=mechanisms[1])
+    plot_results(params, dataset=datasets[3], mechanism=mechanisms[2])
     # plot_results(params, dataset=datasets[1], mechanism=mechanisms[1])
     # plot_results(params, dataset=datasets[2], mechanism=mechanisms[1])
     # plot_results(params, dataset=datasets[3], mechanism=mechanisms[1])

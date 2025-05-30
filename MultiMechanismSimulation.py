@@ -95,7 +95,7 @@ class MultiMechanismSimulation:
         """
         while True:
             # Calculate propensity: rate of degradation for the chromosome
-            k_t = self.rate_params['k_0'] + self.rate_params['k_1'] * self.time
+            k_t = self.rate_params['k'] + self.rate_params['k_1'] * self.time
             k_t = max(k_t, 1e-10)
 
             # Calculate propensities: rate of degradation for each chromosome

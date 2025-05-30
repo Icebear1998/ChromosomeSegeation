@@ -1,0 +1,18 @@
+# Wild-Type Parameters
+n1: 1.680546
+n2: 3.974828
+n3: 7.854549
+N1: 214.999596
+N2: 470.998675
+N3: 1426.000056
+k: 0.030180
+k_1: 0.000068
+wt_nll: 1151.472411
+# Mutant Parameters
+alpha: 0.293197
+beta_k: 0.100089
+gamma: 0.070106
+threshold_nll: 363.568246
+degrate_nll: 1335.375252
+initial_nll: 774.668394
+total_nll: 37.463547
