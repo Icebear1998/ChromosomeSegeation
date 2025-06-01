@@ -2,12 +2,12 @@ import numpy as np
 from scipy.stats import norm
 import math
 
-def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, mean_burst_size=None, var_burst_size=None, k_1=None):
+def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=None, feedbackSteepness=None, feedbackThreshold=None):
     """
     Compute Method of Moments mean and variance for f_X = T_i - T_j.
     
     Args:
-        mechanism (str): 'simple', 'fixed_burst', or 'random_normal_burst', 'time_varying_k'.
+        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback'.
         n_i, n_j (float): Threshold cohesin counts for chromosomes i and j.
         N_i, N_j (float): Initial cohesin counts for chromosomes i and j.
         k (float): Degradation rates (k_i, k_j for simple; lambda_i, lambda_j for fixed_burst).
@@ -19,6 +19,10 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, mean_
     # Input validation for all mechanisms
     if n_i < 0 or n_j < 0 or N_i <= 0 or N_j <= 0 or k <= 0:
         return np.inf, np.inf
+
+    # Ensure inputs are valid
+    if n_i >= N_i or n_j >= N_j:
+        raise ValueError("Final cohesin counts must be less than initial counts.")
 
     if mechanism == 'simple':
         # Simple Model: Harmonic sums
@@ -57,21 +61,6 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, mean_
         var_Ti = sum(1 / (k * max(1e-10, (N_i - m * burst_size)))**2 for m in range(num_bursts_i))
         var_Tj = sum(1 / (k * max(1e-10, (N_j - m * burst_size)))**2 for m in range(num_bursts_j))
 
-    elif mechanism == 'random_normal_burst':
-        if mean_burst_size is None or mean_burst_size <= 0:
-            return np.inf, np.inf
-
-        num_bursts_i = max(0, (N_i - n_i) / mean_burst_size) - 1
-        num_bursts_j = max(0, (N_j - n_j) / mean_burst_size) - 1
-
-        if num_bursts_i < 1 or num_bursts_j < 1:
-            return 0.0, 0.0
-
-        mean_Ti = sum(1 / (k * max(1e-10, (N_i - m * mean_burst_size))) for m in range(int(np.floor(num_bursts_i))))
-        mean_Tj = sum(1 / (k * max(1e-10, (N_j - m * mean_burst_size))) for m in range(int(np.floor(num_bursts_j))))
-        var_Ti = sum(1 / (k * max(1e-10, (N_i - m * mean_burst_size)))**2 for m in range(int(np.floor(num_bursts_i))))
-        var_Tj = sum(1 / (k * max(1e-10, (N_j - m * mean_burst_size)))**2 for m in range(int(np.floor(num_bursts_j))))
-
     elif mechanism == 'time_varying_k':
         if k_1 is None:
             raise ValueError("k_1 must be provided for time_varying mechanism.")
@@ -99,24 +88,35 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, mean_
         mean_Ti, var_Ti = mom_time_varying_k(N_i, n_i, k, k_1)
         mean_Tj, var_Tj = mom_time_varying_k(N_j, n_j, k, k_1)
 
+    elif mechanism == 'feedback':
+        if feedbackSteepness is None or feedbackThreshold is None:
+            raise ValueError("Parameters 'a' and 'm_threshold' must be provided for the feedback mechanism.")
+
+        def mom_feedback(N, n, k, feedbackSteepness, feedbackThreshold):
+            mean_T = 0.0
+            var_T = 0.0
+            for m in range(int(n) + 1, int(N) + 1):
+                #W_m = 1 / (1 + np.exp(feedbackSteepness * (m - feedbackThreshold)))
+                E_tau_m = (1 + np.exp(feedbackSteepness * (m - feedbackThreshold))) / m
+                mean_T += E_tau_m
+                var_T += E_tau_m**2
+            mean_T /= k
+            var_T /= k**2
+            return mean_T, var_T
+        
+        mean_Ti, var_Ti = mom_feedback(N_i, n_i, k, feedbackSteepness, feedbackThreshold)
+        mean_Tj, var_Tj = mom_feedback(N_j, n_j, k, feedbackSteepness, feedbackThreshold)
+
     else:
-        raise ValueError("Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst' or 'time_varying_k'.")
+        raise ValueError("Mechanism must be 'simple', 'fixed_burst', 'time_varying_k', or 'feedback'.")
 
     mean_X = mean_Ti - mean_Tj
     var_X = var_Ti + var_Tj
     return mean_X, var_X
 
-def compute_pdf_mom(mechanism, x_grid, n_i, N_i, n_j, N_j, k, burst_size=None, mean_burst_size=None, var_burst_size=None, k_1=None):
-    mean_X, var_X = compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size, mean_burst_size, var_burst_size, k_1)
+def compute_pdf_mom(mechanism, x_grid, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=None, feedbackSteepness=None, feedbackThreshold=None):
+    mean_X, var_X = compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=burst_size, k_1=k_1, feedbackSteepness=feedbackSteepness, feedbackThreshold=feedbackThreshold)
     if np.isinf(mean_X) or np.isinf(var_X):
         return np.full_like(x_grid, 1e-10)  # Small positive value to avoid log(0)
-    if mechanism == 'simple':
-        return norm.pdf(x_grid, loc=mean_X, scale=np.sqrt(var_X))
-    elif mechanism == 'fixed_burst':
-        return norm.pdf(x_grid, loc=mean_X, scale=np.sqrt(var_X))
-    elif mechanism == 'random_normal_burst':
-        return norm.pdf(x_grid, loc=mean_X, scale=np.sqrt(var_X))
-    elif mechanism == 'time_varying_k':
-        return norm.pdf(x_grid, loc=mean_X, scale=np.sqrt(var_X))
     else:
-        raise ValueError("Mechanism must be 'simple', 'fixed_burst', or 'random_normal_burst'.")
+        return norm.pdf(x_grid, loc=mean_X, scale=np.sqrt(var_X))
