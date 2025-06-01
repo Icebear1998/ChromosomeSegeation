@@ -5,15 +5,123 @@ from scipy.stats import norm
 from MoMCalculations import compute_pdf_mom
 import math
 
-def wildtype_objective(vars_, mechanism_, data12, data32):
-    n2, N2, k, r21, r23, R21, R23, burst_size = vars_
-    n1 = max(r21 * n2, 1)
-    N1 = max(R21 * N2, 1)
-    n3 = max(r23 * n2, 1)
-    N3 = max(R23 * N2, 1)
 
-    # Validate inputs
-    if burst_size <= 0 or N1 <= 0 or N2 <= 0 or N3 <= 0 or k <= 0:
+def get_mechanism_info(mechanism):
+    """
+    Get mechanism-specific parameter information.
+    
+    Args:
+        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', or 'feedback'
+    
+    Returns:
+        dict: Contains parameter names, bounds, and default indices
+    """
+    # Common wild-type parameters
+    common_params = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23']
+    common_bounds = [
+        (3, 25),      # n2 - reduced upper bound to ensure n < N constraints
+        (100, 500),   # N2 - increased lower bound for better ratio
+        (0.005, 0.4), # k
+        (0.3, 2.0),   # r21 - reduced upper bound to prevent n1 > N1
+        (0.3, 2.0),   # r23 - reduced upper bound to prevent n3 > N3
+        (0.5, 2.5),   # R21 - increased lower bound for better N1/n1 ratio
+        (0.5, 5.0),   # R23 - increased lower bound for better N3/n3 ratio
+    ]
+    
+    if mechanism == 'simple':
+        mechanism_params = []
+        mechanism_bounds = []
+    elif mechanism == 'fixed_burst':
+        mechanism_params = ['burst_size']
+        mechanism_bounds = [(1, 15)]
+    elif mechanism == 'time_varying_k':
+        mechanism_params = ['k_1']
+        mechanism_bounds = [(0.0001, 0.01)]
+    elif mechanism == 'feedback':
+        mechanism_params = ['feedbackSteepness', 'feedbackThreshold']
+        mechanism_bounds = [(0.01, 0.1), (50, 150)]
+    else:
+        raise ValueError(f"Unknown mechanism: {mechanism}")
+    
+    all_params = common_params + mechanism_params
+    all_bounds = common_bounds + mechanism_bounds
+    
+    return {
+        'params': all_params,
+        'bounds': all_bounds,
+        'common_count': len(common_params),
+        'mechanism_count': len(mechanism_params)
+    }
+
+
+def compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params):
+    """
+    Compute PDF for any mechanism with appropriate parameters.
+    """
+    if mechanism == 'simple':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k)
+    elif mechanism == 'fixed_burst':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k, 
+                             burst_size=mech_params['burst_size'])
+    elif mechanism == 'time_varying_k':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k, 
+                             k_1=mech_params['k_1'])
+    elif mechanism == 'feedback':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                             feedbackSteepness=mech_params['feedbackSteepness'],
+                             feedbackThreshold=mech_params['feedbackThreshold'])
+    else:
+        raise ValueError(f"Unknown mechanism: {mechanism}")
+
+
+def unpack_wildtype_parameters(params, mechanism_info):
+    """
+    Unpack wild-type optimization parameters based on mechanism.
+    """
+    param_dict = {}
+    param_names = mechanism_info['params']
+    
+    for i, name in enumerate(param_names):
+        param_dict[name] = params[i]
+    
+    # Derived wild-type parameters
+    param_dict['n1'] = max(param_dict['r21'] * param_dict['n2'], 1)
+    param_dict['n3'] = max(param_dict['r23'] * param_dict['n2'], 1)
+    param_dict['N1'] = max(param_dict['R21'] * param_dict['N2'], 1)
+    param_dict['N3'] = max(param_dict['R23'] * param_dict['N2'], 1)
+    
+    return param_dict
+
+
+def wildtype_objective(vars_, mechanism, mechanism_info, data12, data32):
+    """
+    Wild-type objective function for any mechanism.
+    """
+    # Unpack parameters
+    param_dict = unpack_wildtype_parameters(vars_, mechanism_info)
+    
+    # Validate constraints: n_i < N_i for all chromosomes
+    if param_dict['n1'] >= param_dict['N1']:
+        return np.inf
+    if param_dict['n2'] >= param_dict['N2']:
+        return np.inf
+    if param_dict['n3'] >= param_dict['N3']:
+        return np.inf
+    
+    # Extract mechanism-specific parameters
+    mech_params = {}
+    if mechanism == 'fixed_burst':
+        mech_params['burst_size'] = param_dict['burst_size']
+    elif mechanism == 'time_varying_k':
+        mech_params['k_1'] = param_dict['k_1']
+    elif mechanism == 'feedback':
+        mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
+        mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
+
+    # Validate mechanism-specific inputs
+    if mechanism == 'fixed_burst' and mech_params['burst_size'] <= 0:
+        return np.inf
+    if param_dict['k'] <= 0:
         return np.inf
 
     # Sample sizes
@@ -24,166 +132,175 @@ def wildtype_objective(vars_, mechanism_, data12, data32):
     weight = 1.0
 
     # Chrom1–Chrom2
-    pdf12 = compute_pdf_mom(mechanism_, data12, n1, N1, n2, N2, k, burst_size)
+    pdf12 = compute_pdf_for_mechanism(mechanism, data12, param_dict['n1'], param_dict['N1'], 
+                                     param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
     log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
-    pdf32 = compute_pdf_mom(mechanism_, data32, n3, N3, n2, N2, k, burst_size)
+    pdf32 = compute_pdf_for_mechanism(mechanism, data32, param_dict['n3'], param_dict['N3'], 
+                                     param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
     log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
-###############################################################################
-# 3) Objective functions for mutants
-###############################################################################
-# Threshold mutant (optimize alpha for n1, n2, n3)
 
-def threshold_objective(vars_, mechanism_, data12, data32, params_baseline):
-    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, burst_size = params_baseline
+def threshold_objective(vars_, mechanism, data12, data32, params_baseline):
+    """
+    Threshold mutant objective function for any mechanism.
+    """
+    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, mech_params = params_baseline
     alpha = vars_[0]
     n1 = max(n1_wt * alpha, 1)
     n2 = max(n2_wt * alpha, 1)
     n3 = max(n3_wt * alpha, 1)
 
-    # Validate inputs
-    if burst_size <= 0 or N1_wt <= 0 or N2_wt <= 0 or N3_wt <= 0 or k_wt <= 0 or alpha <= 0:
+    # Validate constraints
+    if n1 >= N1_wt or n2 >= N2_wt or n3 >= N3_wt:
+        return np.inf
+    if alpha <= 0 or k_wt <= 0:
         return np.inf
 
     # Sample sizes
     n12 = len(data12)
     n32 = len(data32)
-
-    # Weight (adjustable, default 1.0)
     weight = 1.0
 
     # Chrom1–Chrom2
-    pdf12 = compute_pdf_mom(mechanism_, data12, n1, N1_wt, n2, N2_wt, k_wt, burst_size)
+    pdf12 = compute_pdf_for_mechanism(mechanism, data12, n1, N1_wt, n2, N2_wt, k_wt, mech_params)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
     log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
-    pdf32 = compute_pdf_mom(mechanism_, data32, n3, N3_wt, n2, N2_wt, k_wt, burst_size)
+    pdf32 = compute_pdf_for_mechanism(mechanism, data32, n3, N3_wt, n2, N2_wt, k_wt, mech_params)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
     log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
-# Degradation rate mutant (optimize beta_k for k)
 
-def degrate_objective(vars_, mechanism_, data12, data32, params_baseline):
-    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, burst_size = params_baseline
+def degrate_objective(vars_, mechanism, data12, data32, params_baseline):
+    """
+    Degradation rate mutant objective function for any mechanism.
+    """
+    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, mech_params = params_baseline
     beta_k = vars_[0]
     k = max(beta_k * k_wt, 0.001)
     if (beta_k * k_wt < 0.001):
         print("Warning: k is too small, setting to 0.001")
 
     # Validate inputs
-    if burst_size <= 0 or N1_wt <= 0 or N2_wt <= 0 or N3_wt <= 0 or k <= 0:
+    if k <= 0:
         return np.inf
 
     # Sample sizes
     n12 = len(data12)
     n32 = len(data32)
-
-    # Weight (adjustable, default 1.0)
     weight = 1.0
 
     # Chrom1–Chrom2
-    pdf12 = compute_pdf_mom(mechanism_, data12, n1_wt, N1_wt, n2_wt, N2_wt, k, burst_size)
+    pdf12 = compute_pdf_for_mechanism(mechanism, data12, n1_wt, N1_wt, n2_wt, N2_wt, k, mech_params)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
     log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
-    pdf32 = compute_pdf_mom(mechanism_, data32, n3_wt, N3_wt, n2_wt, N2_wt, k, burst_size)
+    pdf32 = compute_pdf_for_mechanism(mechanism, data32, n3_wt, N3_wt, n2_wt, N2_wt, k, mech_params)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
     log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
-# Initial proteins mutant (optimize gamma for N1, N2, N3)
 
-def initial_proteins_objective(vars_, mechanism_, data12, data32, params_baseline):
-    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, burst_size = params_baseline
+def initial_proteins_objective(vars_, mechanism, data12, data32, params_baseline):
+    """
+    Initial proteins mutant objective function for any mechanism.
+    """
+    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, mech_params = params_baseline
     gamma = vars_[0]
     N1 = max(N1_wt * gamma, 1)
     N2 = max(N2_wt * gamma, 1)
     N3 = max(N3_wt * gamma, 1)
 
-    # Validate inputs
-    if burst_size <= 0 or n1_wt <= 0 or n2_wt <= 0 or n3_wt <= 0 or N1 <= 0 or N2 <= 0 or N3 <= 0 or k_wt <= 0 or gamma <= 0:
+    # Validate constraints
+    if n1_wt >= N1 or n2_wt >= N2 or n3_wt >= N3:
+        return np.inf
+    if gamma <= 0 or k_wt <= 0:
         return np.inf
 
     # Sample sizes
     n12 = len(data12)
     n32 = len(data32)
-
-    # Weight (adjustable, default 1.0)
     weight = 1.0
 
     # Chrom1–Chrom2
-    pdf12 = compute_pdf_mom(mechanism_, data12, n1_wt, N1, n2_wt, N2, k_wt, burst_size)
+    pdf12 = compute_pdf_for_mechanism(mechanism, data12, n1_wt, N1, n2_wt, N2, k_wt, mech_params)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
     log_likelihood12 = np.sum(np.log(pdf12)) / n12
 
     # Chrom3–Chrom2
-    pdf32 = compute_pdf_mom(mechanism_, data32, n3_wt, N3, n2_wt, N2, k_wt, burst_size)
+    pdf32 = compute_pdf_for_mechanism(mechanism, data32, n3_wt, N3, n2_wt, N2, k_wt, mech_params)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
     log_likelihood32 = np.sum(np.log(pdf32)) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
-###############################################################################
-# 4) Helper function to get rounded parameters
-###############################################################################
 
-def get_rounded_parameters(params):
-    n2, N2, k, r21, r23, R21, R23, burst_size = params
-    n1 = max(r21 * n2, 1)
-    n3 = max(r23 * n2, 1)
-    N1 = max(R21 * N2, 1)
-    N3 = max(R23 * N2, 1)
-    burst_size = max(burst_size, 1)
-    # Round n1, n2, n3, N1, N2, N3 to 1 decimal, k to 3 decimals
-    return (
-        round(n1, 1),
-        round(n2, 1),
-        round(n3, 1),
-        round(N1, 1),
-        round(N2, 1),
-        round(N3, 1),
-        round(k, 3),
-        round(burst_size, 1)
-    )
+def get_rounded_parameters(params, mechanism_info):
+    """
+    Get rounded parameters for display/comparison.
+    """
+    param_dict = unpack_wildtype_parameters(params, mechanism_info)
+    
+    rounded = {}
+    # Round n and N values to 1 decimal
+    for key in ['n1', 'n2', 'n3', 'N1', 'N2', 'N3']:
+        rounded[key] = round(param_dict[key], 1)
+    
+    # Round k to 3 decimals
+    rounded['k'] = round(param_dict['k'], 3)
+    
+    # Round other parameters to 2 decimals
+    for key in param_dict:
+        if key not in rounded:
+            rounded[key] = round(param_dict[key], 2)
+    
+    return tuple(rounded.values())
 
-###############################################################################
-# 5) Helper class for bounded steps in basinhopping
-###############################################################################
 
 class BoundedStep:
+    """Helper class for bounded steps in basinhopping."""
     def __init__(self, bounds, stepsize=0.5):
         self.bounds = np.array(bounds)
         self.stepsize = stepsize
 
     def __call__(self, x):
-        x_new = x + np.random.uniform(-self.stepsize,
-                                      self.stepsize, size=x.shape)
+        x_new = x + np.random.uniform(-self.stepsize, self.stepsize, size=x.shape)
         return np.clip(x_new, self.bounds[:, 0], self.bounds[:, 1])
 
-###############################################################################
-# 6) Main function for optimization
-###############################################################################
 
 def main():
+    # ========== MECHANISM CONFIGURATION ==========
+    # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback'
+    mechanism = 'fixed_burst'  # Change this to test different mechanisms
+    
+    print(f"Independent optimization for mechanism: {mechanism}")
+    
+    # Get mechanism-specific information
+    mechanism_info = get_mechanism_info(mechanism)
+    wt_bounds = mechanism_info['bounds']
+    
+    print(f"Wild-type parameters to optimize: {mechanism_info['params']}")
+    print(f"Number of wild-type parameters: {len(mechanism_info['params'])}")
+
     # a) Read data
     df = pd.read_excel("Data/All_strains_SCStimes.xlsx")
     data_wt12 = df['wildtype12'].dropna().values
@@ -195,30 +312,17 @@ def main():
     data_initial12 = df['initialProteins12'].dropna().values
     data_initial32 = df['initialProteins32'].dropna().values
 
-    # b) Define parameter bounds for wild-type optimization
-    wt_bounds = [
-        (1, 30),     # n2
-        (80, 500),   # N2
-        (0.005, 0.4),  # k
-        (0.3, 2.5),  # r21
-        (0.3, 2.5),  # r23
-        (0.4, 2.5),  # R21
-        (0.4, 5.0),  # R23
-        (1, 10)      # burst_size
-    ]
-
     # c) Global optimization for wild-type to find top 5 solutions
     population_solutions = []
-    mechanism = 'fixed_burst'
 
     def callback(xk, convergence):
         population_solutions.append(
-            (wildtype_objective(xk, mechanism, data_wt12, data_wt32), xk.copy()))
+            (wildtype_objective(xk, mechanism, mechanism_info, data_wt12, data_wt32), xk.copy()))
 
     result = differential_evolution(
         wildtype_objective,
         bounds=wt_bounds,
-        args=(mechanism, data_wt12, data_wt32),
+        args=(mechanism, mechanism_info, data_wt12, data_wt32),
         strategy='best1bin',
         maxiter=2000,
         popsize=15,
@@ -232,7 +336,7 @@ def main():
     top_5_solutions = []
     seen_parameters = set()
     for nll, params in population_solutions:
-        rounded_params = get_rounded_parameters(params)
+        rounded_params = get_rounded_parameters(params, mechanism_info)
         if rounded_params not in seen_parameters:
             top_5_solutions.append((nll, params))
             seen_parameters.add(rounded_params)
@@ -240,21 +344,27 @@ def main():
                 break
 
     if len(top_5_solutions) < 5:
-        print(
-            f"Warning: Only {len(top_5_solutions)} distinct solutions found after rounding.")
+        print(f"Warning: Only {len(top_5_solutions)} distinct solutions found after rounding.")
 
     print("\nTop 5 Wild-Type Solutions from Differential Evolution:")
     for i, (nll, params) in enumerate(top_5_solutions):
-        n2, N2, k, r21, r23, R21, R23, burst_size = params
-        n1 = max(r21 * n2, 1)
-        n3 = max(r23 * n2, 1)
-        N1 = max(R21 * N2, 1)
-        N3 = max(R23 * N2, 1)
+        param_dict = unpack_wildtype_parameters(params, mechanism_info)
         print(f"Solution {i+1}: Negative Log-Likelihood = {nll:.4f}")
-        print(
-            f"Parameters: n2 = {n2:.2f}, N2 = {N2:.2f}, k = {k:.4f}, r21 = {r21:.2f}, r23 = {r23:.2f}, R21 = {R21:.2f}, R23 = {R23:.2f}, burst_size = {burst_size:.2f}")
-        print(
-            f"Derived: n1 = {n1:.2f}, n3 = {n3:.2f}, N1 = {N1:.2f}, N3 = {N3:.2f}")
+        
+        # Print common parameters
+        print(f"Parameters: n2 = {param_dict['n2']:.2f}, N2 = {param_dict['N2']:.2f}, k = {param_dict['k']:.4f}")
+        print(f"Ratios: r21 = {param_dict['r21']:.2f}, r23 = {param_dict['r23']:.2f}, R21 = {param_dict['R21']:.2f}, R23 = {param_dict['R23']:.2f}")
+        
+        # Print mechanism-specific parameters
+        if mechanism == 'fixed_burst':
+            print(f"Burst size = {param_dict['burst_size']:.2f}")
+        elif mechanism == 'time_varying_k':
+            print(f"k_1 = {param_dict['k_1']:.4f}")
+        elif mechanism == 'feedback':
+            print(f"Feedback steepness = {param_dict['feedbackSteepness']:.3f}, threshold = {param_dict['feedbackThreshold']:.1f}")
+        
+        print(f"Derived: n1 = {param_dict['n1']:.2f}, n3 = {param_dict['n3']:.2f}, N1 = {param_dict['N1']:.2f}, N3 = {param_dict['N3']:.2f}")
+        print()
 
     # d) Local optimization to refine top 5 wild-type solutions
     refined_wt_solutions = []
@@ -262,7 +372,7 @@ def main():
         result_local = minimize(
             wildtype_objective,
             x0=params,
-            args=(mechanism, data_wt12, data_wt32),
+            args=(mechanism, mechanism_info, data_wt12, data_wt32),
             method='L-BFGS-B',
             bounds=wt_bounds,
             options={'disp': False}
@@ -278,22 +388,30 @@ def main():
         return
 
     # e) Optimize mutants for each top 5 wild-type solution using basinhopping
-    n_mutant_bound = [(0.1, 1.0)]       # For alpha
-    degrate_bound = [(0.1, 1.0)]      # For beta_k
-    N_mutant_bound = [(0.01, 1.0)]     # For gamma
+    n_mutant_bound = [(0.2, 0.9)]       # For alpha - constrained to ensure n*alpha < N
+    degrate_bound = [(0.2, 0.9)]        # For beta_k
+    N_mutant_bound = [(0.1, 0.9)]       # For gamma - constrained to ensure n < N*gamma
 
     overall_results = []
     for wt_idx, (wt_nll, wt_params) in enumerate(refined_wt_solutions[:5]):
-        n2_wt, N2_wt, k, r21, r23, R21, R23, burst_size = wt_params
-        n1_wt = max(r21 * n2_wt, 1)
-        N1_wt = max(R21 * N2_wt, 1)
-        n3_wt = max(r23 * n2_wt, 1)
-        N3_wt = max(R23 * N2_wt, 1)
-        params_baseline = (n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k, burst_size)
+        param_dict = unpack_wildtype_parameters(wt_params, mechanism_info)
+        
+        # Extract mechanism-specific parameters
+        mech_params = {}
+        if mechanism == 'fixed_burst':
+            mech_params['burst_size'] = param_dict['burst_size']
+        elif mechanism == 'time_varying_k':
+            mech_params['k_1'] = param_dict['k_1']
+        elif mechanism == 'feedback':
+            mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
+            mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
+        
+        params_baseline = (param_dict['n1'], param_dict['n2'], param_dict['n3'], 
+                          param_dict['N1'], param_dict['N2'], param_dict['N3'], 
+                          param_dict['k'], mech_params)
 
         # Compute unweighted wild-type NLL for reporting
-        wt_nll_unweighted = - \
-            wildtype_objective(wt_params, mechanism, data_wt12, data_wt32)
+        wt_nll_unweighted = -wildtype_objective(wt_params, mechanism, mechanism_info, data_wt12, data_wt32)
 
         # Threshold mutant
         minimizer_kwargs = {
@@ -303,7 +421,7 @@ def main():
         }
         result_threshold = basinhopping(
             threshold_objective,
-            x0=np.array([1.0]),
+            x0=np.array([0.5]),
             minimizer_kwargs=minimizer_kwargs,
             niter=100,
             T=1.0,
@@ -314,10 +432,8 @@ def main():
         if result_threshold.lowest_optimization_result.success:
             threshold_nll = result_threshold.lowest_optimization_result.fun
             alpha = result_threshold.lowest_optimization_result.x[0]
-            # Compute unweighted NLL for reporting
-            threshold_nll_unweighted = - \
-                threshold_objective([alpha], mechanism, data_threshold12,
-                                    data_threshold32, params_baseline)
+            threshold_nll_unweighted = -threshold_objective([alpha], mechanism, data_threshold12,
+                                data_threshold32, params_baseline)
         else:
             threshold_nll = np.inf
             alpha = np.nan
@@ -331,7 +447,7 @@ def main():
         }
         result_degrate = basinhopping(
             degrate_objective,
-            x0=np.array([1.0]),
+            x0=np.array([0.5]),
             minimizer_kwargs=minimizer_kwargs,
             niter=100,
             T=1.0,
@@ -342,10 +458,8 @@ def main():
         if result_degrate.lowest_optimization_result.success:
             degrate_nll = result_degrate.lowest_optimization_result.fun
             beta_k = result_degrate.lowest_optimization_result.x[0]
-            # Compute unweighted NLL for reporting
-            degrate_nll_unweighted = - \
-                degrate_objective([beta_k], mechanism, data_degrate12,
-                                  data_degrate32, params_baseline)
+            degrate_nll_unweighted = -degrate_objective([beta_k], mechanism, data_degrate12,
+                              data_degrate32, params_baseline)
         else:
             degrate_nll = np.inf
             beta_k = np.nan
@@ -359,7 +473,7 @@ def main():
         }
         result_initial = basinhopping(
             initial_proteins_objective,
-            x0=np.array([1.0]),
+            x0=np.array([0.5]),
             minimizer_kwargs=minimizer_kwargs,
             niter=100,
             T=1.0,
@@ -370,10 +484,8 @@ def main():
         if result_initial.lowest_optimization_result.success:
             initial_nll = result_initial.lowest_optimization_result.fun
             gamma = result_initial.lowest_optimization_result.x[0]
-            # Compute unweighted NLL for reporting
-            initial_nll_unweighted = - \
-                initial_proteins_objective(
-                    [gamma], mechanism, data_initial12, data_initial32, params_baseline)
+            initial_nll_unweighted = -initial_proteins_objective(
+                [gamma], mechanism, data_initial12, data_initial32, params_baseline)
         else:
             initial_nll = np.inf
             gamma = np.nan
@@ -403,36 +515,47 @@ def main():
     best_result = overall_results[0]
 
     print("\nBest Overall Solution:")
-    print(
-        f"Total Negative Log-Likelihood (Weighted): {best_result['total_nll']:.4f}")
-    print(
-        f"Total Negative Log-Likelihood (Unweighted): {best_result['total_nll_unweighted']:.4f}")
+    print(f"Mechanism: {mechanism}")
+    print(f"Total Negative Log-Likelihood (Weighted): {best_result['total_nll']:.4f}")
+    print(f"Total Negative Log-Likelihood (Unweighted): {best_result['total_nll_unweighted']:.4f}")
     print(f"Wild-Type Negative Log-Likelihood: {best_result['wt_nll']:.4f}")
-    n2, N2, k, r21, r23, R21, R23, burst_size = best_result['wt_params']
-    n1 = max(r21 * n2, 1)
-    N1 = max(R21 * N2, 1)
-    n3 = max(r23 * n2, 1)
-    N3 = max(R23 * N2, 1)
-    print(f"Wild-Type Parameters: n1 = {n1:.2f}, n2 = {n2:.2f}, n3 = {n3:.2f}, "
-          f"N1 = {N1:.2f}, N2 = {N2:.2f}, N3 = {N3:.2f}, k = {k:.4f}, burst_size = {burst_size:.2f}")
-    print(f"Threshold Mutant: NLL = {best_result['threshold_nll']:.4f}, "
-          f"alpha = {best_result['alpha']:.2f}")
-    print(f"Degradation Rate Mutant: NLL = {best_result['degrate_nll']:.4f}, "
-          f"beta_k = {best_result['beta_k']:.2f}")
-    print(f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, "
-          f"gamma = {best_result['gamma']:.2f}")
+    
+    param_dict = unpack_wildtype_parameters(best_result['wt_params'], mechanism_info)
+    print(f"Wild-Type Parameters: n1 = {param_dict['n1']:.2f}, n2 = {param_dict['n2']:.2f}, n3 = {param_dict['n3']:.2f}")
+    print(f"                     N1 = {param_dict['N1']:.2f}, N2 = {param_dict['N2']:.2f}, N3 = {param_dict['N3']:.2f}, k = {param_dict['k']:.4f}")
+    
+    if mechanism == 'fixed_burst':
+        print(f"                     burst_size = {param_dict['burst_size']:.2f}")
+    elif mechanism == 'time_varying_k':
+        print(f"                     k_1 = {param_dict['k_1']:.4f}")
+    elif mechanism == 'feedback':
+        print(f"                     feedbackSteepness = {param_dict['feedbackSteepness']:.3f}, feedbackThreshold = {param_dict['feedbackThreshold']:.1f}")
+    
+    print(f"Threshold Mutant: NLL = {best_result['threshold_nll']:.4f}, alpha = {best_result['alpha']:.2f}")
+    print(f"Degradation Rate Mutant: NLL = {best_result['degrate_nll']:.4f}, beta_k = {best_result['beta_k']:.2f}")
+    print(f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma = {best_result['gamma']:.2f}")
 
     # g) Save optimized parameters to a text file
-    with open("optimized_parameters_IndeBurst.txt", "w") as f:
+    filename = f"optimized_parameters_independent_{mechanism}.txt"
+    with open(filename, "w") as f:
+        f.write(f"# Mechanism: {mechanism}\n")
         f.write("# Wild-Type Parameters\n")
-        f.write(f"n1: {n1:.6f}\n")
-        f.write(f"n2: {n2:.6f}\n")
-        f.write(f"n3: {n3:.6f}\n")
-        f.write(f"N1: {N1:.6f}\n")
-        f.write(f"N2: {N2:.6f}\n")
-        f.write(f"N3: {N3:.6f}\n")
-        f.write(f"k: {k:.6f}\n")
-        f.write(f"burst_size: {burst_size:.6f}\n")
+        f.write(f"n1: {param_dict['n1']:.6f}\n")
+        f.write(f"n2: {param_dict['n2']:.6f}\n")
+        f.write(f"n3: {param_dict['n3']:.6f}\n")
+        f.write(f"N1: {param_dict['N1']:.6f}\n")
+        f.write(f"N2: {param_dict['N2']:.6f}\n")
+        f.write(f"N3: {param_dict['N3']:.6f}\n")
+        f.write(f"k: {param_dict['k']:.6f}\n")
+        
+        if mechanism == 'fixed_burst':
+            f.write(f"burst_size: {param_dict['burst_size']:.6f}\n")
+        elif mechanism == 'time_varying_k':
+            f.write(f"k_1: {param_dict['k_1']:.6f}\n")
+        elif mechanism == 'feedback':
+            f.write(f"feedbackSteepness: {param_dict['feedbackSteepness']:.6f}\n")
+            f.write(f"feedbackThreshold: {param_dict['feedbackThreshold']:.6f}\n")
+        
         f.write(f"wt_nll: {best_result['wt_nll']:.6f}\n")
         f.write("# Mutant Parameters\n")
         f.write(f"alpha: {best_result['alpha']:.6f}\n")
@@ -442,7 +565,9 @@ def main():
         f.write(f"degrate_nll: {best_result['degrate_nll']:.6f}\n")
         f.write(f"initial_nll: {best_result['initial_nll']:.6f}\n")
         f.write(f"total_nll: {best_result['total_nll_unweighted']:.6f}\n")
-    print("Optimized parameters saved to optimized_parameters_IndeUpdate.txt")
+    
+    print(f"Optimized parameters saved to {filename}")
+
 
 if __name__ == "__main__":
     main()
