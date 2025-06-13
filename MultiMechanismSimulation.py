@@ -1,6 +1,7 @@
 import numpy as np
 import warnings
 
+
 class MultiMechanismSimulation:
     """
     A simulation class for modeling cohesin degradation during chromosome segregation
@@ -8,11 +9,11 @@ class MultiMechanismSimulation:
     (bursty degradation with fixed burst size and Poisson timing) models.
     Issues a warning if simulation time exceeds max_time instead of stopping early.
     """
-    
+
     def __init__(self, mechanism, initial_state_list, rate_params, n0_list, max_time):
         """
         Initialize the simulation.
-        
+
         Args:
             mechanism (str): 'simple' or 'fixed_burst'.
             initial_state_list (list): Initial cohesin counts [N1, N2, N3].
@@ -30,13 +31,15 @@ class MultiMechanismSimulation:
         self.times = [0]
         self.states = [initial_state_list.copy()]
         self.separate_times = [None, None, None]
-        
+
         # Validate mechanism and parameters
-        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback']:
-            raise ValueError("Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback'.")
+        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback']:
+            raise ValueError(
+                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback'.")
         if self.mechanism == 'fixed_burst' and 'burst_size' not in rate_params:
-            raise ValueError("Fixed burst mechanism requires 'lambda_list' and 'burst_size' in rate_params.")
-    
+            raise ValueError(
+                "Fixed burst mechanism requires 'lambda_list' and 'burst_size' in rate_params.")
+
     def _simulate_simple(self):
         """
         Simulate the Simple Model: gradual, independent cohesin degradation.
@@ -45,17 +48,18 @@ class MultiMechanismSimulation:
         """
         while True:
             # Calculate propensities: rate of degradation for each chromosome
-            propensities = [self.rate_params['k'] * self.state[i] for i in range(3)]
+            propensities = [self.rate_params['k'] * self.state[i]
+                            for i in range(3)]
             total_propensity = sum(propensities)
-            
+
             # Stop if no further degradation possible or all thresholds reached
             if total_propensity <= 0 or all(t is not None for t in self.separate_times):
                 break
-            
+
             # Time to next degradation event
             tau = np.random.exponential(1 / total_propensity)
             self.time += tau
-            
+
             # Choose which chromosome's cohesin degrades
             r = np.random.uniform(0, total_propensity)
             cumulative_propensity = 0
@@ -64,16 +68,16 @@ class MultiMechanismSimulation:
                 if r < cumulative_propensity:
                     self.state[i] -= 1
                     break
-            
+
             # Record time and state
             self.times.append(self.time)
             self.states.append(self.state.copy())
-            
+
             # Check for separation times
             for i in range(3):
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
-    
+
     def _simulate_k_change(self):
         """
         Simulate the time-varying degradation model with k(t) = k_0 + k_1 t.
@@ -88,15 +92,15 @@ class MultiMechanismSimulation:
             # Calculate propensities: rate of degradation for each chromosome
             propensities = [k_t * self.state[i] for i in range(3)]
             total_propensity = sum(propensities)
-            
+
             # Stop if no further degradation possible or all thresholds reached
             if total_propensity <= 0 or all(t is not None for t in self.separate_times):
                 break
-            
+
             # Time to next degradation event
             tau = np.random.exponential(1 / total_propensity)
             self.time += tau
-            
+
             # Choose which chromosome's cohesin degrades
             r = np.random.uniform(0, total_propensity)
             cumulative_propensity = 0
@@ -105,16 +109,16 @@ class MultiMechanismSimulation:
                 if r < cumulative_propensity:
                     self.state[i] -= 1
                     break
-            
+
             # Record time and state
             self.times.append(self.time)
             self.states.append(self.state.copy())
-            
+
             # Check for separation times
             for i in range(3):
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
-    
+
     def _simulate_fixed_burst(self):
         """
         Simulate the Fixed Burst Sizes Model: cohesins degrade in bursts of size b
@@ -124,17 +128,18 @@ class MultiMechanismSimulation:
         burst_size = self.rate_params['burst_size']
         while True:
             # Calculate propensities: rate of bursts, proportional to remaining cohesins
-            propensities = [self.rate_params['k'] * self.state[i] for i in range(3)]
+            propensities = [self.rate_params['k'] * self.state[i]
+                            for i in range(3)]
             total_propensity = sum(propensities)
-            
+
             # Stop if no further bursts possible or all thresholds reached
             if total_propensity <= 0 or all(t is not None for t in self.separate_times):
                 break
-            
+
             # Time to next burst
             tau = np.random.exponential(1 / total_propensity)
             self.time += tau
-            
+
             # Choose which chromosome experiences a burst
             r = np.random.uniform(0, total_propensity)
             cumulative_propensity = 0
@@ -144,11 +149,11 @@ class MultiMechanismSimulation:
                     # Remove burst_size cohesins, but not below 0
                     self.state[i] = max(0, self.state[i] - burst_size)
                     break
-            
+
             # Record time and state
             self.times.append(self.time)
             self.states.append(self.state.copy())
-            
+
             # Check for separation times
             for i in range(3):
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
@@ -163,17 +168,18 @@ class MultiMechanismSimulation:
         """
         while True:
             # Calculate propensities: rate of bursts, proportional to remaining cohesins
-            propensities = [self.rate_params['k'] * max(self.state[i], 0) for i in range(3)]
+            propensities = [self.rate_params['k'] *
+                            max(self.state[i], 0) for i in range(3)]
             total_propensity = sum(propensities)
-            
+
             # Stop if no further bursts possible or all thresholds reached
             if total_propensity <= 0 or all(t is not None for t in self.separate_times):
                 break
-                
+
             # Time to next burst
             tau = np.random.exponential(1 / total_propensity)
             self.time += tau
-            
+
             # Choose which chromosome experiences a burst
             r = np.random.uniform(0, total_propensity)
             cumulative_propensity = 0
@@ -181,20 +187,21 @@ class MultiMechanismSimulation:
                 cumulative_propensity += propensities[i]
                 if r < cumulative_propensity:
                     # Remove burst_size cohesins, but not below 0, drawn from normal distribution
-                    burst_size = max(np.random.normal(self.rate_params['burst_size'], np.sqrt(self.rate_params['var_burst_size'])), 0)
+                    burst_size = max(np.random.normal(self.rate_params['burst_size'], np.sqrt(
+                        self.rate_params['var_burst_size'])), 0)
                     self.state[i] = max(0, self.state[i] - burst_size)
                     break
-            
+
             # Record time and state
             self.times.append(self.time)
             self.states.append(self.state.copy())
-            
+
             # Check for separation times
             for i in range(3):
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
-    
-    def _simulate_feedback(self):
+
+    def _simulate_feedbackLinear(self):
         """
         Simulate the Feedback Model: cohesin degradation with feedback mechanism.
         Each cohesin degrades at a rate k_i * W(state[i]) * state[i], reducing state[i] by 1.
@@ -206,8 +213,7 @@ class MultiMechanismSimulation:
             propensities = []
             for i in range(3):
                 m = self.state[i]
-                # Compute W(m) = 1 / (1 + e^(a * (m - m_threshold)))
-                W_m = 1 / (1 + np.exp(self.rate_params['feedbackSteepness'] * (m - self.rate_params['feedbackThreshold'])))
+                W_m = 1 - self.rate_params['w' + str(i+1)]*m
                 propensity = self.rate_params['k'] * W_m * m
                 propensities.append(propensity)
             total_propensity = sum(propensities)
@@ -237,12 +243,57 @@ class MultiMechanismSimulation:
             for i in range(3):
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
-    
+
+    def _simulate_feedback(self):
+        """
+        Simulate the Feedback Model: cohesin degradation with feedback mechanism.
+        Each cohesin degrades at a rate k_i * W(state[i]) * state[i], reducing state[i] by 1.
+        W(m) is a sigmoidal function increasing as m decreases, reflecting reduced blocking.
+        Continues until all chromosomes reach threshold or propensities are zero.
+        """
+        while True:
+            # Calculate propensities: rate of degradation for each chromosome
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                # Compute W(m) = 1 / (1 + e^(a * (m - m_threshold)))
+                W_m = 1 / (1 + np.exp(self.rate_params['feedbackSteepness'] * (
+                    m - self.rate_params['feedbackThreshold'])))
+                propensity = self.rate_params['k'] * W_m * m
+                propensities.append(propensity)
+            total_propensity = sum(propensities)
+
+            # Stop if no further degradation possible or all thresholds reached
+            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
+                break
+
+            # Time to next degradation event
+            tau = np.random.exponential(1 / total_propensity)
+            self.time += tau
+
+            # Choose which chromosome's cohesin degrades
+            r = np.random.uniform(0, total_propensity)
+            cumulative_propensity = 0
+            for i in range(3):
+                cumulative_propensity += propensities[i]
+                if r < cumulative_propensity:
+                    self.state[i] -= 1
+                    break
+
+            # Record time and state
+            self.times.append(self.time)
+            self.states.append(self.state.copy())
+
+            # Check for separation times
+            for i in range(3):
+                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                    self.separate_times[i] = self.time
+
     def simulate(self):
         """
         Run the simulation based on the specified mechanism.
         Issues a warning if final simulation time exceeds max_time.
-        
+
         Returns:
             tuple: (times, states, separate_times)
                 - times: List of event times.
@@ -255,7 +306,7 @@ class MultiMechanismSimulation:
         self.times = [0]
         self.states = [self.initial_state_list.copy()]
         self.separate_times = [None, None, None]
-        
+
         # Run appropriate simulation
         if self.mechanism == 'simple':
             self._simulate_simple()
@@ -267,7 +318,9 @@ class MultiMechanismSimulation:
             self._simulate_k_change()
         elif self.mechanism == 'feedback':
             self._simulate_feedback()
-        
+        elif self.mechanism == 'feedback_linear':
+            self._simulate_feedbackLinear()
+
         # Issue warning if simulation time exceeds max_time
         if self.time > self.max_time:
             warnings.warn(
@@ -277,10 +330,10 @@ class MultiMechanismSimulation:
                 f"rate_params={self.rate_params}, "
                 f"n0_list={self.n0_list}"
             )
-        
+
         # Set unset separation times to final simulation time
         for i in range(3):
             if self.separate_times[i] is None:
                 self.separate_times[i] = self.time
-        
+
         return self.times, self.states, self.separate_times
