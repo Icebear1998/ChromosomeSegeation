@@ -15,10 +15,11 @@ class MultiMechanismSimulation:
         Initialize the simulation.
 
         Args:
-            mechanism (str): 'simple' or 'fixed_burst'.
+            mechanism (str): 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback', or 'fixed_burst_feedback_linear'.
             initial_state_list (list): Initial cohesin counts [N1, N2, N3].
             rate_params (dict): For 'simple': {'k_list': [k1, k2, k3]}.
                                For 'fixed_burst': {'lambda_list': [lambda1, lambda2, lambda3], 'burst_size': b}.
+                               For 'fixed_burst_feedback_linear': {'k': k, 'burst_size': b, 'w1': w1, 'w2': w2, 'w3': w3}.
             n0_list (list): Threshold counts [n01, n02, n03].
             max_time (float): Maximum expected simulation time.
         """
@@ -33,12 +34,18 @@ class MultiMechanismSimulation:
         self.separate_times = [None, None, None]
 
         # Validate mechanism and parameters
-        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback']:
+        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback', 'fixed_burst_feedback_linear']:
             raise ValueError(
-                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback'.")
+                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback', or 'fixed_burst_feedback_linear'.")
         if self.mechanism == 'fixed_burst' and 'burst_size' not in rate_params:
             raise ValueError(
                 "Fixed burst mechanism requires 'lambda_list' and 'burst_size' in rate_params.")
+        if self.mechanism == 'fixed_burst_feedback_linear':
+            required_params = ['k', 'burst_size', 'w1', 'w2', 'w3']
+            missing_params = [param for param in required_params if param not in rate_params]
+            if missing_params:
+                raise ValueError(
+                    f"Fixed burst feedback linear mechanism requires {required_params} in rate_params. Missing: {missing_params}")
 
     def _simulate_simple(self):
         """
@@ -289,6 +296,53 @@ class MultiMechanismSimulation:
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
 
+    def _simulate_fixed_burst_feedback_linear(self):
+        """
+        Simulate the Fixed Burst with Feedback Linear Model: cohesins degrade in bursts of size b
+        at rates modified by linear feedback effects.
+        The rate for each chromosome i is k * (1 - w_i * state[i]) * state[i].
+        Continues until all chromosomes reach threshold or propensities are zero.
+        """
+        burst_size = self.rate_params['burst_size']
+        while True:
+            # Calculate propensities: rate of bursts with feedback effect
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                W_m = 1 - self.rate_params['w' + str(i+1)] * m
+                if W_m <= 0:  # Ensure positive rate
+                    W_m = 1e-10
+                propensity = self.rate_params['k'] * W_m * m
+                propensities.append(propensity)
+            total_propensity = sum(propensities)
+
+            # Stop if no further bursts possible or all thresholds reached
+            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
+                break
+
+            # Time to next burst
+            tau = np.random.exponential(1 / total_propensity)
+            self.time += tau
+
+            # Choose which chromosome experiences a burst
+            r = np.random.uniform(0, total_propensity)
+            cumulative_propensity = 0
+            for i in range(3):
+                cumulative_propensity += propensities[i]
+                if r < cumulative_propensity:
+                    # Remove burst_size cohesins, but not below 0
+                    self.state[i] = max(0, self.state[i] - burst_size)
+                    break
+
+            # Record time and state
+            self.times.append(self.time)
+            self.states.append(self.state.copy())
+
+            # Check for separation times
+            for i in range(3):
+                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                    self.separate_times[i] = self.time
+
     def simulate(self):
         """
         Run the simulation based on the specified mechanism.
@@ -320,6 +374,8 @@ class MultiMechanismSimulation:
             self._simulate_feedback()
         elif self.mechanism == 'feedback_linear':
             self._simulate_feedbackLinear()
+        elif self.mechanism == 'fixed_burst_feedback_linear':
+            self._simulate_fixed_burst_feedback_linear()
 
         # Issue warning if simulation time exceeds max_time
         if self.time > self.max_time:

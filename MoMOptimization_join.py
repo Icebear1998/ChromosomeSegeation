@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import differential_evolution, minimize
 from scipy.stats import norm
-from MoMCalculations import compute_moments_mom, compute_pdf_mom
+from MoMCalculations import compute_pdf_for_mechanism
 
 
 def unpack_parameters(params, mechanism_info):
@@ -31,42 +31,20 @@ def unpack_parameters(params, mechanism_info):
     return param_dict
 
 
-def compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params):
-    """
-    Compute PDF for any mechanism with appropriate parameters.
-
-    Args:
-        mechanism (str): Mechanism name
-        data (array): Data points
-        n_i, N_i, n_j, N_j, k: Common parameters
-        mech_params (dict): Mechanism-specific parameters
-
-    Returns:
-        array: PDF values
-    """
-    if mechanism == 'simple':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k)
-    elif mechanism == 'fixed_burst':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               burst_size=mech_params['burst_size'])
-    elif mechanism == 'time_varying_k':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               k_1=mech_params['k_1'])
-    elif mechanism == 'feedback':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               feedbackSteepness=mech_params['feedbackSteepness'],
-                               feedbackThreshold=mech_params['feedbackThreshold'])
-    elif mechanism == 'feedback_linear':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               w1=mech_params['w1'], w2=mech_params['w2'])
-    else:
-        raise ValueError(f"Unknown mechanism: {mechanism}")
-
-
 def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                    data_degrate12, data_degrate32, data_initial12, data_initial32):
+                    data_degrate12, data_degrate32, data_initial12, data_initial32, enforce_ratio_constraints=True):
     """
     Joint objective function for all mechanisms.
+    
+    Args:
+        params: Parameters to optimize
+        mechanism: Mechanism type
+        mechanism_info: Mechanism information
+        data_wt12, data_wt32: Wild-type data
+        data_threshold12, data_threshold32: Threshold mutant data
+        data_degrate12, data_degrate32: Degradation rate mutant data
+        data_initial12, data_initial32: Initial proteins mutant data
+        enforce_ratio_constraints: Whether to enforce the ratio constraints for feedback linear model
     """
     # Unpack parameters
     param_dict = unpack_parameters(params, mechanism_info)
@@ -106,33 +84,97 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
         mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
     elif mechanism == 'feedback_linear':
-        mech_params['w1'] = param_dict['w1']
-        mech_params['w2'] = param_dict['w2']
+        # For feedback linear model, enforce w_i < 1/N_i
+        w1 = param_dict['w1']
+        w2 = param_dict['w2']
+        w3 = param_dict['w3']
+        
+        # Return infinity if any w_i >= 1/N_i
+        if w1 >= 1/param_dict['N1'] or w2 >= 1/param_dict['N2'] or w3 >= 1/param_dict['N3']:
+            return np.inf
+            
+        # Add penalty terms for the new constraints if enabled
+        if enforce_ratio_constraints:
+            # We use a large penalty factor to ensure the constraints are satisfied
+            penalty_factor = 1000.0
+            
+            # Calculate the target ratio
+            target_ratio = (param_dict['N1']/param_dict['N2'])**(-1/3)
+            
+            # Calculate the actual ratios
+            actual_ratio1 = (1 - w1*param_dict['N1'])/(1 - w2*param_dict['N2'])
+            actual_ratio2 = (1 - w1*param_dict['N2'])/(1 - w2*param_dict['N3'])
+            
+            # Add squared differences as penalty terms
+            penalty1 = penalty_factor * (actual_ratio1 - target_ratio)**2
+            penalty2 = penalty_factor * (actual_ratio2 - target_ratio)**2
+            
+            # Store penalties to be added to total_nll later
+            mech_params['penalty1'] = penalty1
+            mech_params['penalty2'] = penalty2
+            
+        mech_params['w1'] = w1
+        mech_params['w2'] = w2
+        mech_params['w3'] = w3
+    elif mechanism == 'fixed_burst_feedback_linear':
+        # For fixed burst feedback linear model, enforce w_i < 1/N_i
+        w1 = param_dict['w1']
+        w2 = param_dict['w2']
+        w3 = param_dict['w3']
+        
+        # Return infinity if any w_i >= 1/N_i
+        if w1 >= 1/param_dict['N1'] or w2 >= 1/param_dict['N2'] or w3 >= 1/param_dict['N3']:
+            return np.inf
+            
+        # Add penalty terms for the new constraints if enabled
+        if enforce_ratio_constraints:
+            # We use a large penalty factor to ensure the constraints are satisfied
+            penalty_factor = 1000.0
+            
+            # Calculate the target ratio
+            target_ratio = (param_dict['N1']/param_dict['N2'])**(-1/3)
+            
+            # Calculate the actual ratios
+            actual_ratio1 = (1 - w1*param_dict['N1'])/(1 - w2*param_dict['N2'])
+            actual_ratio2 = (1 - w1*param_dict['N2'])/(1 - w2*param_dict['N3'])
+            
+            # Add squared differences as penalty terms
+            penalty1 = penalty_factor * (actual_ratio1 - target_ratio)**2
+            penalty2 = penalty_factor * (actual_ratio2 - target_ratio)**2
+            
+            # Store penalties to be added to total_nll later
+            mech_params['penalty1'] = penalty1
+            mech_params['penalty2'] = penalty2
+            
+        mech_params['burst_size'] = param_dict['burst_size']
+        mech_params['w1'] = w1
+        mech_params['w2'] = w2
+        mech_params['w3'] = w3
 
     total_nll = 0.0
 
     # Wild-Type (Chrom1–Chrom2 and Chrom3–Chrom2)
     pdf_wt12 = compute_pdf_for_mechanism(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params)
+                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_wt12)) / len(data_wt12)
 
     pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params)
+                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_wt32)) / len(data_wt32)
 
     # Threshold Mutant
     pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params)
+                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_th12)) / len(data_threshold12)
 
     pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params)
+                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_th32)) / len(data_threshold32)
@@ -143,29 +185,33 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         print("Warning: beta_k * k is less than 0.001, setting k_deg to 0.001")
 
     pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params)
+                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
     if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_deg12)) / len(data_degrate12)
 
     pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params)
+                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
     if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_deg32)) / len(data_degrate32)
 
     # Initial Proteins Mutant
     pdf_init12 = compute_pdf_for_mechanism(mechanism, data_initial12, param_dict['n1'], N1_init,
-                                           param_dict['n2'], N2_init, param_dict['k'], mech_params)
+                                           param_dict['n2'], N2_init, param_dict['k'], mech_params, pair12=True)
     if np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_init12)) / len(data_initial12)
 
     pdf_init32 = compute_pdf_for_mechanism(mechanism, data_initial32, param_dict['n3'], N3_init,
-                                           param_dict['n2'], N2_init, param_dict['k'], mech_params)
+                                           param_dict['n2'], N2_init, param_dict['k'], mech_params, pair12=False)
     if np.any(pdf_init32 <= 0) or np.any(np.isnan(pdf_init32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_init32)) / len(data_initial32)
+
+    # Add the penalty terms for the feedback linear model constraints if enabled
+    if mechanism in ['feedback_linear', 'fixed_burst_feedback_linear'] and enforce_ratio_constraints:
+        total_nll += mech_params['penalty1'] + mech_params['penalty2']
 
     return total_nll
 
@@ -192,32 +238,12 @@ def get_rounded_parameters(params, mechanism_info):
     return rounded
 
 
-def compute_moments_for_mechanism(mechanism, n_i, N_i, n_j, N_j, k, mech_params):
-    """
-    Compute moments for any mechanism with appropriate parameters.
-    """
-    if mechanism == 'simple':
-        return compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k)
-    elif mechanism == 'fixed_burst':
-        return compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k,
-                                   burst_size=mech_params['burst_size'])
-    elif mechanism == 'time_varying_k':
-        return compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k,
-                                   k_1=mech_params['k_1'])
-    elif mechanism == 'feedback':
-        return compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k,
-                                   feedbackSteepness=mech_params['feedbackSteepness'],
-                                   feedbackThreshold=mech_params['feedbackThreshold'])
-    else:
-        raise ValueError(f"Unknown mechanism: {mechanism}")
-
-
 def get_mechanism_info(mechanism):
     """
     Get mechanism-specific parameter information.
 
     Args:
-        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', or 'feedback'
+        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', or 'fixed_burst_feedback_linear'
 
     Returns:
         dict: Contains parameter names, bounds, and default indices
@@ -254,6 +280,23 @@ def get_mechanism_info(mechanism):
     elif mechanism == 'feedback':
         mechanism_params = ['feedbackSteepness', 'feedbackThreshold']
         mechanism_bounds = [(0.01, 0.1), (50, 150)]
+    elif mechanism == 'feedback_linear':
+        mechanism_params = ['w1', 'w2', 'w3']
+        # Set initial bounds that are likely to be valid
+        # These will be further constrained by the objective function
+        mechanism_bounds = [
+            (0.0001, 0.01),  # w1 - will be constrained by 1/N1
+            (0.0001, 0.01),  # w2 - will be constrained by 1/N2
+            (0.0001, 0.01),  # w3 - will be constrained by 1/N3
+        ]
+    elif mechanism == 'fixed_burst_feedback_linear':
+        mechanism_params = ['burst_size', 'w1', 'w2', 'w3']
+        mechanism_bounds = [
+            (1, 15),         # burst_size
+            (0.0001, 0.01),  # w1 - will be constrained by 1/N1
+            (0.0001, 0.01),  # w2 - will be constrained by 1/N2
+            (0.0001, 0.01),  # w3 - will be constrained by 1/N3
+        ]
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
 
@@ -271,10 +314,12 @@ def get_mechanism_info(mechanism):
 
 def main():
     # ========== MECHANISM CONFIGURATION ==========
-    # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback'
-    mechanism = 'time_varying_k'  # Change this to test different mechanisms
+    # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear'
+    mechanism = 'fixed_burst_feedback_linear'  # Change this to test different mechanisms
+    enforce_ratio_constraints = True  # Set to False to disable ratio constraints
 
     print(f"Optimizing for mechanism: {mechanism}")
+    print(f"Ratio constraints enforcement: {enforce_ratio_constraints}")
 
     # Get mechanism-specific information
     mechanism_info = get_mechanism_info(mechanism)
@@ -301,17 +346,19 @@ def main():
         population_solutions.append((joint_objective(xk, mechanism, mechanism_info, data_wt12, data_wt32,
                                                      data_threshold12, data_threshold32,
                                                      data_degrate12, data_degrate32,
-                                                     data_initial12, data_initial32), xk.copy()))
+                                                     data_initial12, data_initial32, enforce_ratio_constraints), xk.copy()))
 
     result = differential_evolution(
         joint_objective,
         bounds=bounds,
         args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-              data_degrate12, data_degrate32, data_initial12, data_initial32),
+              data_degrate12, data_degrate32, data_initial12, data_initial32, enforce_ratio_constraints),
         strategy='best1bin',
-        maxiter=300,
-        popsize=15,
-        tol=1e-6,
+        maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
+        popsize=30,         # Increased from 15 to maintain better population diversity
+        tol=1e-8,          # Decreased from 1e-6 for more precise convergence
+        mutation=(0.5, 1.0), # Added mutation range for better exploration
+        recombination=0.7,   # Added recombination rate
         disp=True,
         callback=callback
     )
@@ -352,6 +399,9 @@ def main():
         elif mechanism == 'feedback':
             print(
                 f"Feedback steepness = {param_dict['feedbackSteepness']:.3f}, threshold = {param_dict['feedbackThreshold']:.1f}")
+        elif mechanism == 'feedback_linear':
+            print(
+                f"Feedback linear w1 = {param_dict['w1']:.3f}, w2 = {param_dict['w2']:.3f}, w3 = {param_dict['w3']:.3f}")
 
         # Print mutant parameters
         print(
@@ -367,7 +417,7 @@ def main():
             joint_objective,
             x0=params,
             args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                  data_degrate12, data_degrate32, data_initial12, data_initial32),
+                  data_degrate12, data_degrate32, data_initial12, data_initial32, enforce_ratio_constraints),
             method='L-BFGS-B',
             bounds=bounds,
             options={'disp': False}
@@ -395,15 +445,24 @@ def main():
     elif mechanism == 'feedback':
         mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
         mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
+    elif mechanism == 'feedback_linear':
+        mech_params['w1'] = param_dict['w1']
+        mech_params['w2'] = param_dict['w2']
+        mech_params['w3'] = param_dict['w3']
+    elif mechanism == 'fixed_burst_feedback_linear':
+        mech_params['burst_size'] = param_dict['burst_size']
+        mech_params['w1'] = param_dict['w1']
+        mech_params['w2'] = param_dict['w2']
+        mech_params['w3'] = param_dict['w3']
 
     # Compute individual negative log-likelihoods for reporting
     wt_nll = 0
     pdf_wt12 = compute_pdf_for_mechanism(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params)
+                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if not (np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12))):
         wt_nll -= np.sum(np.log(pdf_wt12))
     pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params)
+                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if not (np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32))):
         wt_nll -= np.sum(np.log(pdf_wt32))
 
@@ -412,22 +471,22 @@ def main():
     n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
     n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
     pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params)
+                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if not (np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12))):
         threshold_nll -= np.sum(np.log(pdf_th12))
     pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params)
+                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if not (np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32))):
         threshold_nll -= np.sum(np.log(pdf_th32))
 
     degrate_nll = 0
     k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.001)
     pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params)
+                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
     if not (np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12))):
         degrate_nll -= np.sum(np.log(pdf_deg12))
     pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params)
+                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
     if not (np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32))):
         degrate_nll -= np.sum(np.log(pdf_deg32))
 
@@ -436,11 +495,11 @@ def main():
     N2_init = max(param_dict['N2'] * param_dict['gamma'], 1)
     N3_init = max(param_dict['N3'] * param_dict['gamma'], 1)
     pdf_init12 = compute_pdf_for_mechanism(mechanism, data_initial12, param_dict['n1'], N1_init,
-                                           param_dict['n2'], N2_init, param_dict['k'], mech_params)
+                                           param_dict['n2'], N2_init, param_dict['k'], mech_params, pair12=True)
     if not (np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12))):
         initial_nll -= np.sum(np.log(pdf_init12))
     pdf_init32 = compute_pdf_for_mechanism(mechanism, data_initial32, param_dict['n3'], N3_init,
-                                           param_dict['n2'], N2_init, param_dict['k'], mech_params)
+                                           param_dict['n2'], N2_init, param_dict['k'], mech_params, pair12=False)
     if not (np.any(pdf_init32 <= 0) or np.any(np.isnan(pdf_init32))):
         initial_nll -= np.sum(np.log(pdf_init32))
 
@@ -459,16 +518,22 @@ def main():
     print(
         f"Wild-Type Parameters: n1 = {param_dict['n1']:.2f}, n2 = {param_dict['n2']:.2f}, n3 = {param_dict['n3']:.2f}")
     print(
-        f"                     N1 = {param_dict['N1']:.2f}, N2 = {param_dict['N2']:.2f}, N3 = {param_dict['N3']:.2f}, k = {param_dict['k']:.4f}")
+        f"N1 = {param_dict['N1']:.2f}, N2 = {param_dict['N2']:.2f}, N3 = {param_dict['N3']:.2f}, k = {param_dict['k']:.4f}")
 
     if mechanism == 'fixed_burst':
         print(
-            f"                     burst_size = {param_dict['burst_size']:.2f}")
+            f"burst_size = {param_dict['burst_size']:.2f}")
     elif mechanism == 'time_varying_k':
-        print(f"                     k_1 = {param_dict['k_1']:.4f}")
+        print(f"k_1 = {param_dict['k_1']:.4f}")
     elif mechanism == 'feedback':
         print(
-            f"                     feedbackSteepness = {param_dict['feedbackSteepness']:.3f}, feedbackThreshold = {param_dict['feedbackThreshold']:.1f}")
+            f"feedbackSteepness = {param_dict['feedbackSteepness']:.3f}, feedbackThreshold = {param_dict['feedbackThreshold']:.1f}")
+    elif mechanism == 'feedback_linear':
+        print(
+            f"w1 = {param_dict['w1']:.3f}, w2 = {param_dict['w2']:.3f}, w3 = {param_dict['w3']:.3f}")
+    elif mechanism == 'fixed_burst_feedback_linear':
+        print(
+            f"burst_size = {param_dict['burst_size']:.2f}, w1 = {param_dict['w1']:.3f}, w2 = {param_dict['w2']:.3f}, w3 = {param_dict['w3']:.3f}")
 
     print(f"Threshold Mutant: alpha = {param_dict['alpha']:.2f}")
     print(f"Degradation Rate Mutant: beta_k = {param_dict['beta_k']:.2f}")
@@ -496,6 +561,15 @@ def main():
                 f"feedbackSteepness: {param_dict['feedbackSteepness']:.6f}\n")
             f.write(
                 f"feedbackThreshold: {param_dict['feedbackThreshold']:.6f}\n")
+        elif mechanism == 'feedback_linear':
+            f.write(f"w1: {param_dict['w1']:.6f}\n")
+            f.write(f"w2: {param_dict['w2']:.6f}\n")
+            f.write(f"w3: {param_dict['w3']:.6f}\n")
+        elif mechanism == 'fixed_burst_feedback_linear':
+            f.write(f"burst_size: {param_dict['burst_size']:.6f}\n")
+            f.write(f"w1: {param_dict['w1']:.6f}\n")
+            f.write(f"w2: {param_dict['w2']:.6f}\n")
+            f.write(f"w3: {param_dict['w3']:.6f}\n")
 
         f.write(f"wt_nll: {wt_nll:.6f}\n")
         f.write("# Mutant Parameters\n")

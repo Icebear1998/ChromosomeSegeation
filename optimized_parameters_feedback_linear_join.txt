@@ -1,0 +1,21 @@
+# Mechanism: feedback_linear
+# Wild-Type Parameters
+n1: 1.681835
+n2: 3.497198
+n3: 6.128925
+N1: 81.997733
+N2: 162.325256
+N3: 193.409450
+k: 0.036533
+w1: 0.000762
+w2: 0.001561
+w3: 0.003713
+wt_nll: 1158.797252
+# Mutant Parameters
+alpha: 0.709969
+beta_k: 0.633520
+gamma: 0.634322
+threshold_nll: 363.108248
+degrate_nll: 1315.437384
+initial_nll: 779.440895
+total_nll: 37.316863

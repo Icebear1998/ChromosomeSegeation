@@ -3,16 +3,53 @@ from scipy.stats import norm
 import math
 
 
+def compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params, pair12 = True):
+    """
+    Compute PDF for any mechanism with appropriate parameters.
+    """
+    if mechanism == 'simple':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k)
+    elif mechanism == 'fixed_burst':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               burst_size=mech_params['burst_size'])
+    elif mechanism == 'time_varying_k':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               k_1=mech_params['k_1'])
+    elif mechanism == 'feedback':
+        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               feedbackSteepness=mech_params['feedbackSteepness'],
+                               feedbackThreshold=mech_params['feedbackThreshold'])
+    elif mechanism == 'feedback_linear':
+        if pair12:
+            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               w1=mech_params['w1'], w2=mech_params['w2'])
+        else:
+            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               w1=mech_params['w3'], w2=mech_params['w2'])
+    elif mechanism == 'fixed_burst_feedback_linear':
+        if pair12:
+            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               burst_size=mech_params['burst_size'],
+                               w1=mech_params['w1'], w2=mech_params['w2'])
+        else:
+            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               burst_size=mech_params['burst_size'],
+                               w1=mech_params['w3'], w2=mech_params['w2'])
+    else:
+        raise ValueError(f"Unknown mechanism: {mechanism}")
+    
+
 def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=None, feedbackSteepness=None, feedbackThreshold=None, w1=None, w2=None):
     """
     Compute Method of Moments mean and variance for f_X = T_i - T_j.
 
     Args:
-        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback'.
+        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear'.
         n_i, n_j (float): Threshold cohesin counts for chromosomes i and j.
         N_i, N_j (float): Initial cohesin counts for chromosomes i and j.
         k (float): Degradation rates (k_i, k_j for simple; lambda_i, lambda_j for fixed_burst).
         burst_size (float, optional): Burst size b for fixed_burst mechanism.
+        w1, w2 (float, optional): Feedback parameters for feedback_linear mechanism.
 
     Returns:
         tuple: (mean_X, var_X) for f_X = T_i - T_j.
@@ -140,9 +177,59 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
         mean_Tj, var_Tj = mom_feedback(
             N_j, n_j, k, feedbackSteepness, feedbackThreshold)
 
+    elif mechanism == 'fixed_burst_feedback_linear':
+        if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
+            print("Invalid burst size")
+            return np.inf, np.inf
+        if w1 is None or w2 is None:
+            print(w1, w2)
+            raise ValueError(
+                "Parameters 'w1' and 'w2' must be provided for the feedback linear mechanism.")
+
+        # Ensure number of bursts is non-negative and valid
+        if N_i is None or N_j is None or math.isnan(N_i) or math.isnan(N_j) or burst_size is None:
+            print("N_i, N_j, n_i, n_j, burst_size", N_i, N_j, n_i, n_j, burst_size)
+        num_bursts_i = max(0, int(np.ceil((N_i - n_i) / burst_size)))
+        num_bursts_j = max(0, int(np.ceil((N_j - n_j) / burst_size)))
+
+        if num_bursts_i == 0 or num_bursts_j == 0:
+            return 0.0, 0.0
+
+        # Compute moments with both burst size and feedback effects
+        mean_Ti = 0.0
+        mean_Tj = 0.0
+        var_Ti = 0.0
+        var_Tj = 0.0
+
+        # For chromosome i
+        for m in range(num_bursts_i):
+            current_N = N_i - m * burst_size
+            W_m = 1 - w1 * current_N
+            if W_m <= 0:  # Ensure positive rate
+                return np.inf, np.inf
+            E_tau_m = 1 / (W_m * current_N)
+            mean_Ti += E_tau_m
+            var_Ti += E_tau_m**2
+
+        # For chromosome j
+        for m in range(num_bursts_j):
+            current_N = N_j - m * burst_size
+            W_m = 1 - w2 * current_N
+            if W_m <= 0:  # Ensure positive rate
+                return np.inf, np.inf
+            E_tau_m = 1 / (W_m * current_N)
+            mean_Tj += E_tau_m
+            var_Tj += E_tau_m**2
+
+        # Scale by degradation rate
+        mean_Ti /= k
+        mean_Tj /= k
+        var_Ti /= k**2
+        var_Tj /= k**2
+
     else:
         raise ValueError(
-            "Mechanism must be 'simple', 'fixed_burst', 'time_varying_k', or 'feedback'.")
+            "Mechanism must be 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', or 'fixed_burst_feedback_linear'.")
 
     mean_X = mean_Ti - mean_Tj
     var_X = var_Ti + var_Tj

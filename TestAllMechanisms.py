@@ -113,6 +113,17 @@ def compute_mom_parameters(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_param
             feedbackSteepness=mechanism_params['feedbackSteepness'],
             feedbackThreshold=mechanism_params['feedbackThreshold']
         )
+    elif mechanism == 'fixed_burst_feedback_linear':
+        mom_mean12, mom_var12 = compute_moments_mom(
+            'fixed_burst_feedback_linear', n1, N1, n2, N2, k, 
+            burst_size=mechanism_params['burst_size'],
+            w1=mechanism_params['w1'], w2=mechanism_params['w2']
+        )
+        mom_mean32, mom_var32 = compute_moments_mom(
+            'fixed_burst_feedback_linear', n3, N3, n2, N2, k,
+            burst_size=mechanism_params['burst_size'],
+            w1=mechanism_params['w3'], w2=mechanism_params['w2']
+        )
 
     return (mom_mean12, mom_var12), (mom_mean32, mom_var32)
 
@@ -166,6 +177,17 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
             'feedback', x_grid, n3, N3, n2, N2, k,
             feedbackSteepness=mechanism_params['feedbackSteepness'],
             feedbackThreshold=mechanism_params['feedbackThreshold']
+        )
+    elif mechanism == 'fixed_burst_feedback_linear':
+        pdf12 = compute_pdf_mom(
+            'fixed_burst_feedback_linear', x_grid, n1, N1, n2, N2, k,
+            burst_size=mechanism_params['burst_size'],
+            w1=mechanism_params['w1'], w2=mechanism_params['w2']
+        )
+        pdf32 = compute_pdf_mom(
+            'fixed_burst_feedback_linear', x_grid, n3, N3, n2, N2, k,
+            burst_size=mechanism_params['burst_size'],
+            w1=mechanism_params['w3'], w2=mechanism_params['w2']
         )
 
     return pdf12, pdf32
@@ -238,26 +260,32 @@ def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=Non
 if __name__ == "__main__":
     # ========== PARAMETER SPECIFICATION ==========
     # Common parameters for all mechanisms
-    N1, N2, N3 = 150, 200, 250  # Initial protein counts
-    n1, n2, n3 = 7, 10, 12      # Threshold protein counts
-    k = 0.05                     # Base degradation rate
+    N1, N2, N3 = 100, 150, 200  # Initial protein counts
+    n1, n2, n3 = 3, 5, 8      # Threshold protein counts
+    k = 0.01                     # Base degradation rate
 
     # Mechanism-specific parameters (optional - will use defaults if not specified)
     mechanism_params = {
         'simple': {},  # No additional parameters
         'fixed_burst': {'burst_size': 8},
         'time_varying_k': {'k_1': 0.005},
-        'feedback_linear': {'w1': 1/260, 'w2': 1/210, 'w3': 1/360},
-        'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120}
+        'feedback_linear': {'w1': 0.005591, 'w2': 0.004757, 'w3': 0.005733},
+        'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120},
+        'fixed_burst_feedback_linear': {
+            'burst_size': 3,
+            'w1': 1/110,
+            'w2': 1/160,
+            'w3': 1/210
+        }
     }
 
     # ========== TEST CONFIGURATION ==========
     # Specify which mechanism(s) to test:
-    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', or 'all'
-    mechanism = 'feedback_linear'  # Change this to test specific mechanisms
+    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear', or 'all'
+    mechanism = 'fixed_burst_feedback_linear'  # Change this to test specific mechanisms
 
     # ========== RUN TESTS ==========
     test_mom_matching(
         mechanism, n1, n2, n3, N1, N2, N3, k,
-        mechanism_params.get(mechanism), max_time=500, num_sim=1000
+        mechanism_params.get(mechanism), max_time=500, num_sim=2000
     )
