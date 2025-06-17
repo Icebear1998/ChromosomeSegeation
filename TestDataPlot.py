@@ -5,7 +5,6 @@ from MultiMechanismSimulation import MultiMechanismSimulation
 from MoMCalculations import compute_pdf_for_mechanism
 
 
-
 def build_rate_params(mechanism, k, mech_params):
     """
     Build rate_params dictionary for simulation based on mechanism.
@@ -108,7 +107,8 @@ def extract_mechanism_params(params, mechanism):
     elif mechanism == 'time_varying_k':
         mech_params['k_1'] = params.get('k_1', 0.001)
     elif mechanism == 'feedback':
-        mech_params['feedbackSteepness'] = params.get('feedbackSteepness', 0.04)
+        mech_params['feedbackSteepness'] = params.get(
+            'feedbackSteepness', 0.04)
         mech_params['feedbackThreshold'] = params.get('feedbackThreshold', 75)
     elif mechanism == 'feedback_linear':
         mech_params['w1'] = params.get('w1')
@@ -178,11 +178,14 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
 
     # Validate parameters
     if mechanism == 'time_varying_k' and mech_params['k_1'] <= 0:
-        raise ValueError("k_1 must be greater than 0 for time_varying_k mechanism.")
+        raise ValueError(
+            "k_1 must be greater than 0 for time_varying_k mechanism.")
     if mechanism == 'fixed_burst' and mech_params['burst_size'] <= 0:
-        raise ValueError("burst_size must be greater than 0 for fixed_burst mechanism.")
+        raise ValueError(
+            "burst_size must be greater than 0 for fixed_burst mechanism.")
 
-    print(f"Parameters: n1={n1:.1f}, n2={n2:.1f}, n3={n3:.1f}, N1={N1:.1f}, N2={N2:.1f}, N3={N3:.1f}, k={k:.4f}")
+    print(
+        f"Parameters: n1={n1:.1f}, n2={n2:.1f}, n3={n3:.1f}, N1={N1:.1f}, N2={N2:.1f}, N3={N3:.1f}, k={k:.4f}")
     if mech_params:
         print(f"Mechanism-specific: {mech_params}")
 
@@ -191,46 +194,55 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
     x_grid = np.linspace(x_min, x_max, 401)
 
     # Compute MoM PDFs
-    pdf12 = compute_pdf_for_mechanism(mechanism, x_grid, n1, N1, n2, N2, k, mech_params, pair12=True)
-    pdf32 = compute_pdf_for_mechanism(mechanism, x_grid, n3, N3, n2, N2, k, mech_params, pair12=False)
+    pdf12 = compute_pdf_for_mechanism(
+        mechanism, x_grid, n1, N1, n2, N2, k, mech_params, pair12=True)
+    pdf32 = compute_pdf_for_mechanism(
+        mechanism, x_grid, n3, N3, n2, N2, k, mech_params, pair12=False)
 
     # Run stochastic simulation
     print(f"Running {num_sim} simulations...")
-    delta_t12, delta_t32 = run_stochastic_simulation(mechanism, k, n1, n2, n3, N1, N2, N3, mech_params, num_sim=num_sim)
+    delta_t12, delta_t32 = run_stochastic_simulation(
+        mechanism, k, n1, n2, n3, N1, N2, N3, mech_params, num_sim=num_sim)
 
     # Create plots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     # Plot Chrom1 - Chrom2
-    ax1.hist(data12, bins=15, density=True, alpha=0.4, label='Experimental data')
-    ax1.hist(delta_t12, bins=15, density=True, alpha=0.4, label='Simulated data')
+    ax1.hist(data12, bins=15, density=True,
+             alpha=0.4, label='Experimental data')
+    ax1.hist(delta_t12, bins=15, density=True,
+             alpha=0.4, label='Simulated data')
     ax1.plot(x_grid, pdf12, 'r-', linewidth=2, label='MoM PDF')
     ax1.set_xlim(x_min - 20, x_max + 20)
     ax1.set_xlabel('Time Difference')
     ax1.set_ylabel('Density')
-    ax1.set_title(f"Chrom1 - Chrom2 ({dataset}, {mechanism.replace('_', ' ').title()})")
+    ax1.set_title(
+        f"Chrom1 - Chrom2 ({dataset}, {mechanism.replace('_', ' ').title()})")
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
     # Add statistics for Chrom1 - Chrom2
     stats_text12 = f'Exp: μ={np.mean(data12):.1f}, σ={np.std(data12):.1f}\nSim: μ={np.mean(delta_t12):.1f}, σ={np.std(delta_t12):.1f}'
-    ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes, 
+    ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     # Plot Chrom3 - Chrom2
-    ax2.hist(data32, bins=14, density=True, alpha=0.4, label='Experimental data')
-    ax2.hist(delta_t32, bins=14, density=True, alpha=0.4, label='Simulated data')
+    ax2.hist(data32, bins=14, density=True,
+             alpha=0.4, label='Experimental data')
+    ax2.hist(delta_t32, bins=14, density=True,
+             alpha=0.4, label='Simulated data')
     ax2.plot(x_grid, pdf32, 'r-', linewidth=2, label='MoM PDF')
     ax2.set_xlim(x_min - 20, x_max + 20)
     ax2.set_xlabel('Time Difference')
     ax2.set_ylabel('Density')
-    ax2.set_title(f"Chrom3 - Chrom2 ({dataset}, {mechanism.replace('_', ' ').title()})")
+    ax2.set_title(
+        f"Chrom3 - Chrom2 ({dataset}, {mechanism.replace('_', ' ').title()})")
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
     # Add statistics for Chrom3 - Chrom2
     stats_text32 = f'Exp: μ={np.mean(data32):.1f}, σ={np.std(data32):.1f}\nSim: μ={np.mean(delta_t32):.1f}, σ={np.std(delta_t32):.1f}'
-    ax2.text(0.02, 0.98, stats_text32, transform=ax2.transAxes, 
+    ax2.text(0.02, 0.98, stats_text32, transform=ax2.transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.tight_layout()
@@ -238,10 +250,14 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
 
     # Print some statistics
     print(f"\nStatistics for {dataset} dataset:")
-    print(f"Experimental data12 - Mean: {np.mean(data12):.2f}, Std: {np.std(data12):.2f}")
-    print(f"Simulated data12   - Mean: {np.mean(delta_t12):.2f}, Std: {np.std(delta_t12):.2f}")
-    print(f"Experimental data32 - Mean: {np.mean(data32):.2f}, Std: {np.std(data32):.2f}")
-    print(f"Simulated data32   - Mean: {np.mean(delta_t32):.2f}, Std: {np.std(delta_t32):.2f}")
+    print(
+        f"Experimental data12 - Mean: {np.mean(data12):.2f}, Std: {np.std(data12):.2f}")
+    print(
+        f"Simulated data12   - Mean: {np.mean(delta_t12):.2f}, Std: {np.std(delta_t12):.2f}")
+    print(
+        f"Experimental data32 - Mean: {np.mean(data32):.2f}, Std: {np.std(data32):.2f}")
+    print(
+        f"Simulated data32   - Mean: {np.mean(delta_t32):.2f}, Std: {np.std(delta_t32):.2f}")
 
 
 def plot_all_datasets(params_file, mechanism=None, num_sim=1000):
@@ -279,10 +295,10 @@ if __name__ == "__main__":
     # For independent optimization: "optimized_parameters_independent_{mechanism}.txt"
 
     # Change this to your parameter file
-    params_file = "optimized_parameters_fixed_burst_feedback_linear_join.txt"
+    params_file = "optimized_parameters_feedback_linear_independent.txt"
     # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear'
-    mechanism = 'fixed_burst_feedback_linear'
-    dataset = "wildtype"  # Choose: 'wildtype', 'threshold', 'degrate', 'initial'
+    mechanism = 'feedback_linear'
+    dataset = "degrate"  # Choose: 'wildtype', 'threshold', 'degrate', 'initial'
 
     # ========== SINGLE PLOT ==========
     # Plot single dataset

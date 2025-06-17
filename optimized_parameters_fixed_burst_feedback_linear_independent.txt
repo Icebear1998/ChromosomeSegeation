@@ -1,0 +1,22 @@
+# Mechanism: fixed_burst_feedback_linear
+# Wild-Type Parameters
+n1: 3.118395
+n2: 4.657568
+n3: 8.621461
+N1: 114.884767
+N2: 193.250624
+N3: 210.595081
+k: 0.026382
+burst_size: 2.854677
+w1: 0.000164
+w2: 0.000867
+w3: 0.004117
+wt_nll: -8.394719
+# Mutant Parameters
+alpha: 0.319418
+beta_k: 0.499302
+gamma: 0.176491
+threshold_nll: -9.399778
+degrate_nll: -9.870279
+initial_nll: -10.386241
+total_nll: -38.051016
