@@ -35,7 +35,7 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
                     data_degrate12, data_degrate32, data_initial12, data_initial32):
     """
     Joint objective function for all mechanisms.
-    
+
     Args:
         params: Parameters to optimize
         mechanism: Mechanism type
@@ -290,7 +290,7 @@ def main():
         maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
         popsize=30,         # Increased from 15 to maintain better population diversity
         tol=1e-8,          # Decreased from 1e-6 for more precise convergence
-        mutation=(0.5, 1.0), # Added mutation range for better exploration
+        mutation=(0.5, 1.0),  # Added mutation range for better exploration
         recombination=0.7,   # Added recombination rate
         disp=True,
         callback=callback

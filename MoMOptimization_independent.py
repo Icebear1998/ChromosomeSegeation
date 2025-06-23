@@ -27,7 +27,7 @@ def unpack_wildtype_parameters(params, mechanism_info):
 def wildtype_objective(vars_, mechanism, mechanism_info, data12, data32):
     """
     Wild-type objective function for any mechanism.
-    
+
     Args:
         vars_: Parameters to optimize
         mechanism: Mechanism type
@@ -346,7 +346,7 @@ def main():
         maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
         popsize=30,         # Increased from 15 to maintain better population diversity
         tol=1e-8,          # Decreased from 1e-6 for more precise convergence
-        mutation=(0.5, 1.0), # Added mutation range for better exploration
+        mutation=(0.5, 1.0),  # Added mutation range for better exploration
         recombination=0.7,   # Added recombination rate
         disp=True,
         callback=callback
@@ -388,7 +388,8 @@ def main():
             print(
                 f"Feedback steepness = {param_dict['feedbackSteepness']:.3f}, threshold = {param_dict['feedbackThreshold']:.1f}")
         elif mechanism == 'feedback_linear':
-            print(f"w1 = {param_dict['w1']:.4f}, w2 = {param_dict['w2']:.4f}, w3 = {param_dict['w3']:.4f}")
+            print(
+                f"w1 = {param_dict['w1']:.4f}, w2 = {param_dict['w2']:.4f}, w3 = {param_dict['w3']:.4f}")
 
         print(
             f"Derived: n1 = {param_dict['n1']:.2f}, n3 = {param_dict['n3']:.2f}, N1 = {param_dict['N1']:.2f}, N3 = {param_dict['N3']:.2f}")
