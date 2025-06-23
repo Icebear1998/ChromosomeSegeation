@@ -102,6 +102,20 @@ def compute_mom_parameters(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_param
         mom_mean32, mom_var32 = compute_moments_mom(
             'feedback_linear', n3, N3, n2, N2, k, w1=mechanism_params['w3'], w2=mechanism_params['w2']
         )
+    elif mechanism == 'feedback_onion':
+        mom_mean12, mom_var12 = compute_moments_mom(
+            'feedback_onion', n1, N1, n2, N2, k, n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+        )
+        mom_mean32, mom_var32 = compute_moments_mom(
+            'feedback_onion', n3, N3, n2, N2, k, n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+        )
+    elif mechanism == 'feedback_zipper':
+        mom_mean12, mom_var12 = compute_moments_mom(
+            'feedback_zipper', n1, N1, n2, N2, k, z1=mechanism_params['z1'], z2=mechanism_params['z2']
+        )
+        mom_mean32, mom_var32 = compute_moments_mom(
+            'feedback_zipper', n3, N3, n2, N2, k, z1=mechanism_params['z3'], z2=mechanism_params['z2']
+        )
     elif mechanism == 'feedback':
         mom_mean12, mom_var12 = compute_moments_mom(
             'feedback', n1, N1, n2, N2, k,
@@ -167,6 +181,20 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
         pdf32 = compute_pdf_mom(
             'feedback_linear', x_grid, n3, N3, n2, N2, k, w1=mechanism_params['w3'], w2=mechanism_params['w2']
         )
+    elif mechanism == 'feedback_onion':
+        pdf12 = compute_pdf_mom(
+            'feedback_onion', x_grid, n1, N1, n2, N2, k, n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+        )
+        pdf32 = compute_pdf_mom(
+            'feedback_onion', x_grid, n3, N3, n2, N2, k, n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+        )
+    elif mechanism == 'feedback_zipper':
+        pdf12 = compute_pdf_mom(
+            'feedback_zipper', x_grid, n1, N1, n2, N2, k, z1=mechanism_params['z1'], z2=mechanism_params['z2']
+        )
+        pdf32 = compute_pdf_mom(
+            'feedback_zipper', x_grid, n3, N3, n2, N2, k, z1=mechanism_params['z3'], z2=mechanism_params['z2']
+        )
     elif mechanism == 'feedback':
         pdf12 = compute_pdf_mom(
             'feedback', x_grid, n1, N1, n2, N2, k,
@@ -231,7 +259,7 @@ def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=Non
         f"Empirical Variance: {emp_var32:.4f}, MoM Variance: {mom_var32:.4f}")
 
     # Plot histograms with MoM PDF
-    x_min, x_max = (-200, 200)
+    x_min, x_max = (-240, 240)
     x_grid = np.linspace(x_min, x_max, 401)
     pdf12, pdf32 = compute_pdf_parameters(
         mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechanism_params
@@ -262,7 +290,7 @@ if __name__ == "__main__":
     # Common parameters for all mechanisms
     N1, N2, N3 = 100, 150, 200  # Initial protein counts
     n1, n2, n3 = 3, 5, 8      # Threshold protein counts
-    k = 0.01                     # Base degradation rate
+    k = 0.02                     # Base degradation rate
 
     # Mechanism-specific parameters (optional - will use defaults if not specified)
     mechanism_params = {
@@ -270,22 +298,24 @@ if __name__ == "__main__":
         'fixed_burst': {'burst_size': 8},
         'time_varying_k': {'k_1': 0.005},
         'feedback_linear': {'w1': 0.005591, 'w2': 0.004757, 'w3': 0.005733},
+        'feedback_onion': {'n_inner1': 10, 'n_inner2': 15, 'n_inner3': 20},
         'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120},
         'fixed_burst_feedback_linear': {
             'burst_size': 3,
             'w1': 1/110,
             'w2': 1/160,
             'w3': 1/210
-        }
+        },
+        'feedback_zipper': {'z1': 40, 'z2': 50, 'z3': 60}
     }
 
     # ========== TEST CONFIGURATION ==========
     # Specify which mechanism(s) to test:
-    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear', or 'all'
-    mechanism = 'fixed_burst_feedback_linear'  # Change this to test specific mechanisms
+    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'all'
+    mechanism = 'feedback_zipper'  # Change this to test specific mechanisms
 
     # ========== RUN TESTS ==========
     test_mom_matching(
         mechanism, n1, n2, n3, N1, N2, N3, k,
-        mechanism_params.get(mechanism), max_time=500, num_sim=2000
+        mechanism_params.get(mechanism), max_time=800, num_sim=2000
     )

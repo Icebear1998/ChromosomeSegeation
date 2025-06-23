@@ -15,11 +15,12 @@ class MultiMechanismSimulation:
         Initialize the simulation.
 
         Args:
-            mechanism (str): 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback', or 'fixed_burst_feedback_linear'.
+            mechanism (str): 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', or 'fixed_burst_feedback_linear'.
             initial_state_list (list): Initial cohesin counts [N1, N2, N3].
             rate_params (dict): For 'simple': {'k_list': [k1, k2, k3]}.
                                For 'fixed_burst': {'lambda_list': [lambda1, lambda2, lambda3], 'burst_size': b}.
                                For 'fixed_burst_feedback_linear': {'k': k, 'burst_size': b, 'w1': w1, 'w2': w2, 'w3': w3}.
+                               For 'feedback_onion': {'k': k, 'n_inner1': n_inner1, 'n_inner2': n_inner2, 'n_inner3': n_inner3}.
             n0_list (list): Threshold counts [n01, n02, n03].
             max_time (float): Maximum expected simulation time.
         """
@@ -34,9 +35,9 @@ class MultiMechanismSimulation:
         self.separate_times = [None, None, None]
 
         # Validate mechanism and parameters
-        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback', 'fixed_burst_feedback_linear']:
+        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', 'fixed_burst_feedback_linear']:
             raise ValueError(
-                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback', or 'fixed_burst_feedback_linear'.")
+                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', or 'fixed_burst_feedback_linear'.")
         if self.mechanism == 'fixed_burst' and 'burst_size' not in rate_params:
             raise ValueError(
                 "Fixed burst mechanism requires 'lambda_list' and 'burst_size' in rate_params.")
@@ -46,6 +47,18 @@ class MultiMechanismSimulation:
             if missing_params:
                 raise ValueError(
                     f"Fixed burst feedback linear mechanism requires {required_params} in rate_params. Missing: {missing_params}")
+        if self.mechanism == 'feedback_onion':
+            required_params = ['k', 'n_inner1', 'n_inner2', 'n_inner3']
+            missing_params = [param for param in required_params if param not in rate_params]
+            if missing_params:
+                raise ValueError(
+                    f"Feedback onion mechanism requires {required_params} in rate_params. Missing: {missing_params}")
+        if self.mechanism == 'feedback_zipper':
+            required_params = ['k', 'z1', 'z2', 'z3']
+            missing_params = [param for param in required_params if param not in rate_params]
+            if missing_params:
+                raise ValueError(
+                    f"Feedback zipper mechanism requires {required_params} in rate_params. Missing: {missing_params}")
 
     def _simulate_simple(self):
         """
@@ -343,6 +356,105 @@ class MultiMechanismSimulation:
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
 
+    def _simulate_feedback_onion(self):
+        """
+        Simulate the Feedback Onion Model: cohesin degradation with onion feedback mechanism.
+        Each cohesin degrades at a rate k * W(N_i) * state[i], reducing state[i] by 1.
+        W(N_i) = (N_i/n_inner)^(-1/3) for N_i > n_inner, W(N_i) = 1 for N_i <= n_inner.
+        Continues until all chromosomes reach threshold or propensities are zero.
+        """
+        while True:
+            # Calculate propensities: rate of degradation for each chromosome
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
+                n_inner = self.rate_params['n_inner' + str(i+1)]
+                
+                # Calculate W_m based on onion feedback mechanism
+                if N_i > n_inner:
+                    W_m = (N_i / n_inner) ** (-1/3)
+                else:
+                    W_m = 1.0
+                
+                propensity = self.rate_params['k'] * W_m * m
+                propensities.append(propensity)
+            total_propensity = sum(propensities)
+
+            # Stop if no further degradation possible or all thresholds reached
+            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
+                break
+
+            # Time to next degradation event
+            tau = np.random.exponential(1 / total_propensity)
+            self.time += tau
+
+            # Choose which chromosome's cohesin degrades
+            r = np.random.uniform(0, total_propensity)
+            cumulative_propensity = 0
+            for i in range(3):
+                cumulative_propensity += propensities[i]
+                if r < cumulative_propensity:
+                    self.state[i] -= 1
+                    break
+
+            # Record time and state
+            self.times.append(self.time)
+            self.states.append(self.state.copy())
+
+            # Check for separation times
+            for i in range(3):
+                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                    self.separate_times[i] = self.time
+
+    def _simulate_feedback_zipper(self):
+        """
+        Simulate the Feedback Zipper Model: cohesin degradation with zipper feedback mechanism.
+        Each cohesin degrades at a rate k * W(N_i) * state[i], reducing state[i] by 1.
+        W(N_i) = z_i / N_i where z_i is the feedback parameter for chromosome i.
+        Continues until all chromosomes reach threshold or propensities are zero.
+        """
+        while True:
+            # Calculate propensities: rate of degradation for each chromosome
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
+                z = self.rate_params['z' + str(i+1)]
+                
+                # Calculate W_m based on zipper feedback mechanism: W_m = z / N_i
+                W_m = z / N_i
+                
+                propensity = self.rate_params['k'] * W_m * m
+                propensities.append(propensity)
+            total_propensity = sum(propensities)
+
+            # Stop if no further degradation possible or all thresholds reached
+            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
+                break
+
+            # Time to next degradation event
+            tau = np.random.exponential(1 / total_propensity)
+            self.time += tau
+
+            # Choose which chromosome's cohesin degrades
+            r = np.random.uniform(0, total_propensity)
+            cumulative_propensity = 0
+            for i in range(3):
+                cumulative_propensity += propensities[i]
+                if r < cumulative_propensity:
+                    self.state[i] -= 1
+                    break
+
+            # Record time and state
+            self.times.append(self.time)
+            self.states.append(self.state.copy())
+
+            # Check for separation times
+            for i in range(3):
+                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                    self.separate_times[i] = self.time
+
     def simulate(self):
         """
         Run the simulation based on the specified mechanism.
@@ -374,6 +486,10 @@ class MultiMechanismSimulation:
             self._simulate_feedback()
         elif self.mechanism == 'feedback_linear':
             self._simulate_feedbackLinear()
+        elif self.mechanism == 'feedback_onion':
+            self._simulate_feedback_onion()
+        elif self.mechanism == 'feedback_zipper':
+            self._simulate_feedback_zipper()
         elif self.mechanism == 'fixed_burst_feedback_linear':
             self._simulate_fixed_burst_feedback_linear()
 

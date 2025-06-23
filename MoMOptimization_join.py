@@ -32,7 +32,7 @@ def unpack_parameters(params, mechanism_info):
 
 
 def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                    data_degrate12, data_degrate32, data_initial12, data_initial32, enforce_ratio_constraints=True):
+                    data_degrate12, data_degrate32, data_initial12, data_initial32):
     """
     Joint objective function for all mechanisms.
     
@@ -44,7 +44,6 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         data_threshold12, data_threshold32: Threshold mutant data
         data_degrate12, data_degrate32: Degradation rate mutant data
         data_initial12, data_initial32: Initial proteins mutant data
-        enforce_ratio_constraints: Whether to enforce the ratio constraints for feedback linear model
     """
     # Unpack parameters
     param_dict = unpack_parameters(params, mechanism_info)
@@ -84,72 +83,14 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
         mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
     elif mechanism == 'feedback_linear':
-        # For feedback linear model, enforce w_i < 1/N_i
-        w1 = param_dict['w1']
-        w2 = param_dict['w2']
-        w3 = param_dict['w3']
-        
-        # Return infinity if any w_i >= 1/N_i
-        if w1 >= 1/param_dict['N1'] or w2 >= 1/param_dict['N2'] or w3 >= 1/param_dict['N3']:
-            return np.inf
-            
-        # Add penalty terms for the new constraints if enabled
-        if enforce_ratio_constraints:
-            # We use a large penalty factor to ensure the constraints are satisfied
-            penalty_factor = 1000.0
-            
-            # Calculate the target ratio
-            target_ratio = (param_dict['N1']/param_dict['N2'])**(-1/3)
-            
-            # Calculate the actual ratios
-            actual_ratio1 = (1 - w1*param_dict['N1'])/(1 - w2*param_dict['N2'])
-            actual_ratio2 = (1 - w1*param_dict['N2'])/(1 - w2*param_dict['N3'])
-            
-            # Add squared differences as penalty terms
-            penalty1 = penalty_factor * (actual_ratio1 - target_ratio)**2
-            penalty2 = penalty_factor * (actual_ratio2 - target_ratio)**2
-            
-            # Store penalties to be added to total_nll later
-            mech_params['penalty1'] = penalty1
-            mech_params['penalty2'] = penalty2
-            
-        mech_params['w1'] = w1
-        mech_params['w2'] = w2
-        mech_params['w3'] = w3
+        mech_params['w1'] = param_dict['w1']
+        mech_params['w2'] = param_dict['w2']
+        mech_params['w3'] = param_dict['w3']
     elif mechanism == 'fixed_burst_feedback_linear':
-        # For fixed burst feedback linear model, enforce w_i < 1/N_i
-        w1 = param_dict['w1']
-        w2 = param_dict['w2']
-        w3 = param_dict['w3']
-        
-        # Return infinity if any w_i >= 1/N_i
-        if w1 >= 1/param_dict['N1'] or w2 >= 1/param_dict['N2'] or w3 >= 1/param_dict['N3']:
-            return np.inf
-            
-        # Add penalty terms for the new constraints if enabled
-        if enforce_ratio_constraints:
-            # We use a large penalty factor to ensure the constraints are satisfied
-            penalty_factor = 1000.0
-            
-            # Calculate the target ratio
-            target_ratio = (param_dict['N1']/param_dict['N2'])**(-1/3)
-            
-            # Calculate the actual ratios
-            actual_ratio1 = (1 - w1*param_dict['N1'])/(1 - w2*param_dict['N2'])
-            actual_ratio2 = (1 - w1*param_dict['N2'])/(1 - w2*param_dict['N3'])
-            
-            # Add squared differences as penalty terms
-            penalty1 = penalty_factor * (actual_ratio1 - target_ratio)**2
-            penalty2 = penalty_factor * (actual_ratio2 - target_ratio)**2
-            
-            # Store penalties to be added to total_nll later
-            mech_params['penalty1'] = penalty1
-            mech_params['penalty2'] = penalty2
-            
         mech_params['burst_size'] = param_dict['burst_size']
-        mech_params['w1'] = w1
-        mech_params['w2'] = w2
-        mech_params['w3'] = w3
+        mech_params['w1'] = param_dict['w1']
+        mech_params['w2'] = param_dict['w2']
+        mech_params['w3'] = param_dict['w3']
 
     total_nll = 0.0
 
@@ -209,10 +150,6 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         return np.inf
     total_nll -= np.sum(np.log(pdf_init32)) / len(data_initial32)
 
-    # Add the penalty terms for the feedback linear model constraints if enabled
-    if mechanism in ['feedback_linear', 'fixed_burst_feedback_linear'] and enforce_ratio_constraints:
-        total_nll += mech_params['penalty1'] + mech_params['penalty2']
-
     return total_nll
 
 
@@ -251,21 +188,21 @@ def get_mechanism_info(mechanism):
     # Common parameters for all mechanisms
     common_params = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23']
     common_bounds = [
-        (3, 25),      # n2 - reduced upper bound to ensure n < N constraints
-        (100, 500),   # N2 - increased lower bound for better ratio
+        (3, 50),      # n2
+        (100, 500),   # N2
         (0.005, 0.4),  # k
-        (0.3, 2.0),   # r21 - reduced upper bound to prevent n1 > N1
-        (0.3, 2.0),   # r23 - reduced upper bound to prevent n3 > N3
-        (0.5, 2.5),   # R21 - increased lower bound for better N1/n1 ratio
-        (0.5, 5.0),   # R23 - increased lower bound for better N3/n3 ratio
+        (0.3, 3.0),   # r21
+        (0.3, 3.0),   # r23
+        (0.5, 3.0),   # R21
+        (0.5, 5.0),   # R23
     ]
 
     # Mutant parameters (always present)
     mutant_params = ['alpha', 'beta_k', 'gamma']
     mutant_bounds = [
-        (0.2, 0.9),   # alpha - constrained to ensure n*alpha < N
-        (0.2, 0.9),   # beta_k
-        (0.1, 0.9),   # gamma - constrained to ensure n < N*gamma
+        (0.1, 0.9),   # alpha
+        (0.1, 0.9),   # beta_k
+        (0.1, 0.9),   # gamma
     ]
 
     if mechanism == 'simple':
@@ -282,20 +219,18 @@ def get_mechanism_info(mechanism):
         mechanism_bounds = [(0.01, 0.1), (50, 150)]
     elif mechanism == 'feedback_linear':
         mechanism_params = ['w1', 'w2', 'w3']
-        # Set initial bounds that are likely to be valid
-        # These will be further constrained by the objective function
         mechanism_bounds = [
-            (0.0001, 0.01),  # w1 - will be constrained by 1/N1
-            (0.0001, 0.01),  # w2 - will be constrained by 1/N2
-            (0.0001, 0.01),  # w3 - will be constrained by 1/N3
+            (0.0001, 0.02),  # w1
+            (0.0001, 0.02),  # w2
+            (0.0001, 0.02),  # w3
         ]
     elif mechanism == 'fixed_burst_feedback_linear':
         mechanism_params = ['burst_size', 'w1', 'w2', 'w3']
         mechanism_bounds = [
-            (1, 15),         # burst_size
-            (0.0001, 0.01),  # w1 - will be constrained by 1/N1
-            (0.0001, 0.01),  # w2 - will be constrained by 1/N2
-            (0.0001, 0.01),  # w3 - will be constrained by 1/N3
+            (1, 20),         # burst_size
+            (0.0001, 0.02),  # w1
+            (0.0001, 0.02),  # w2
+            (0.0001, 0.02),  # w3
         ]
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
@@ -315,11 +250,9 @@ def get_mechanism_info(mechanism):
 def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear'
-    mechanism = 'fixed_burst_feedback_linear'  # Change this to test different mechanisms
-    enforce_ratio_constraints = True  # Set to False to disable ratio constraints
+    mechanism = 'feedback_linear'  # Change this to test different mechanisms
 
     print(f"Optimizing for mechanism: {mechanism}")
-    print(f"Ratio constraints enforcement: {enforce_ratio_constraints}")
 
     # Get mechanism-specific information
     mechanism_info = get_mechanism_info(mechanism)
@@ -346,13 +279,13 @@ def main():
         population_solutions.append((joint_objective(xk, mechanism, mechanism_info, data_wt12, data_wt32,
                                                      data_threshold12, data_threshold32,
                                                      data_degrate12, data_degrate32,
-                                                     data_initial12, data_initial32, enforce_ratio_constraints), xk.copy()))
+                                                     data_initial12, data_initial32), xk.copy()))
 
     result = differential_evolution(
         joint_objective,
         bounds=bounds,
         args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-              data_degrate12, data_degrate32, data_initial12, data_initial32, enforce_ratio_constraints),
+              data_degrate12, data_degrate32, data_initial12, data_initial32),
         strategy='best1bin',
         maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
         popsize=30,         # Increased from 15 to maintain better population diversity
@@ -417,7 +350,7 @@ def main():
             joint_objective,
             x0=params,
             args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                  data_degrate12, data_degrate32, data_initial12, data_initial32, enforce_ratio_constraints),
+                  data_degrate12, data_degrate32, data_initial12, data_initial32),
             method='L-BFGS-B',
             bounds=bounds,
             options={'disp': False}
