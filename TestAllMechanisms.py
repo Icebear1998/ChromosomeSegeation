@@ -312,7 +312,7 @@ if __name__ == "__main__":
     # ========== TEST CONFIGURATION ==========
     # Specify which mechanism(s) to test:
     # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'all'
-    mechanism = 'feedback_zipper'  # Change this to test specific mechanisms
+    mechanism = 'feedback_onion'  # Change this to test specific mechanisms
 
     # ========== RUN TESTS ==========
     test_mom_matching(

@@ -1,0 +1,21 @@
+# Mechanism: feedback_onion
+# Wild-Type Parameters
+n1: 1.418939
+n2: 4.455737
+n3: 11.864234
+N1: 236.252921
+N2: 314.295544
+N3: 909.999852
+k: 0.110189
+n_inner1: 24.572964
+n_inner2: 17.550500
+n_inner3: 40.142611
+wt_nll: -8.378698
+# Mutant Parameters
+alpha: 0.500000
+beta_k: 0.458831
+gamma: 0.990000
+threshold_nll: -9.437415
+degrate_nll: -9.936954
+initial_nll: -10.630260
+total_nll: -38.383327

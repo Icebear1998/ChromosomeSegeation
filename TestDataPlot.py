@@ -27,6 +27,14 @@ def build_rate_params(mechanism, k, mech_params):
         rate_params = {'k': k}
         rate_params.update(mech_params)
         return rate_params
+    elif mechanism == 'feedback_onion':
+        rate_params = {'k': k}
+        rate_params.update(mech_params)
+        return rate_params
+    elif mechanism == 'feedback_zipper':
+        rate_params = {'k': k}
+        rate_params.update(mech_params)
+        return rate_params
     elif mechanism == 'fixed_burst_feedback_linear':
         rate_params = {'k': k}
         rate_params.update(mech_params)
@@ -114,6 +122,14 @@ def extract_mechanism_params(params, mechanism):
         mech_params['w1'] = params.get('w1')
         mech_params['w2'] = params.get('w2')
         mech_params['w3'] = params.get('w3')
+    elif mechanism == 'feedback_onion':
+        mech_params['n_inner1'] = params.get('n_inner1', 10)
+        mech_params['n_inner2'] = params.get('n_inner2', 15)
+        mech_params['n_inner3'] = params.get('n_inner3', 20)
+    elif mechanism == 'feedback_zipper':
+        mech_params['z1'] = params.get('z1', 40)
+        mech_params['z2'] = params.get('z2', 50)
+        mech_params['z3'] = params.get('z3', 60)
     elif mechanism == 'fixed_burst_feedback_linear':
         mech_params['burst_size'] = params.get('burst_size', 8)
         mech_params['w1'] = params.get('w1')
@@ -183,6 +199,14 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
     if mechanism == 'fixed_burst' and mech_params['burst_size'] <= 0:
         raise ValueError(
             "burst_size must be greater than 0 for fixed_burst mechanism.")
+    if mechanism == 'feedback_onion':
+        if any(mech_params[param] <= 0 for param in ['n_inner1', 'n_inner2', 'n_inner3']):
+            raise ValueError(
+                "n_inner parameters must be greater than 0 for feedback_onion mechanism.")
+    if mechanism == 'feedback_zipper':
+        if any(mech_params[param] <= 0 for param in ['z1', 'z2', 'z3']):
+            raise ValueError(
+                "z parameters must be greater than 0 for feedback_zipper mechanism.")
 
     print(
         f"Parameters: n1={n1:.1f}, n2={n2:.1f}, n3={n3:.1f}, N1={N1:.1f}, N2={N2:.1f}, N3={N3:.1f}, k={k:.4f}")
@@ -295,9 +319,9 @@ if __name__ == "__main__":
     # For independent optimization: "optimized_parameters_independent_{mechanism}.txt"
 
     # Change this to your parameter file
-    params_file = "optimized_parameters_fixed_burst_feedback_linear_joinConstrain.txt"
-    # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear'
-    mechanism = 'fixed_burst_feedback_linear'
+    params_file = "optimized_parameters_feedback_onion_independent.txt"
+    # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear'
+    mechanism = 'feedback_onion'
     dataset = "degrate"  # Choose: 'wildtype', 'threshold', 'degrate', 'initial'
 
     # ========== SINGLE PLOT ==========

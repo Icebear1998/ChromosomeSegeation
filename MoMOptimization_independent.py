@@ -58,6 +58,14 @@ def wildtype_objective(vars_, mechanism, mechanism_info, data12, data32):
         mech_params['w1'] = param_dict['w1']
         mech_params['w2'] = param_dict['w2']
         mech_params['w3'] = param_dict['w3']
+    elif mechanism == 'feedback_onion':
+        mech_params['n_inner1'] = param_dict['n_inner1']
+        mech_params['n_inner2'] = param_dict['n_inner2']
+        mech_params['n_inner3'] = param_dict['n_inner3']
+    elif mechanism == 'feedback_zipper':
+        mech_params['z1'] = param_dict['z1']
+        mech_params['z2'] = param_dict['z2']
+        mech_params['z3'] = param_dict['z3']
     elif mechanism == 'fixed_burst_feedback_linear':
         mech_params['burst_size'] = param_dict['burst_size']
         mech_params['w1'] = param_dict['w1']
@@ -248,7 +256,7 @@ def get_mechanism_info(mechanism):
     Get mechanism-specific parameter information.
 
     Args:
-        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', or 'fixed_burst_feedback_linear'
+        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', or 'fixed_burst_feedback_linear'
 
     Returns:
         dict: Contains parameter names, bounds, and default indices
@@ -284,6 +292,20 @@ def get_mechanism_info(mechanism):
             (0.0001, 0.02),  # w2
             (0.0001, 0.02),  # w3
         ]
+    elif mechanism == 'feedback_onion':
+        mechanism_params = ['n_inner1', 'n_inner2', 'n_inner3']
+        mechanism_bounds = [
+            (5, 50),   # n_inner1
+            (5, 50),   # n_inner2
+            (5, 50),   # n_inner3
+        ]
+    elif mechanism == 'feedback_zipper':
+        mechanism_params = ['z1', 'z2', 'z3']
+        mechanism_bounds = [
+            (10, 100),  # z1
+            (10, 100),  # z2
+            (10, 100),  # z3
+        ]
     elif mechanism == 'fixed_burst_feedback_linear':
         mechanism_params = ['burst_size', 'w1', 'w2', 'w3']
         mechanism_bounds = [
@@ -308,8 +330,8 @@ def get_mechanism_info(mechanism):
 
 def main():
     # ========== MECHANISM CONFIGURATION ==========
-    # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'fixed_burst_feedback_linear'
-    mechanism = 'feedback_linear'  # Change this to test different mechanisms
+    # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear'
+    mechanism = 'feedback_onion'  # Change this to test different mechanisms
 
     print(f"Independent optimization for mechanism: {mechanism}")
 
@@ -438,6 +460,14 @@ def main():
             mech_params['w1'] = param_dict['w1']
             mech_params['w2'] = param_dict['w2']
             mech_params['w3'] = param_dict['w3']
+        elif mechanism == 'feedback_onion':
+            mech_params['n_inner1'] = param_dict['n_inner1']
+            mech_params['n_inner2'] = param_dict['n_inner2']
+            mech_params['n_inner3'] = param_dict['n_inner3']
+        elif mechanism == 'feedback_zipper':
+            mech_params['z1'] = param_dict['z1']
+            mech_params['z2'] = param_dict['z2']
+            mech_params['z3'] = param_dict['z3']
         elif mechanism == 'fixed_burst_feedback_linear':
             mech_params['burst_size'] = param_dict['burst_size']
             mech_params['w1'] = param_dict['w1']
@@ -579,6 +609,12 @@ def main():
     elif mechanism == 'feedback_linear':
         print(
             f"w1 = {param_dict['w1']:.4f}, w2 = {param_dict['w2']:.4f}, w3 = {param_dict['w3']:.4f}")
+    elif mechanism == 'feedback_onion':
+        print(
+            f"n_inner1 = {param_dict['n_inner1']:.2f}, n_inner2 = {param_dict['n_inner2']:.2f}, n_inner3 = {param_dict['n_inner3']:.2f}")
+    elif mechanism == 'feedback_zipper':
+        print(
+            f"z1 = {param_dict['z1']:.2f}, z2 = {param_dict['z2']:.2f}, z3 = {param_dict['z3']:.2f}")
     elif mechanism == 'fixed_burst_feedback_linear':
         print(
             f"burst_size = {param_dict['burst_size']:.2f}, w1 = {param_dict['w1']:.4f}, w2 = {param_dict['w2']:.4f}, w3 = {param_dict['w3']:.4f}")
@@ -616,6 +652,14 @@ def main():
             f.write(f"w1: {param_dict['w1']:.6f}\n")
             f.write(f"w2: {param_dict['w2']:.6f}\n")
             f.write(f"w3: {param_dict['w3']:.6f}\n")
+        elif mechanism == 'feedback_onion':
+            f.write(f"n_inner1: {param_dict['n_inner1']:.6f}\n")
+            f.write(f"n_inner2: {param_dict['n_inner2']:.6f}\n")
+            f.write(f"n_inner3: {param_dict['n_inner3']:.6f}\n")
+        elif mechanism == 'feedback_zipper':
+            f.write(f"z1: {param_dict['z1']:.6f}\n")
+            f.write(f"z2: {param_dict['z2']:.6f}\n")
+            f.write(f"z3: {param_dict['z3']:.6f}\n")
         elif mechanism == 'fixed_burst_feedback_linear':
             f.write(f"burst_size: {param_dict['burst_size']:.6f}\n")
             f.write(f"w1: {param_dict['w1']:.6f}\n")
