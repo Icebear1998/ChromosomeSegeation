@@ -49,6 +49,15 @@ def compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_param
             return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
                                burst_size=mech_params['burst_size'],
                                w1=mech_params['w3'], w2=mech_params['w2'])
+    elif mechanism == 'fixed_burst_feedback_onion':
+        if pair12:
+            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               burst_size=mech_params['burst_size'],
+                               n_inner1=mech_params['n_inner1'], n_inner2=mech_params['n_inner2'])
+        else:
+            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
+                               burst_size=mech_params['burst_size'],
+                               n_inner1=mech_params['n_inner3'], n_inner2=mech_params['n_inner2'])
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
     
@@ -58,7 +67,7 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
     Compute Method of Moments mean and variance for f_X = T_i - T_j.
 
     Args:
-        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'fixed_burst_feedback_linear'.
+        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'.
         n_i, n_j (float): Threshold cohesin counts for chromosomes i and j.
         N_i, N_j (float): Initial cohesin counts for chromosomes i and j.
         k (float): Degradation rates (k_i, k_j for simple; lambda_i, lambda_j for fixed_burst).
@@ -289,9 +298,62 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
         var_Ti /= k**2
         var_Tj /= k**2
 
+    elif mechanism == 'fixed_burst_feedback_onion':
+        if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
+            print("Invalid burst size")
+            return np.inf, np.inf
+        if n_inner1 is None or n_inner2 is None:
+            raise ValueError(
+                "Parameters 'n_inner1' and 'n_inner2' must be provided for the fixed burst feedback onion mechanism.")
+
+        # Ensure number of bursts is non-negative and valid
+        if N_i is None or N_j is None or math.isnan(N_i) or math.isnan(N_j) or burst_size is None:
+            print("N_i, N_j, n_i, n_j, burst_size", N_i, N_j, n_i, n_j, burst_size)
+        num_bursts_i = max(0, int(np.ceil((N_i - n_i) / burst_size)))
+        num_bursts_j = max(0, int(np.ceil((N_j - n_j) / burst_size)))
+
+        if num_bursts_i == 0 or num_bursts_j == 0:
+            return 0.0, 0.0
+
+        # Compute moments with both burst size and onion feedback effects
+        mean_Ti = 0.0
+        mean_Tj = 0.0
+        var_Ti = 0.0
+        var_Tj = 0.0
+
+        # For chromosome i
+        for m in range(num_bursts_i):
+            current_N = N_i - m * burst_size
+            # Onion feedback: W_m = (N_i/n_inner1)^(-1/3) for N_i > n_inner1, else 1
+            if N_i > n_inner1:
+                W_m = (N_i / n_inner1) ** (-1/3)
+            else:
+                W_m = 1.0
+            E_tau_m = 1 / (W_m * current_N)
+            mean_Ti += E_tau_m
+            var_Ti += E_tau_m**2
+
+        # For chromosome j
+        for m in range(num_bursts_j):
+            current_N = N_j - m * burst_size
+            # Onion feedback: W_m = (N_j/n_inner2)^(-1/3) for N_j > n_inner2, else 1
+            if N_j > n_inner2:
+                W_m = (N_j / n_inner2) ** (-1/3)
+            else:
+                W_m = 1.0
+            E_tau_m = 1 / (W_m * current_N)
+            mean_Tj += E_tau_m
+            var_Tj += E_tau_m**2
+
+        # Scale by degradation rate
+        mean_Ti /= k
+        mean_Tj /= k
+        var_Ti /= k**2
+        var_Tj /= k**2
+
     else:
         raise ValueError(
-            "Mechanism must be 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', or 'fixed_burst_feedback_linear'.")
+            "Mechanism must be 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'fixed_burst_feedback_onion'.")
 
     mean_X = mean_Ti - mean_Tj
     var_X = var_Ti + var_Tj

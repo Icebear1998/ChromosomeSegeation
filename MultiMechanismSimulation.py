@@ -35,9 +35,9 @@ class MultiMechanismSimulation:
         self.separate_times = [None, None, None]
 
         # Validate mechanism and parameters
-        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', 'fixed_burst_feedback_linear']:
+        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion']:
             raise ValueError(
-                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', or 'fixed_burst_feedback_linear'.")
+                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'fixed_burst_feedback_onion'.")
         if self.mechanism == 'fixed_burst' and 'burst_size' not in rate_params:
             raise ValueError(
                 "Fixed burst mechanism requires 'lambda_list' and 'burst_size' in rate_params.")
@@ -59,6 +59,12 @@ class MultiMechanismSimulation:
             if missing_params:
                 raise ValueError(
                     f"Feedback zipper mechanism requires {required_params} in rate_params. Missing: {missing_params}")
+        if self.mechanism == 'fixed_burst_feedback_onion':
+            required_params = ['k', 'burst_size', 'n_inner1', 'n_inner2', 'n_inner3']
+            missing_params = [param for param in required_params if param not in rate_params]
+            if missing_params:
+                raise ValueError(
+                    f"Fixed burst feedback onion mechanism requires {required_params} in rate_params. Missing: {missing_params}")
 
     def _simulate_simple(self):
         """
@@ -455,6 +461,60 @@ class MultiMechanismSimulation:
                 if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
                     self.separate_times[i] = self.time
 
+    def _simulate_fixed_burst_feedback_onion(self):
+        """
+        Simulate the Fixed Burst with Feedback Onion Model: cohesins degrade in bursts of size b
+        at rates modified by onion feedback effects.
+        The rate for each chromosome i is k * W(N_i) * state[i], where
+        W(N_i) = (N_i/n_inner_i)^(-1/3) for N_i > n_inner_i, else W(N_i) = 1.
+        Continues until all chromosomes reach threshold or propensities are zero.
+        """
+        burst_size = self.rate_params['burst_size']
+        while True:
+            # Calculate propensities: rate of bursts with onion feedback effect
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
+                n_inner = self.rate_params['n_inner' + str(i+1)]
+                
+                # Calculate W_m based on onion feedback mechanism
+                if N_i > n_inner:
+                    W_m = (N_i / n_inner) ** (-1/3)
+                else:
+                    W_m = 1.0
+                
+                propensity = self.rate_params['k'] * W_m * m
+                propensities.append(propensity)
+            total_propensity = sum(propensities)
+
+            # Stop if no further bursts possible or all thresholds reached
+            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
+                break
+
+            # Time to next burst
+            tau = np.random.exponential(1 / total_propensity)
+            self.time += tau
+
+            # Choose which chromosome experiences a burst
+            r = np.random.uniform(0, total_propensity)
+            cumulative_propensity = 0
+            for i in range(3):
+                cumulative_propensity += propensities[i]
+                if r < cumulative_propensity:
+                    # Remove burst_size cohesins, but not below 0
+                    self.state[i] = max(0, self.state[i] - burst_size)
+                    break
+
+            # Record time and state
+            self.times.append(self.time)
+            self.states.append(self.state.copy())
+
+            # Check for separation times
+            for i in range(3):
+                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                    self.separate_times[i] = self.time
+
     def simulate(self):
         """
         Run the simulation based on the specified mechanism.
@@ -492,6 +552,8 @@ class MultiMechanismSimulation:
             self._simulate_feedback_zipper()
         elif self.mechanism == 'fixed_burst_feedback_linear':
             self._simulate_fixed_burst_feedback_linear()
+        elif self.mechanism == 'fixed_burst_feedback_onion':
+            self._simulate_fixed_burst_feedback_onion()
 
         # Issue warning if simulation time exceeds max_time
         if self.time > self.max_time:

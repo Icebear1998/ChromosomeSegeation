@@ -138,6 +138,17 @@ def compute_mom_parameters(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_param
             burst_size=mechanism_params['burst_size'],
             w1=mechanism_params['w3'], w2=mechanism_params['w2']
         )
+    elif mechanism == 'fixed_burst_feedback_onion':
+        mom_mean12, mom_var12 = compute_moments_mom(
+            'fixed_burst_feedback_onion', n1, N1, n2, N2, k, 
+            burst_size=mechanism_params['burst_size'],
+            n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+        )
+        mom_mean32, mom_var32 = compute_moments_mom(
+            'fixed_burst_feedback_onion', n3, N3, n2, N2, k,
+            burst_size=mechanism_params['burst_size'],
+            n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+        )
 
     return (mom_mean12, mom_var12), (mom_mean32, mom_var32)
 
@@ -216,6 +227,17 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
             'fixed_burst_feedback_linear', x_grid, n3, N3, n2, N2, k,
             burst_size=mechanism_params['burst_size'],
             w1=mechanism_params['w3'], w2=mechanism_params['w2']
+        )
+    elif mechanism == 'fixed_burst_feedback_onion':
+        pdf12 = compute_pdf_mom(
+            'fixed_burst_feedback_onion', x_grid, n1, N1, n2, N2, k,
+            burst_size=mechanism_params['burst_size'],
+            n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+        )
+        pdf32 = compute_pdf_mom(
+            'fixed_burst_feedback_onion', x_grid, n3, N3, n2, N2, k,
+            burst_size=mechanism_params['burst_size'],
+            n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
         )
 
     return pdf12, pdf32
@@ -306,13 +328,19 @@ if __name__ == "__main__":
             'w2': 1/160,
             'w3': 1/210
         },
-        'feedback_zipper': {'z1': 40, 'z2': 50, 'z3': 60}
+        'feedback_zipper': {'z1': 40, 'z2': 50, 'z3': 60},
+        'fixed_burst_feedback_onion': {
+            'burst_size': 5,
+            'n_inner1': 50,
+            'n_inner2': 75,
+            'n_inner3': 100
+        }
     }
 
     # ========== TEST CONFIGURATION ==========
     # Specify which mechanism(s) to test:
-    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'all'
-    mechanism = 'feedback_onion'  # Change this to test specific mechanisms
+    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion', or 'all'
+    mechanism = 'fixed_burst_feedback_onion'  # Change this to test specific mechanisms
 
     # ========== RUN TESTS ==========
     test_mom_matching(

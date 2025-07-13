@@ -1,0 +1,22 @@
+# Mechanism: fixed_burst_feedback_onion
+# Wild-Type Parameters
+n1: 7.311107
+n2: 22.287227
+n3: 51.408560
+N1: 277.223046
+N2: 498.451870
+N3: 1601.189156
+k: 0.019012
+burst_size: 8.030048
+n_inner1: 19.193505
+n_inner2: 22.008430
+n_inner3: 49.054135
+wt_nll: -8.379076
+# Mutant Parameters
+alpha: 0.673838
+beta_k: 0.463744
+gamma: 0.953285
+threshold_nll: -9.476620
+degrate_nll: -9.918170
+initial_nll: -10.021940
+total_nll: -37.795805
