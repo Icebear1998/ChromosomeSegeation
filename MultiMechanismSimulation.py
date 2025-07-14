@@ -20,7 +20,9 @@ class MultiMechanismSimulation:
             rate_params (dict): For 'simple': {'k_list': [k1, k2, k3]}.
                                For 'fixed_burst': {'lambda_list': [lambda1, lambda2, lambda3], 'burst_size': b}.
                                For 'fixed_burst_feedback_linear': {'k': k, 'burst_size': b, 'w1': w1, 'w2': w2, 'w3': w3}.
-                               For 'feedback_onion': {'k': k, 'n_inner1': n_inner1, 'n_inner2': n_inner2, 'n_inner3': n_inner3}.
+                               For 'feedback_onion': {'k': k, 'n_inner': n_inner}.
+                               For 'feedback_zipper': {'k': k, 'z1': z1, 'z2': z2, 'z3': z3}.
+                               For 'fixed_burst_feedback_onion': {'k': k, 'burst_size': b, 'n_inner': n_inner}.
             n0_list (list): Threshold counts [n01, n02, n03].
             max_time (float): Maximum expected simulation time.
         """
@@ -48,7 +50,7 @@ class MultiMechanismSimulation:
                 raise ValueError(
                     f"Fixed burst feedback linear mechanism requires {required_params} in rate_params. Missing: {missing_params}")
         if self.mechanism == 'feedback_onion':
-            required_params = ['k', 'n_inner1', 'n_inner2', 'n_inner3']
+            required_params = ['k', 'n_inner']
             missing_params = [param for param in required_params if param not in rate_params]
             if missing_params:
                 raise ValueError(
@@ -60,7 +62,7 @@ class MultiMechanismSimulation:
                 raise ValueError(
                     f"Feedback zipper mechanism requires {required_params} in rate_params. Missing: {missing_params}")
         if self.mechanism == 'fixed_burst_feedback_onion':
-            required_params = ['k', 'burst_size', 'n_inner1', 'n_inner2', 'n_inner3']
+            required_params = ['k', 'burst_size', 'n_inner']
             missing_params = [param for param in required_params if param not in rate_params]
             if missing_params:
                 raise ValueError(
@@ -375,7 +377,7 @@ class MultiMechanismSimulation:
             for i in range(3):
                 m = self.state[i]
                 N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
-                n_inner = self.rate_params['n_inner' + str(i+1)]
+                n_inner = self.rate_params['n_inner']
                 
                 # Calculate W_m based on onion feedback mechanism
                 if N_i > n_inner:
@@ -476,7 +478,7 @@ class MultiMechanismSimulation:
             for i in range(3):
                 m = self.state[i]
                 N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
-                n_inner = self.rate_params['n_inner' + str(i+1)]
+                n_inner = self.rate_params['n_inner']
                 
                 # Calculate W_m based on onion feedback mechanism
                 if N_i > n_inner:

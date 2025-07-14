@@ -104,10 +104,10 @@ def compute_mom_parameters(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_param
         )
     elif mechanism == 'feedback_onion':
         mom_mean12, mom_var12 = compute_moments_mom(
-            'feedback_onion', n1, N1, n2, N2, k, n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+            'feedback_onion', n1, N1, n2, N2, k, n_inner=mechanism_params['n_inner']
         )
         mom_mean32, mom_var32 = compute_moments_mom(
-            'feedback_onion', n3, N3, n2, N2, k, n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+            'feedback_onion', n3, N3, n2, N2, k, n_inner=mechanism_params['n_inner']
         )
     elif mechanism == 'feedback_zipper':
         mom_mean12, mom_var12 = compute_moments_mom(
@@ -142,12 +142,12 @@ def compute_mom_parameters(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_param
         mom_mean12, mom_var12 = compute_moments_mom(
             'fixed_burst_feedback_onion', n1, N1, n2, N2, k, 
             burst_size=mechanism_params['burst_size'],
-            n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+            n_inner=mechanism_params['n_inner']
         )
         mom_mean32, mom_var32 = compute_moments_mom(
             'fixed_burst_feedback_onion', n3, N3, n2, N2, k,
             burst_size=mechanism_params['burst_size'],
-            n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+            n_inner=mechanism_params['n_inner']
         )
 
     return (mom_mean12, mom_var12), (mom_mean32, mom_var32)
@@ -194,10 +194,10 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
         )
     elif mechanism == 'feedback_onion':
         pdf12 = compute_pdf_mom(
-            'feedback_onion', x_grid, n1, N1, n2, N2, k, n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+            'feedback_onion', x_grid, n1, N1, n2, N2, k, n_inner=mechanism_params['n_inner']
         )
         pdf32 = compute_pdf_mom(
-            'feedback_onion', x_grid, n3, N3, n2, N2, k, n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+            'feedback_onion', x_grid, n3, N3, n2, N2, k, n_inner=mechanism_params['n_inner']
         )
     elif mechanism == 'feedback_zipper':
         pdf12 = compute_pdf_mom(
@@ -232,12 +232,12 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
         pdf12 = compute_pdf_mom(
             'fixed_burst_feedback_onion', x_grid, n1, N1, n2, N2, k,
             burst_size=mechanism_params['burst_size'],
-            n_inner1=mechanism_params['n_inner1'], n_inner2=mechanism_params['n_inner2']
+            n_inner=mechanism_params['n_inner']
         )
         pdf32 = compute_pdf_mom(
             'fixed_burst_feedback_onion', x_grid, n3, N3, n2, N2, k,
             burst_size=mechanism_params['burst_size'],
-            n_inner1=mechanism_params['n_inner3'], n_inner2=mechanism_params['n_inner2']
+            n_inner=mechanism_params['n_inner']
         )
 
     return pdf12, pdf32
@@ -320,20 +320,18 @@ if __name__ == "__main__":
         'fixed_burst': {'burst_size': 8},
         'time_varying_k': {'k_1': 0.005},
         'feedback_linear': {'w1': 0.005591, 'w2': 0.004757, 'w3': 0.005733},
-        'feedback_onion': {'n_inner1': 10, 'n_inner2': 15, 'n_inner3': 20},
+        'feedback_onion': {'n_inner': 10},
         'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120},
         'fixed_burst_feedback_linear': {
             'burst_size': 3,
-            'w1': 1/110,
-            'w2': 1/160,
-            'w3': 1/210
+            'w1': 0.005,
+            'w2': 0.01,
+            'w3': 0.015
         },
         'feedback_zipper': {'z1': 40, 'z2': 50, 'z3': 60},
         'fixed_burst_feedback_onion': {
             'burst_size': 5,
-            'n_inner1': 50,
-            'n_inner2': 75,
-            'n_inner3': 100
+            'n_inner': 50
         }
     }
 
