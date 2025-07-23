@@ -66,9 +66,14 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         return np.inf
 
     # Initial proteins mutant: ensure n_i < N_i * gamma
-    N1_init = max(param_dict['N1'] * param_dict['gamma'], 1)
-    N2_init = max(param_dict['N2'] * param_dict['gamma'], 1)
-    N3_init = max(param_dict['N3'] * param_dict['gamma'], 1)
+    if 'gamma' in param_dict:  # unified mode
+        N1_init = max(param_dict['N1'] * param_dict['gamma'], 1)
+        N2_init = max(param_dict['N2'] * param_dict['gamma'], 1)
+        N3_init = max(param_dict['N3'] * param_dict['gamma'], 1)
+    else:  # separate mode
+        N1_init = max(param_dict['N1'] * param_dict['gamma1'], 1)
+        N2_init = max(param_dict['N2'] * param_dict['gamma2'], 1)
+        N3_init = max(param_dict['N3'] * param_dict['gamma3'], 1)
 
     if param_dict['n1'] >= N1_init or param_dict['n2'] >= N2_init or param_dict['n3'] >= N3_init:
         return np.inf
@@ -184,12 +189,13 @@ def get_rounded_parameters(params, mechanism_info):
     return rounded
 
 
-def get_mechanism_info(mechanism):
+def get_mechanism_info(mechanism, gamma_mode):
     """
     Get mechanism-specific parameter information.
 
     Args:
         mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'fixed_burst_feedback_onion'
+        gamma_mode (str): 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
 
     Returns:
         dict: Contains parameter names, bounds, and default indices
@@ -207,12 +213,24 @@ def get_mechanism_info(mechanism):
     ]
 
     # Mutant parameters (always present)
-    mutant_params = ['alpha', 'beta_k', 'gamma']
-    mutant_bounds = [
-        (0.1, 0.9),   # alpha
-        (0.1, 0.9),   # beta_k
-        (0.1, 0.9),   # gamma
-    ]
+    if gamma_mode == 'unified':
+        mutant_params = ['alpha', 'beta_k', 'gamma']
+        mutant_bounds = [
+            (0.1, 0.9),   # alpha
+            (0.1, 0.9),   # beta_k
+            (0.1, 0.4),   # gamma
+        ]
+    elif gamma_mode == 'separate':
+        mutant_params = ['alpha', 'beta_k', 'gamma1', 'gamma2', 'gamma3']
+        mutant_bounds = [
+            (0.1, 0.9),   # alpha
+            (0.1, 0.9),   # beta_k
+            (0.1, 0.5),   # gamma1
+            (0.1, 0.5),   # gamma2
+            (0.1, 0.5),   # gamma3
+        ]
+    else:
+        raise ValueError(f"Unknown gamma_mode: {gamma_mode}. Use 'unified' or 'separate'.")
 
     if mechanism == 'simple':
         mechanism_params = []
@@ -278,11 +296,16 @@ def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
     mechanism = 'fixed_burst_feedback_onion'  # Change this to test different mechanisms
+    
+    # ========== GAMMA CONFIGURATION ==========
+    # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
+    gamma_mode = 'separate'  # Change this to 'separate' for individual gamma per chromosome
 
     print(f"Optimizing for mechanism: {mechanism}")
+    print(f"Gamma mode: {gamma_mode}")
 
     # Get mechanism-specific information
-    mechanism_info = get_mechanism_info(mechanism)
+    mechanism_info = get_mechanism_info(mechanism, gamma_mode)
     bounds = mechanism_info['bounds']
 
     print(f"Parameters to optimize: {mechanism_info['params']}")
@@ -373,8 +396,12 @@ def main():
                 f"burst_size = {param_dict['burst_size']:.2f}, n_inner = {param_dict['n_inner']:.2f}")
 
         # Print mutant parameters
-        print(
-            f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, gamma = {param_dict['gamma']:.2f}")
+        if 'gamma' in param_dict:  # unified mode
+            print(
+                f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, gamma = {param_dict['gamma']:.2f}")
+        else:  # separate mode
+            print(
+                f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, gamma1 = {param_dict['gamma1']:.2f}, gamma2 = {param_dict['gamma2']:.2f}, gamma3 = {param_dict['gamma3']:.2f}")
         print(
             f"Derived: n1 = {param_dict['n1']:.2f}, n3 = {param_dict['n3']:.2f}, N1 = {param_dict['N1']:.2f}, N3 = {param_dict['N3']:.2f}")
         print()
@@ -469,9 +496,14 @@ def main():
         degrate_nll -= np.sum(np.log(pdf_deg32))
 
     initial_nll = 0
-    N1_init = max(param_dict['N1'] * param_dict['gamma'], 1)
-    N2_init = max(param_dict['N2'] * param_dict['gamma'], 1)
-    N3_init = max(param_dict['N3'] * param_dict['gamma'], 1)
+    if 'gamma' in param_dict:  # unified mode
+        N1_init = max(param_dict['N1'] * param_dict['gamma'], 1)
+        N2_init = max(param_dict['N2'] * param_dict['gamma'], 1)
+        N3_init = max(param_dict['N3'] * param_dict['gamma'], 1)
+    else:  # separate mode
+        N1_init = max(param_dict['N1'] * param_dict['gamma1'], 1)
+        N2_init = max(param_dict['N2'] * param_dict['gamma2'], 1)
+        N3_init = max(param_dict['N3'] * param_dict['gamma3'], 1)
     pdf_init12 = compute_pdf_for_mechanism(mechanism, data_initial12, param_dict['n1'], N1_init,
                                            param_dict['n2'], N2_init, param_dict['k'], mech_params, pair12=True)
     if not (np.any(pdf_init12 <= 0) or np.any(np.isnan(pdf_init12))):
@@ -524,7 +556,10 @@ def main():
 
     print(f"Threshold Mutant: alpha = {param_dict['alpha']:.2f}")
     print(f"Degradation Rate Mutant: beta_k = {param_dict['beta_k']:.2f}")
-    print(f"Initial Proteins Mutant: gamma = {param_dict['gamma']:.2f}")
+    if 'gamma' in param_dict:  # unified mode
+        print(f"Initial Proteins Mutant: gamma = {param_dict['gamma']:.2f}")
+    else:  # separate mode
+        print(f"Initial Proteins Mutant: gamma1 = {param_dict['gamma1']:.2f}, gamma2 = {param_dict['gamma2']:.2f}, gamma3 = {param_dict['gamma3']:.2f}")
 
     # g) Save optimized parameters to a text file
     filename = f"optimized_parameters_{mechanism}_join.txt"
@@ -571,7 +606,12 @@ def main():
         f.write("# Mutant Parameters\n")
         f.write(f"alpha: {param_dict['alpha']:.6f}\n")
         f.write(f"beta_k: {param_dict['beta_k']:.6f}\n")
-        f.write(f"gamma: {param_dict['gamma']:.6f}\n")
+        if 'gamma' in param_dict:  # unified mode
+            f.write(f"gamma: {param_dict['gamma']:.6f}\n")
+        else:  # separate mode
+            f.write(f"gamma1: {param_dict['gamma1']:.6f}\n")
+            f.write(f"gamma2: {param_dict['gamma2']:.6f}\n")
+            f.write(f"gamma3: {param_dict['gamma3']:.6f}\n")
         f.write(f"threshold_nll: {threshold_nll:.6f}\n")
         f.write(f"degrate_nll: {degrate_nll:.6f}\n")
         f.write(f"initial_nll: {initial_nll:.6f}\n")

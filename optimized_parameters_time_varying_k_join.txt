@@ -1,0 +1,19 @@
+# Mechanism: time_varying_k
+# Wild-Type Parameters
+n1: 2.957420
+n2: 3.487001
+n3: 10.075788
+N1: 309.542152
+N2: 448.985178
+N3: 1874.275414
+k: 0.024099
+k_1: 0.000058
+wt_nll: 1157.163792
+# Mutant Parameters
+alpha: 0.685306
+beta_k: 0.107052
+gamma: 0.100242
+threshold_nll: 363.086703
+degrate_nll: 1325.935685
+initial_nll: 773.166521
+total_nll: 37.472102

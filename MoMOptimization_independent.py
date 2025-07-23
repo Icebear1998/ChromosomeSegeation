@@ -179,20 +179,33 @@ def degrate_objective(vars_, mechanism, data12, data32, params_baseline):
     return -weight * (log_likelihood12 + log_likelihood32)
 
 
-def initial_proteins_objective(vars_, mechanism, data12, data32, params_baseline):
+def initial_proteins_objective(vars_, mechanism, data12, data32, params_baseline, gamma_mode='unified'):
     """
     Initial proteins mutant objective function for any mechanism.
     """
     n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, mech_params = params_baseline
-    gamma = vars_[0]
-    N1 = max(N1_wt * gamma, 1)
-    N2 = max(N2_wt * gamma, 1)
-    N3 = max(N3_wt * gamma, 1)
+    
+    if gamma_mode == 'unified':
+        gamma = vars_[0]
+        N1 = max(N1_wt * gamma, 1)
+        N2 = max(N2_wt * gamma, 1)
+        N3 = max(N3_wt * gamma, 1)
+        # Validate constraints
+        if gamma <= 0 or k_wt <= 0:
+            return np.inf
+    elif gamma_mode == 'separate':
+        gamma1, gamma2, gamma3 = vars_[0], vars_[1], vars_[2]
+        N1 = max(N1_wt * gamma1, 1)
+        N2 = max(N2_wt * gamma2, 1)
+        N3 = max(N3_wt * gamma3, 1)
+        # Validate constraints
+        if gamma1 <= 0 or gamma2 <= 0 or gamma3 <= 0 or k_wt <= 0:
+            return np.inf
+    else:
+        raise ValueError(f"Unknown gamma_mode: {gamma_mode}")
 
     # Validate constraints
     if n1_wt >= N1 or n2_wt >= N2 or n3_wt >= N3:
-        return np.inf
-    if gamma <= 0 or k_wt <= 0:
         return np.inf
 
     # Sample sizes
@@ -337,8 +350,13 @@ def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
     mechanism = 'fixed_burst_feedback_onion'  # Change this to test different mechanisms
+    
+    # ========== GAMMA CONFIGURATION ==========
+    # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
+    gamma_mode = 'unified'  # Change this to 'separate' for individual gamma per chromosome
 
     print(f"Independent optimization for mechanism: {mechanism}")
+    print(f"Gamma mode: {gamma_mode}")
 
     # Get mechanism-specific information
     mechanism_info = get_mechanism_info(mechanism)
@@ -458,7 +476,10 @@ def main():
     # e) Optimize mutants for each top 5 wild-type solution using basinhopping
     n_mutant_bound = [(0.1, 0.9)]      # For alpha
     degrate_bound = [(0.1, 0.9)]       # For beta_k
-    N_mutant_bound = [(0.1, 0.35)]      # For gamma
+    if gamma_mode == 'unified':
+        N_mutant_bound = [(0.1, 0.35)]      # For gamma
+    else:  # separate mode
+        N_mutant_bound = [(0.1, 0.35), (0.1, 0.35), (0.1, 0.35)]  # For gamma1, gamma2, gamma3
 
     overall_results = []
     for wt_idx, (wt_nll, wt_params) in enumerate(refined_wt_solutions[:5]):
@@ -555,12 +576,17 @@ def main():
         # Initial proteins mutant
         minimizer_kwargs = {
             "method": "L-BFGS-B",
-            "args": (mechanism, data_initial12, data_initial32, params_baseline),
+            "args": (mechanism, data_initial12, data_initial32, params_baseline, gamma_mode),
             "bounds": N_mutant_bound
         }
+        if gamma_mode == 'unified':
+            x0_initial = np.array([0.5])
+        else:  # separate mode
+            x0_initial = np.array([0.5, 0.5, 0.5])
+        
         result_initial = basinhopping(
             initial_proteins_objective,
-            x0=np.array([0.5]),
+            x0=x0_initial,
             minimizer_kwargs=minimizer_kwargs,
             niter=100,
             T=1.0,
@@ -570,12 +596,24 @@ def main():
         )
         if result_initial.lowest_optimization_result.success:
             initial_nll = result_initial.lowest_optimization_result.fun
-            gamma = result_initial.lowest_optimization_result.x[0]
+            gamma_values = result_initial.lowest_optimization_result.x
             initial_nll_unweighted = -initial_proteins_objective(
-                [gamma], mechanism, data_initial12, data_initial32, params_baseline)
+                gamma_values, mechanism, data_initial12, data_initial32, params_baseline, gamma_mode)
+            
+            if gamma_mode == 'unified':
+                gamma = gamma_values[0]
+                gamma1 = gamma2 = gamma3 = np.nan
+            else:  # separate mode
+                gamma1, gamma2, gamma3 = gamma_values[0], gamma_values[1], gamma_values[2]
+                gamma = np.nan
         else:
             initial_nll = np.inf
-            gamma = np.nan
+            if gamma_mode == 'unified':
+                gamma = np.nan
+                gamma1 = gamma2 = gamma3 = np.nan
+            else:  # separate mode
+                gamma1 = gamma2 = gamma3 = np.nan
+                gamma = np.nan
             initial_nll_unweighted = np.inf
 
         # Total negative log-likelihood (weighted for optimization)
@@ -583,7 +621,7 @@ def main():
         # Total unweighted NLL for reporting
         total_nll_unweighted = wt_nll_unweighted + threshold_nll_unweighted + \
             degrate_nll_unweighted + initial_nll_unweighted
-        overall_results.append({
+        result_dict = {
             'wt_idx': wt_idx,
             'total_nll': total_nll,
             'total_nll_unweighted': total_nll_unweighted,
@@ -594,8 +632,16 @@ def main():
             'degrate_nll': degrate_nll_unweighted,
             'beta_k': beta_k,
             'initial_nll': initial_nll_unweighted,
-            'gamma': gamma,
-        })
+        }
+        
+        if gamma_mode == 'unified':
+            result_dict['gamma'] = gamma
+        else:  # separate mode
+            result_dict['gamma1'] = gamma1
+            result_dict['gamma2'] = gamma2
+            result_dict['gamma3'] = gamma3
+            
+        overall_results.append(result_dict)
 
     # f) Select the best overall solution
     overall_results.sort(key=lambda x: x['total_nll'])
@@ -644,8 +690,12 @@ def main():
         f"Threshold Mutant: NLL = {best_result['threshold_nll']:.4f}, alpha = {best_result['alpha']:.2f}")
     print(
         f"Degradation Rate Mutant: NLL = {best_result['degrate_nll']:.4f}, beta_k = {best_result['beta_k']:.2f}")
-    print(
-        f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma = {best_result['gamma']:.2f}")
+    if 'gamma' in best_result:  # unified mode
+        print(
+            f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma = {best_result['gamma']:.2f}")
+    else:  # separate mode
+        print(
+            f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma1 = {best_result['gamma1']:.2f}, gamma2 = {best_result['gamma2']:.2f}, gamma3 = {best_result['gamma3']:.2f}")
 
     # g) Save optimized parameters to a text file
     filename = f"optimized_parameters_{mechanism}_independent.txt"
@@ -692,7 +742,12 @@ def main():
         f.write("# Mutant Parameters\n")
         f.write(f"alpha: {best_result['alpha']:.6f}\n")
         f.write(f"beta_k: {best_result['beta_k']:.6f}\n")
-        f.write(f"gamma: {best_result['gamma']:.6f}\n")
+        if 'gamma' in best_result:  # unified mode
+            f.write(f"gamma: {best_result['gamma']:.6f}\n")
+        else:  # separate mode
+            f.write(f"gamma1: {best_result['gamma1']:.6f}\n")
+            f.write(f"gamma2: {best_result['gamma2']:.6f}\n")
+            f.write(f"gamma3: {best_result['gamma3']:.6f}\n")
         f.write(f"threshold_nll: {best_result['threshold_nll']:.6f}\n")
         f.write(f"degrate_nll: {best_result['degrate_nll']:.6f}\n")
         f.write(f"initial_nll: {best_result['initial_nll']:.6f}\n")

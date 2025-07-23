@@ -1,21 +1,21 @@
 # Mechanism: feedback_zipper
 # Wild-Type Parameters
-n1: 1.711272
-n2: 3.378152
-n3: 7.332223
-N1: 249.456287
-N2: 344.539701
-N3: 1084.000006
-k: 0.377654
-z1: 23.539570
-z2: 29.019168
-z3: 92.951976
-wt_nll: 1166.416413
+n1: 1.957189
+n2: 3.881400
+n3: 11.599263
+N1: 226.191001
+N2: 260.307152
+N3: 457.734595
+k: 0.087266
+z1: 64.041717
+z2: 62.403300
+z3: 88.308347
+wt_nll: 1240.989252
 # Mutant Parameters
-alpha: 0.619853
-beta_k: 0.636308
-gamma: 0.900000
-threshold_nll: 363.233339
-degrate_nll: 1323.898358
-initial_nll: 791.401283
-total_nll: 37.612280
+alpha: 0.877089
+beta_k: 0.900000
+gamma: 0.500000
+threshold_nll: 372.343256
+degrate_nll: 1321.679459
+initial_nll: 846.541313
+total_nll: 38.695954
