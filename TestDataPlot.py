@@ -80,11 +80,13 @@ def load_dataset(df, dataset):
         return df['threshold12'].dropna().values, df['threshold32'].dropna().values
     elif dataset == "degrate":
         return df['degRate12'].dropna().values, df['degRate32'].dropna().values
+    elif dataset == "degrateAPC":
+        return df['degRateAPC12'].dropna().values, df['degRateAPC32'].dropna().values
     elif dataset == "initial":
         return df['initialProteins12'].dropna().values, df['initialProteins32'].dropna().values
     else:
         raise ValueError(
-            "Invalid dataset. Choose 'wildtype', 'threshold', 'degrate', or 'initial'.")
+            "Invalid dataset. Choose 'wildtype', 'threshold', 'degrate', 'degrateAPC', or 'initial'.")
 
 
 def apply_mutant_params(params, dataset):
@@ -101,6 +103,9 @@ def apply_mutant_params(params, dataset):
     elif dataset == "degrate":
         beta_k = params['beta_k']
         k = max(beta_k * params['k'], 0.001)
+    elif dataset == "degrateAPC":
+        beta2_k = params['beta2_k']
+        k = max(beta2_k * params['k'], 0.001)
     elif dataset == "initial":
         if 'gamma' in params:  # unified mode
             gamma = params['gamma']
@@ -319,7 +324,7 @@ def plot_all_datasets(params_file, mechanism=None, num_sim=1000):
     if mechanism is None:
         mechanism = params.get('mechanism', 'simple')
 
-    datasets = ['wildtype', 'threshold', 'degrate', 'initial']
+    datasets = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']
 
     print(f"Plotting all datasets for mechanism: {mechanism}")
     print(f"Using parameters from: {params_file}")
@@ -335,7 +340,8 @@ def plot_all_datasets(params_file, mechanism=None, num_sim=1000):
 
 def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SCStimes.xlsx", num_sim=1500):
     """
-    Plot all four datasets in a 2x2 layout: wildtype, threshold, degrate, initial.
+    Plot all five datasets in a 2x5 layout: wildtype, threshold, degrate, degrateAPC, initial.
+    Top row: Chrom1-Chrom2, Bottom row: Chrom3-Chrom2
     
     Args:
         params (dict): Parameter dictionary loaded from file
@@ -353,11 +359,11 @@ def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SC
     df = pd.read_excel(data_file)
     
     # Dataset configuration
-    datasets = ['wildtype', 'threshold', 'degrate', 'initial']
-    dataset_titles = ['wildtype', 'threshold', 'degrate', 'initial']
+    datasets = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']
+    dataset_titles = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']
     
-    # Create 2x2 subplot layout
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    # Create 2x5 subplot layout (2 rows, 5 columns)
+    fig, axes = plt.subplots(2, 5, figsize=(25, 10))
     fig.suptitle(f'Chromosome Segregation Times - {mechanism.replace("_", " ").title()} Mechanism', fontsize=16, y=0.95)
     
     # Set up x_grid for PDF plotting
@@ -365,9 +371,6 @@ def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SC
     x_grid = np.linspace(x_min, x_max, 401)
     
     for i, dataset in enumerate(datasets):
-        row = i // 2
-        col_base = (i % 2) * 2
-        
         try:
             # Load dataset-specific experimental data
             data12, data32 = load_dataset(df, dataset)
@@ -388,49 +391,49 @@ def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SC
             delta_t12, delta_t32 = run_stochastic_simulation(
                 mechanism, k, n1, n2, n3, N1, N2, N3, mech_params, num_sim=num_sim)
             
-            # Plot Chrom1 - Chrom2
-            ax1 = axes[row, col_base]
+            # Plot Chrom1 - Chrom2 (top row)
+            ax1 = axes[0, i]
             ax1.hist(data12, bins=15, density=True, alpha=0.6, label='Experimental data', color='lightblue')
             ax1.hist(delta_t12, bins=15, density=True, alpha=0.6, label='Simulated data', color='orange')
             ax1.plot(x_grid, pdf12, 'r-', linewidth=2, label='MoM PDF')
             ax1.set_xlim(-150, 150)
             ax1.set_xlabel('Time Difference')
             ax1.set_ylabel('Density')
-            ax1.set_title(f'Chrom1 - Chrom2 ({dataset_titles[i]}, {mechanism.replace("_", " ").title()})')
-            ax1.legend()
+            ax1.set_title(f'Chrom1 - Chrom2 ({dataset_titles[i]})')
+            ax1.legend(fontsize=8)
             ax1.grid(True, alpha=0.3)
             
             # Add statistics
             stats_text12 = f'Exp: μ={np.mean(data12):.1f}, σ={np.std(data12):.1f}\nSim: μ={np.mean(delta_t12):.1f}, σ={np.std(delta_t12):.1f}'
             ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
-                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), fontsize=9)
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), fontsize=8)
             
-            # Plot Chrom3 - Chrom2
-            ax2 = axes[row, col_base + 1]
+            # Plot Chrom3 - Chrom2 (bottom row)
+            ax2 = axes[1, i]
             ax2.hist(data32, bins=15, density=True, alpha=0.6, label='Experimental data', color='lightblue')
             ax2.hist(delta_t32, bins=15, density=True, alpha=0.6, label='Simulated data', color='orange')
             ax2.plot(x_grid, pdf32, 'r-', linewidth=2, label='MoM PDF')
             ax2.set_xlim(-150, 150)
             ax2.set_xlabel('Time Difference')
             ax2.set_ylabel('Density')
-            ax2.set_title(f'Chrom3 - Chrom2 ({dataset_titles[i]}, {mechanism.replace("_", " ").title()})')
-            ax2.legend()
+            ax2.set_title(f'Chrom3 - Chrom2 ({dataset_titles[i]})')
+            ax2.legend(fontsize=8)
             ax2.grid(True, alpha=0.3)
             
             # Add statistics
             stats_text32 = f'Exp: μ={np.mean(data32):.1f}, σ={np.std(data32):.1f}\nSim: μ={np.mean(delta_t32):.1f}, σ={np.std(delta_t32):.1f}'
             ax2.text(0.02, 0.98, stats_text32, transform=ax2.transAxes,
-                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), fontsize=9)
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), fontsize=8)
             
             print(f"✓ Successfully plotted {dataset} dataset")
             
         except Exception as e:
             print(f"✗ Error plotting {dataset}: {e}")
             # Clear the axes if there's an error
-            axes[row, col_base].text(0.5, 0.5, f'Error plotting {dataset}', 
-                                   transform=axes[row, col_base].transAxes, ha='center', va='center')
-            axes[row, col_base + 1].text(0.5, 0.5, f'Error plotting {dataset}', 
-                                       transform=axes[row, col_base + 1].transAxes, ha='center', va='center')
+            axes[0, i].text(0.5, 0.5, f'Error plotting {dataset}', 
+                           transform=axes[0, i].transAxes, ha='center', va='center')
+            axes[1, i].text(0.5, 0.5, f'Error plotting {dataset}', 
+                           transform=axes[1, i].transAxes, ha='center', va='center')
     
     plt.tight_layout()
     plt.subplots_adjust(top=0.93)
@@ -444,10 +447,10 @@ if __name__ == "__main__":
     # For independent optimization: "optimized_parameters_independent_{mechanism}.txt"
 
     # Change this to your parameter file
-    params_file = "optimized_parameters_simple_join.txt"
-    # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear'
-    mechanism = 'simple'  # Set to None to use mechanism from file
-    dataset = "wildtype"  # Choose: 'wildtype', 'threshold', 'degrate', 'initial'
+    params_file = "optimized_parameters_fixed_burst_join.txt"
+    # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback_onion', 'fixed_burst_feedback_onion'
+    mechanism = 'fixed_burst'  # Set to None to use mechanism from file
+    dataset = "initial"  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial'
 
     # ========== SINGLE PLOT ==========
     # Plot single dataset

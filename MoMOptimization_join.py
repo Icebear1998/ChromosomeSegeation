@@ -32,7 +32,7 @@ def unpack_parameters(params, mechanism_info):
 
 
 def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                    data_degrate12, data_degrate32, data_initial12, data_initial32):
+                    data_degrate12, data_degrate32, data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32):
     """
     Joint objective function for all mechanisms.
 
@@ -42,8 +42,9 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         mechanism_info: Mechanism information
         data_wt12, data_wt32: Wild-type data
         data_threshold12, data_threshold32: Threshold mutant data
-        data_degrate12, data_degrate32: Degradation rate mutant data
+        data_degrate12, data_degrate32: Degradation rate mutant data (separase)
         data_initial12, data_initial32: Initial proteins mutant data
+        data_degrateAPC12, data_degrateAPC32: Degradation rate mutant data (APC)
     """
     # Unpack parameters
     param_dict = unpack_parameters(params, mechanism_info)
@@ -151,6 +152,23 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         return np.inf
     total_nll -= np.sum(np.log(pdf_deg32)) / len(data_degrate32)
 
+    # Degradation Rate APC Mutant
+    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
+    if param_dict['beta2_k'] * param_dict['k'] < 0.001:
+        print("Warning: beta2_k * k is less than 0.001, setting k_degAPC to 0.001")
+
+    pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
+                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+    if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
+        return np.inf
+    total_nll -= np.sum(np.log(pdf_degAPC12)) / len(data_degrateAPC12)
+
+    pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
+                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+    if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
+        return np.inf
+    total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
+
     # Initial Proteins Mutant
     pdf_init12 = compute_pdf_for_mechanism(mechanism, data_initial12, param_dict['n1'], N1_init,
                                            param_dict['n2'], N2_init, param_dict['k'], mech_params, pair12=True)
@@ -214,20 +232,22 @@ def get_mechanism_info(mechanism, gamma_mode):
 
     # Mutant parameters (always present)
     if gamma_mode == 'unified':
-        mutant_params = ['alpha', 'beta_k', 'gamma']
+        mutant_params = ['alpha', 'beta_k', 'beta2_k', 'gamma']
         mutant_bounds = [
             (0.1, 0.9),   # alpha
             (0.1, 0.9),   # beta_k
-            (0.1, 0.4),   # gamma
+            (0.1, 0.9),   # beta2_k
+            (0.1, 0.35),   # gamma
         ]
     elif gamma_mode == 'separate':
-        mutant_params = ['alpha', 'beta_k', 'gamma1', 'gamma2', 'gamma3']
+        mutant_params = ['alpha', 'beta_k', 'beta2_k', 'gamma1', 'gamma2', 'gamma3']
         mutant_bounds = [
             (0.1, 0.9),   # alpha
             (0.1, 0.9),   # beta_k
-            (0.1, 0.5),   # gamma1
-            (0.1, 0.5),   # gamma2
-            (0.1, 0.5),   # gamma3
+            (0.1, 0.9),   # beta2_k
+            (0.1, 0.35),   # gamma1
+            (0.1, 0.35),   # gamma2
+            (0.1, 0.35),   # gamma3
         ]
     else:
         raise ValueError(f"Unknown gamma_mode: {gamma_mode}. Use 'unified' or 'separate'.")
@@ -295,7 +315,7 @@ def get_mechanism_info(mechanism, gamma_mode):
 def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
-    mechanism = 'fixed_burst_feedback_onion'  # Change this to test different mechanisms
+    mechanism = 'fixed_burst'  # Auto-set by RunAllMechanisms.py
     
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
@@ -321,6 +341,8 @@ def main():
     data_degrate32 = df['degRate32'].dropna().values
     data_initial12 = df['initialProteins12'].dropna().values
     data_initial32 = df['initialProteins32'].dropna().values
+    data_degrateAPC12 = df['degRateAPC12'].dropna().values
+    data_degrateAPC32 = df['degRateAPC32'].dropna().values
 
     # c) Global optimization to find top 5 solutions
     population_solutions = []
@@ -329,13 +351,15 @@ def main():
         population_solutions.append((joint_objective(xk, mechanism, mechanism_info, data_wt12, data_wt32,
                                                      data_threshold12, data_threshold32,
                                                      data_degrate12, data_degrate32,
-                                                     data_initial12, data_initial32), xk.copy()))
+                                                     data_initial12, data_initial32,
+                                                     data_degrateAPC12, data_degrateAPC32), xk.copy()))
 
     result = differential_evolution(
         joint_objective,
         bounds=bounds,
         args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-              data_degrate12, data_degrate32, data_initial12, data_initial32),
+              data_degrate12, data_degrate32, data_initial12, data_initial32,
+              data_degrateAPC12, data_degrateAPC32),
         strategy='best1bin',
         maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
         popsize=30,         # Increased from 15 to maintain better population diversity
@@ -398,10 +422,10 @@ def main():
         # Print mutant parameters
         if 'gamma' in param_dict:  # unified mode
             print(
-                f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, gamma = {param_dict['gamma']:.2f}")
+                f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, beta2_k = {param_dict['beta2_k']:.2f}, gamma = {param_dict['gamma']:.2f}")
         else:  # separate mode
             print(
-                f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, gamma1 = {param_dict['gamma1']:.2f}, gamma2 = {param_dict['gamma2']:.2f}, gamma3 = {param_dict['gamma3']:.2f}")
+                f"Mutants: alpha = {param_dict['alpha']:.2f}, beta_k = {param_dict['beta_k']:.2f}, beta2_k = {param_dict['beta2_k']:.2f}, gamma1 = {param_dict['gamma1']:.2f}, gamma2 = {param_dict['gamma2']:.2f}, gamma3 = {param_dict['gamma3']:.2f}")
         print(
             f"Derived: n1 = {param_dict['n1']:.2f}, n3 = {param_dict['n3']:.2f}, N1 = {param_dict['N1']:.2f}, N3 = {param_dict['N3']:.2f}")
         print()
@@ -413,7 +437,8 @@ def main():
             joint_objective,
             x0=params,
             args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                  data_degrate12, data_degrate32, data_initial12, data_initial32),
+                  data_degrate12, data_degrate32, data_initial12, data_initial32,
+                  data_degrateAPC12, data_degrateAPC32),
             method='L-BFGS-B',
             bounds=bounds,
             options={'disp': False}
@@ -495,6 +520,17 @@ def main():
     if not (np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32))):
         degrate_nll -= np.sum(np.log(pdf_deg32))
 
+    degrateAPC_nll = 0
+    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
+    pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
+                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+    if not (np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12))):
+        degrateAPC_nll -= np.sum(np.log(pdf_degAPC12))
+    pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
+                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+    if not (np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32))):
+        degrateAPC_nll -= np.sum(np.log(pdf_degAPC32))
+
     initial_nll = 0
     if 'gamma' in param_dict:  # unified mode
         N1_init = max(param_dict['N1'] * param_dict['gamma'], 1)
@@ -521,6 +557,8 @@ def main():
     print(f"Threshold Mutant Negative Log-Likelihood: {threshold_nll:.4f}")
     print(
         f"Degradation Rate Mutant Negative Log-Likelihood: {degrate_nll:.4f}")
+    print(
+        f"Degradation Rate APC Mutant Negative Log-Likelihood: {degrateAPC_nll:.4f}")
     print(
         f"Initial Proteins Mutant Negative Log-Likelihood: {initial_nll:.4f}")
 
@@ -556,6 +594,7 @@ def main():
 
     print(f"Threshold Mutant: alpha = {param_dict['alpha']:.2f}")
     print(f"Degradation Rate Mutant: beta_k = {param_dict['beta_k']:.2f}")
+    print(f"Degradation Rate APC Mutant: beta2_k = {param_dict['beta2_k']:.2f}")
     if 'gamma' in param_dict:  # unified mode
         print(f"Initial Proteins Mutant: gamma = {param_dict['gamma']:.2f}")
     else:  # separate mode
@@ -606,6 +645,7 @@ def main():
         f.write("# Mutant Parameters\n")
         f.write(f"alpha: {param_dict['alpha']:.6f}\n")
         f.write(f"beta_k: {param_dict['beta_k']:.6f}\n")
+        f.write(f"beta2_k: {param_dict['beta2_k']:.6f}\n")
         if 'gamma' in param_dict:  # unified mode
             f.write(f"gamma: {param_dict['gamma']:.6f}\n")
         else:  # separate mode
@@ -614,6 +654,7 @@ def main():
             f.write(f"gamma3: {param_dict['gamma3']:.6f}\n")
         f.write(f"threshold_nll: {threshold_nll:.6f}\n")
         f.write(f"degrate_nll: {degrate_nll:.6f}\n")
+        f.write(f"degrateAPC_nll: {degrateAPC_nll:.6f}\n")
         f.write(f"initial_nll: {initial_nll:.6f}\n")
         f.write(f"total_nll: {best_nll:.6f}\n")
 

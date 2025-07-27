@@ -179,6 +179,42 @@ def degrate_objective(vars_, mechanism, data12, data32, params_baseline):
     return -weight * (log_likelihood12 + log_likelihood32)
 
 
+def degrateAPC_objective(vars_, mechanism, data12, data32, params_baseline):
+    """
+    Degradation rate APC mutant objective function for any mechanism.
+    """
+    n1_wt, n2_wt, n3_wt, N1_wt, N2_wt, N3_wt, k_wt, mech_params = params_baseline
+    beta2_k = vars_[0]
+    k = max(beta2_k * k_wt, 0.001)
+    if (beta2_k * k_wt < 0.001):
+        print("Warning: beta2_k * k is too small, setting to 0.001")
+
+    # Validate inputs
+    if k <= 0:
+        return np.inf
+
+    # Sample sizes
+    n12 = len(data12)
+    n32 = len(data32)
+    weight = 1.0
+
+    # Chrom1–Chrom2
+    pdf12 = compute_pdf_for_mechanism(
+        mechanism, data12, n1_wt, N1_wt, n2_wt, N2_wt, k, mech_params, pair12=True)
+    if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
+        return np.inf
+    log_likelihood12 = np.sum(np.log(pdf12)) / n12
+
+    # Chrom3–Chrom2
+    pdf32 = compute_pdf_for_mechanism(
+        mechanism, data32, n3_wt, N3_wt, n2_wt, N2_wt, k, mech_params, pair12=False)
+    if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
+        return np.inf
+    log_likelihood32 = np.sum(np.log(pdf32)) / n32
+
+    return -weight * (log_likelihood12 + log_likelihood32)
+
+
 def initial_proteins_objective(vars_, mechanism, data12, data32, params_baseline, gamma_mode='unified'):
     """
     Initial proteins mutant objective function for any mechanism.
@@ -349,11 +385,11 @@ def get_mechanism_info(mechanism):
 def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
-    mechanism = 'fixed_burst_feedback_onion'  # Change this to test different mechanisms
+    mechanism = 'simple'  # Auto-set by RunAllMechanisms.py
     
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
-    gamma_mode = 'unified'  # Change this to 'separate' for individual gamma per chromosome
+    gamma_mode = 'separate'  # Change this to 'separate' for individual gamma per chromosome
 
     print(f"Independent optimization for mechanism: {mechanism}")
     print(f"Gamma mode: {gamma_mode}")
@@ -375,6 +411,8 @@ def main():
     data_degrate32 = df['degRate32'].dropna().values
     data_initial12 = df['initialProteins12'].dropna().values
     data_initial32 = df['initialProteins32'].dropna().values
+    data_degrateAPC12 = df['degRateAPC12'].dropna().values
+    data_degrateAPC32 = df['degRateAPC32'].dropna().values
 
     # c) Global optimization for wild-type to find top 5 solutions
     population_solutions = []
@@ -573,6 +611,32 @@ def main():
             beta_k = np.nan
             degrate_nll_unweighted = np.inf
 
+        # Degradation rate APC mutant
+        minimizer_kwargs = {
+            "method": "L-BFGS-B",
+            "args": (mechanism, data_degrateAPC12, data_degrateAPC32, params_baseline),
+            "bounds": degrate_bound # Assuming the same bounds for beta2_k as beta_k
+        }
+        result_degrateAPC = basinhopping(
+            degrateAPC_objective,
+            x0=np.array([0.5]),
+            minimizer_kwargs=minimizer_kwargs,
+            niter=100,
+            T=1.0,
+            stepsize=0.5,
+            take_step=BoundedStep(degrate_bound),
+            disp=False
+        )
+        if result_degrateAPC.lowest_optimization_result.success:
+            degrateAPC_nll = result_degrateAPC.lowest_optimization_result.fun
+            beta2_k = result_degrateAPC.lowest_optimization_result.x[0]
+            degrateAPC_nll_unweighted = -degrateAPC_objective([beta2_k], mechanism, data_degrateAPC12,
+                                                              data_degrateAPC32, params_baseline)
+        else:
+            degrateAPC_nll = np.inf
+            beta2_k = np.nan
+            degrateAPC_nll_unweighted = np.inf
+
         # Initial proteins mutant
         minimizer_kwargs = {
             "method": "L-BFGS-B",
@@ -617,10 +681,10 @@ def main():
             initial_nll_unweighted = np.inf
 
         # Total negative log-likelihood (weighted for optimization)
-        total_nll = wt_nll + threshold_nll + degrate_nll + initial_nll
+        total_nll = wt_nll + threshold_nll + degrate_nll + degrateAPC_nll + initial_nll
         # Total unweighted NLL for reporting
         total_nll_unweighted = wt_nll_unweighted + threshold_nll_unweighted + \
-            degrate_nll_unweighted + initial_nll_unweighted
+            degrate_nll_unweighted + degrateAPC_nll_unweighted + initial_nll_unweighted
         result_dict = {
             'wt_idx': wt_idx,
             'total_nll': total_nll,
@@ -631,6 +695,8 @@ def main():
             'alpha': alpha,
             'degrate_nll': degrate_nll_unweighted,
             'beta_k': beta_k,
+            'degrateAPC_nll': degrateAPC_nll_unweighted,
+            'beta2_k': beta2_k,
             'initial_nll': initial_nll_unweighted,
         }
         
@@ -690,6 +756,8 @@ def main():
         f"Threshold Mutant: NLL = {best_result['threshold_nll']:.4f}, alpha = {best_result['alpha']:.2f}")
     print(
         f"Degradation Rate Mutant: NLL = {best_result['degrate_nll']:.4f}, beta_k = {best_result['beta_k']:.2f}")
+    print(
+        f"Degradation Rate APC Mutant: NLL = {best_result['degrateAPC_nll']:.4f}, beta2_k = {best_result['beta2_k']:.2f}")
     if 'gamma' in best_result:  # unified mode
         print(
             f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma = {best_result['gamma']:.2f}")
@@ -742,6 +810,7 @@ def main():
         f.write("# Mutant Parameters\n")
         f.write(f"alpha: {best_result['alpha']:.6f}\n")
         f.write(f"beta_k: {best_result['beta_k']:.6f}\n")
+        f.write(f"beta2_k: {best_result['beta2_k']:.6f}\n")
         if 'gamma' in best_result:  # unified mode
             f.write(f"gamma: {best_result['gamma']:.6f}\n")
         else:  # separate mode
@@ -750,6 +819,7 @@ def main():
             f.write(f"gamma3: {best_result['gamma3']:.6f}\n")
         f.write(f"threshold_nll: {best_result['threshold_nll']:.6f}\n")
         f.write(f"degrate_nll: {best_result['degrate_nll']:.6f}\n")
+        f.write(f"degrateAPC_nll: {best_result['degrateAPC_nll']:.6f}\n")
         f.write(f"initial_nll: {best_result['initial_nll']:.6f}\n")
         f.write(f"total_nll: {best_result['total_nll_unweighted']:.6f}\n")
 
