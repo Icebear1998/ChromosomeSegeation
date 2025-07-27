@@ -103,7 +103,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_k_change(self):
@@ -144,7 +144,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_fixed_burst(self):
@@ -184,7 +184,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_random_normal_burst(self):
@@ -226,7 +226,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_feedbackLinear(self):
@@ -269,7 +269,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_feedback(self):
@@ -314,7 +314,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_fixed_burst_feedback_linear(self):
@@ -361,7 +361,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_feedback_onion(self):
@@ -412,7 +412,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_feedback_zipper(self):
@@ -460,7 +460,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def _simulate_fixed_burst_feedback_onion(self):
@@ -514,7 +514,7 @@ class MultiMechanismSimulation:
 
             # Check for separation times
             for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= self.n0_list[i]:
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
     def simulate(self):

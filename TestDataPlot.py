@@ -444,10 +444,10 @@ if __name__ == "__main__":
     # For independent optimization: "optimized_parameters_independent_{mechanism}.txt"
 
     # Change this to your parameter file
-    params_file = "optimized_parameters_fixed_burst_join.txt"
+    params_file = "optimized_parameters_simple_join.txt"
     # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear'
-    mechanism = 'fixed_burst'  # Set to None to use mechanism from file
-    dataset = "degrate"  # Choose: 'wildtype', 'threshold', 'degrate', 'initial'
+    mechanism = 'simple'  # Set to None to use mechanism from file
+    dataset = "wildtype"  # Choose: 'wildtype', 'threshold', 'degrate', 'initial'
 
     # ========== SINGLE PLOT ==========
     # Plot single dataset

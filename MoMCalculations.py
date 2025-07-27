@@ -80,10 +80,14 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
 
     if mechanism == 'simple':
         # Simple Model: Harmonic sums
-        sum1_Ti = sum(1/m for m in range(int(n_i) + 1, int(N_i) + 1))
-        sum1_Tj = sum(1/m for m in range(int(n_j) + 1, int(N_j) + 1))
-        sum2_Ti = sum(1/(m**2) for m in range(int(n_i) + 1, int(N_i) + 1))
-        sum2_Tj = sum(1/(m**2) for m in range(int(n_j) + 1, int(N_j) + 1))
+        # Use proper rounding for threshold values: n=1.9 rounds to 2, n=1.2 rounds to 1
+        final_state_i = max(1, int(round(n_i)))
+        final_state_j = max(1, int(round(n_j)))
+        
+        sum1_Ti = sum(1/m for m in range(final_state_i + 1, int(N_i) + 1))
+        sum1_Tj = sum(1/m for m in range(final_state_j + 1, int(N_j) + 1))
+        sum2_Ti = sum(1/(m**2) for m in range(final_state_i + 1, int(N_i) + 1))
+        sum2_Tj = sum(1/(m**2) for m in range(final_state_j + 1, int(N_j) + 1))
 
         mean_Ti = sum1_Ti / k
         mean_Tj = sum1_Tj / k
