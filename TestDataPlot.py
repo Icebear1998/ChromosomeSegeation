@@ -312,7 +312,9 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
 
 def plot_all_datasets(params_file, mechanism=None, num_sim=1000):
     """
-    Plot all datasets for a given parameter file and mechanism.
+    Plot all datasets in a 2x4 layout with each strain's Chrom1-2 and Chrom3-2 side by side.
+    Row 1: wildtype12, wildtype32, initial12, initial32
+    Row 2: threshold12, threshold32, degrate12, degrate32
 
     Args:
         params_file (str): Path to parameter file
@@ -324,18 +326,99 @@ def plot_all_datasets(params_file, mechanism=None, num_sim=1000):
     if mechanism is None:
         mechanism = params.get('mechanism', 'simple')
 
-    datasets = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']
-
     print(f"Plotting all datasets for mechanism: {mechanism}")
     print(f"Using parameters from: {params_file}")
 
-    for dataset in datasets:
-        print(f"\n{'='*50}")
+    # Load experimental data
+    df = pd.read_excel("Data/All_strains_SCStimes.xlsx")
+    
+    # Create 2x4 subplot layout (2 rows, 4 columns)
+    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    fig.suptitle(f'Chromosome Segregation Times - {mechanism.replace("_", " ").title()} Mechanism', 
+                 fontsize=16, y=0.98)  # Moved title higher to avoid overlap
+    
+    # Set up x_grid for PDF plotting (matching TestDataPlot.py)
+    x_min, x_max = -140, 140  # Default range from TestDataPlot.py
+    x_grid = np.linspace(x_min, x_max, 401)
+    
+    # Dataset arrangement: 
+    # Row 1
+    # Row 1: wildtype12, wildtype32, initial12, initial32
+    # Row 2: threshold12, threshold32, degrate12, degrate32
+    plot_config = [
+        # Row 1
+        ('wildtype', 'Chrom1-2', 0, 0),
+        ('wildtype', 'Chrom3-2', 0, 1), 
+        ('initial', 'Chrom1-2', 0, 2),
+        ('initial', 'Chrom3-2', 0, 3),
+        # Row 2  
+        ('threshold', 'Chrom1-2', 1, 0),
+        ('threshold', 'Chrom3-2', 1, 1),
+        ('degrate', 'Chrom1-2', 1, 2),
+        ('degrate', 'Chrom3-2', 1, 3)
+    ]
+    
+    for dataset, chrom_pair, row, col in plot_config:
         try:
-            plot_results(params, dataset=dataset,
-                         mechanism=mechanism, num_sim=num_sim)
+            # Load dataset-specific experimental data
+            data12, data32 = load_dataset(df, dataset)
+            
+            # Apply mutant parameters
+            n1, n2, n3, N1, N2, N3, k = apply_mutant_params(params, dataset)
+            
+            # Extract mechanism-specific parameters
+            mech_params = extract_mechanism_params(params, mechanism)
+            
+            # Compute MoM PDFs
+            pdf12 = compute_pdf_for_mechanism(
+                mechanism, x_grid, n1, N1, n2, N2, k, mech_params, pair12=True)
+            pdf32 = compute_pdf_for_mechanism(
+                mechanism, x_grid, n3, N3, n2, N2, k, mech_params, pair12=False)
+            
+            # Run stochastic simulation
+            delta_t12, delta_t32 = run_stochastic_simulation(
+                mechanism, k, n1, n2, n3, N1, N2, N3, mech_params, num_sim=num_sim)
+            
+            # Select data and simulation results based on chromosome pair
+            if chrom_pair == 'Chrom1-2':
+                exp_data = data12
+                sim_data = delta_t12
+                pdf_data = pdf12
+                bins = 15
+            else:  # Chrom3-2
+                exp_data = data32
+                sim_data = delta_t32
+                pdf_data = pdf32
+                bins = 14
+            
+            # Plot the data - matching TestDataPlot.py style
+            ax = axes[row, col]
+            ax.hist(exp_data, bins=bins, density=True, alpha=0.4, label='Experimental data')
+            ax.hist(sim_data, bins=bins, density=True, alpha=0.4, label='Simulated data')
+            ax.plot(x_grid, pdf_data, 'r-', linewidth=2, label='MoM PDF')
+            
+            ax.set_xlim(x_min - 20, x_max + 20)  # Matching TestDataPlot.py range
+            ax.set_xlabel('Time Difference')
+            ax.set_ylabel('Density')
+            ax.set_title(f'{chrom_pair} ({dataset}, {mechanism.replace("_", " ").title()})')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            
+            # Add statistics (matching TestDataPlot.py format)
+            stats_text = f'Exp: μ={np.mean(exp_data):.1f}, σ={np.std(exp_data):.1f}\nSim: μ={np.mean(sim_data):.1f}, σ={np.std(sim_data):.1f}'
+            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            print(f"✓ Successfully plotted {dataset} {chrom_pair}")
+            
         except Exception as e:
-            print(f"Error plotting {dataset}: {e}")
+            print(f"✗ Error plotting {dataset} {chrom_pair}: {e}")
+            axes[row, col].text(0.5, 0.5, f'Error plotting {dataset} {chrom_pair}', 
+                               transform=axes[row, col].transAxes, ha='center', va='center')
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.90)  # Increased space for main title
+    plt.show()
 
 
 def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SCStimes.xlsx", num_sim=1500):
@@ -450,7 +533,7 @@ if __name__ == "__main__":
     params_file = "optimized_parameters_fixed_burst_join.txt"
     # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback_onion', 'fixed_burst_feedback_onion'
     mechanism = 'fixed_burst'  # Set to None to use mechanism from file
-    dataset = "initial"  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial'
+    dataset = "degrate"  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial'
 
     # ========== SINGLE PLOT ==========
     # Plot single dataset
@@ -467,11 +550,11 @@ if __name__ == "__main__":
         print(f"Error: {e}")
 
     # ========== ALL DATASETS ==========
-    # Uncomment to plot all datasets
+    # Uncomment to plot all datasets in 2x4 layout (each strain's Chrom1-2 and Chrom3-2 side by side)
     # plot_all_datasets(params_file, mechanism=mechanism, num_sim=1000)
 
-    # ========== ALL DATASETS 2x2 ==========
-    # Plot all four datasets in a 2x2 layout
+    # ========== ALL DATASETS 2x5 ==========
+    # Plot all five datasets in a 2x5 layout (original layout with degrateAPC)
     # try:
     #     params = load_parameters(params_file)
     #     plot_all_datasets_2x2(params, mechanism=mechanism, data_file="Data/All_strains_SCStimes.xlsx", num_sim=1500)

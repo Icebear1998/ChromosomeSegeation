@@ -315,7 +315,7 @@ def get_mechanism_info(mechanism, gamma_mode):
 def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
-    mechanism = 'fixed_burst'  # Auto-set by RunAllMechanisms.py
+    mechanism = 'feedback_onion'  # Auto-set by RunAllMechanisms.py
     
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
@@ -361,7 +361,7 @@ def main():
               data_degrate12, data_degrate32, data_initial12, data_initial32,
               data_degrateAPC12, data_degrateAPC32),
         strategy='best1bin',
-        maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
+        maxiter=400,        # Increased from 300 to allow more iterations for complex mechanism
         popsize=30,         # Increased from 15 to maintain better population diversity
         tol=1e-8,          # Decreased from 1e-6 for more precise convergence
         mutation=(0.5, 1.0),  # Added mutation range for better exploration

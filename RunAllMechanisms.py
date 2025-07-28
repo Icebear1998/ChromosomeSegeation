@@ -123,7 +123,7 @@ class MechanismRunner:
             f.write('\n'.join(lines))
     
     def create_custom_plot(self, params, mechanism, output_path, num_sim=1000):
-        """Create custom 2x4 plot with Chrom1-2 and Chrom3-2 in separate plots."""
+        """Create custom 2x4 plot with each strain's Chrom1-2 and Chrom3-2 side by side."""
         print(f"Generating plots for {mechanism}...")
         
         # Load experimental data
@@ -132,16 +132,29 @@ class MechanismRunner:
         # Create 2x4 subplot layout (2 rows, 4 columns)
         fig, axes = plt.subplots(2, 4, figsize=(20, 10))
         fig.suptitle(f'Chromosome Segregation Times - {mechanism.replace("_", " ").title()} Mechanism', 
-                     fontsize=16, y=0.95)
+                     fontsize=16, y=0.98)  # Moved title higher to avoid overlap
         
-        # Set up x_grid for PDF plotting
-        x_min, x_max = -150, 150
+        # Set up x_grid for PDF plotting (matching TestDataPlot.py)
+        x_min, x_max = -140, 140  # Default range from TestDataPlot.py
         x_grid = np.linspace(x_min, x_max, 401)
         
-        # Dataset order: wildtype, initial, threshold, degrate
-        datasets = ['wildtype', 'initial', 'threshold', 'degrate']
+        # Dataset arrangement: 
+        # Row 1: wildtype12, wildtype32, initial12, initial32
+        # Row 2: threshold12, threshold32, degrate12, degrate32
+        plot_config = [
+            # Row 1
+            ('wildtype', 'Chrom1-2', 0, 0),
+            ('wildtype', 'Chrom3-2', 0, 1), 
+            ('initial', 'Chrom1-2', 0, 2),
+            ('initial', 'Chrom3-2', 0, 3),
+            # Row 2  
+            ('threshold', 'Chrom1-2', 1, 0),
+            ('threshold', 'Chrom3-2', 1, 1),
+            ('degrate', 'Chrom1-2', 1, 2),
+            ('degrate', 'Chrom3-2', 1, 3)
+        ]
         
-        for i, dataset in enumerate(datasets):
+        for dataset, chrom_pair, row, col in plot_config:
             try:
                 # Load dataset-specific experimental data
                 data12, data32 = load_dataset(df, dataset)
@@ -163,59 +176,45 @@ class MechanismRunner:
                 delta_t12, delta_t32 = run_stochastic_simulation(
                     mechanism, k, n1, n2, n3, N1, N2, N3, mech_params, num_sim=num_sim)
                 
-                # Plot Chrom1 - Chrom2 (top row)
-                ax1 = axes[0, i]
-                ax1.hist(data12, bins=15, density=True, alpha=0.4, 
-                        label='Exp Chrom1-2', color='lightblue')
-                ax1.hist(delta_t12, bins=15, density=True, alpha=0.4, 
-                        label='Sim Chrom1-2', color='lightcoral')
-                ax1.plot(x_grid, pdf12, 'r-', linewidth=2, label='MoM PDF 1-2')
+                # Select data and simulation results based on chromosome pair
+                if chrom_pair == 'Chrom1-2':
+                    exp_data = data12
+                    sim_data = delta_t12
+                    pdf_data = pdf12
+                    bins = 15
+                else:  # Chrom3-2
+                    exp_data = data32
+                    sim_data = delta_t32
+                    pdf_data = pdf32
+                    bins = 14
                 
-                ax1.set_xlim(-150, 150)
-                ax1.set_xlabel('Time Difference')
-                ax1.set_ylabel('Density')
-                ax1.set_title(f'Chrom1 - Chrom2 ({dataset})')
-                ax1.legend(fontsize=8)
-                ax1.grid(True, alpha=0.3)
+                # Plot the data - matching TestDataPlot.py style
+                ax = axes[row, col]
+                ax.hist(exp_data, bins=bins, density=True, alpha=0.4, label='Experimental data')
+                ax.hist(sim_data, bins=bins, density=True, alpha=0.4, label='Simulated data')
+                ax.plot(x_grid, pdf_data, 'r-', linewidth=2, label='MoM PDF')
                 
-                # Add statistics for Chrom1-2
-                stats_text1 = f'Exp: μ={np.mean(data12):.1f}, σ={np.std(data12):.1f}\nSim: μ={np.mean(delta_t12):.1f}, σ={np.std(delta_t12):.1f}'
-                ax1.text(0.02, 0.98, stats_text1, transform=ax1.transAxes,
-                        verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), 
-                        fontsize=8)
+                ax.set_xlim(x_min - 20, x_max + 20)  # Matching TestDataPlot.py range
+                ax.set_xlabel('Time Difference')
+                ax.set_ylabel('Density')
+                ax.set_title(f'{chrom_pair} ({dataset}, {mechanism.replace("_", " ").title()})')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
                 
-                # Plot Chrom3 - Chrom2 (bottom row)
-                ax2 = axes[1, i]
-                ax2.hist(data32, bins=15, density=True, alpha=0.4, 
-                        label='Exp Chrom3-2', color='lightblue')
-                ax2.hist(delta_t32, bins=15, density=True, alpha=0.4, 
-                        label='Sim Chrom3-2', color='lightcoral')
-                ax2.plot(x_grid, pdf32, 'r-', linewidth=2, label='MoM PDF 3-2')
+                # Add statistics (matching TestDataPlot.py format)
+                stats_text = f'Exp: μ={np.mean(exp_data):.1f}, σ={np.std(exp_data):.1f}\nSim: μ={np.mean(sim_data):.1f}, σ={np.std(sim_data):.1f}'
+                ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+                        verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
                 
-                ax2.set_xlim(-150, 150)
-                ax2.set_xlabel('Time Difference')
-                ax2.set_ylabel('Density')
-                ax2.set_title(f'Chrom3 - Chrom2 ({dataset})')
-                ax2.legend(fontsize=8)
-                ax2.grid(True, alpha=0.3)
-                
-                # Add statistics for Chrom3-2
-                stats_text2 = f'Exp: μ={np.mean(data32):.1f}, σ={np.std(data32):.1f}\nSim: μ={np.mean(delta_t32):.1f}, σ={np.std(delta_t32):.1f}'
-                ax2.text(0.02, 0.98, stats_text2, transform=ax2.transAxes,
-                        verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), 
-                        fontsize=8)
-                
-                print(f"✓ Successfully plotted {dataset} dataset")
+                print(f"✓ Successfully plotted {dataset} {chrom_pair}")
                 
             except Exception as e:
-                print(f"✗ Error plotting {dataset}: {e}")
-                axes[0, i].text(0.5, 0.5, f'Error plotting {dataset}', 
-                               transform=axes[0, i].transAxes, ha='center', va='center')
-                axes[1, i].text(0.5, 0.5, f'Error plotting {dataset}', 
-                               transform=axes[1, i].transAxes, ha='center', va='center')
+                print(f"✗ Error plotting {dataset} {chrom_pair}: {e}")
+                axes[row, col].text(0.5, 0.5, f'Error plotting {dataset} {chrom_pair}', 
+                                   transform=axes[row, col].transAxes, ha='center', va='center')
         
         plt.tight_layout()
-        plt.subplots_adjust(top=0.93)
+        plt.subplots_adjust(top=0.90)  # Increased space for main title
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"Plot saved to: {output_path}")

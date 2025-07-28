@@ -5,6 +5,30 @@ from scipy.stats import norm
 from MoMCalculations import compute_pdf_for_mechanism
 
 
+def robust_log_likelihood(pdf_values, epsilon=1e-10, clip_range=(-20, 0)):
+    """
+    Calculate robust log-likelihood with numerical stability.
+    
+    Args:
+        pdf_values: Array of PDF values
+        epsilon: Small value to prevent log(0)
+        clip_range: Range to clip log values to prevent extreme values
+    
+    Returns:
+        Robust log-likelihood value
+    """
+    # Protect against zero/negative values
+    protected_pdf = np.maximum(pdf_values, epsilon)
+    
+    # Calculate log-likelihood
+    log_pdf = np.log(protected_pdf)
+    
+    # Clip extreme values
+    log_pdf_clipped = np.clip(log_pdf, clip_range[0], clip_range[1])
+    
+    return np.sum(log_pdf_clipped)
+
+
 def unpack_wildtype_parameters(params, mechanism_info):
     """
     Unpack wild-type optimization parameters based on mechanism.
@@ -74,10 +98,19 @@ def wildtype_objective(vars_, mechanism, mechanism_info, data12, data32):
         mech_params['n_inner'] = param_dict['n_inner']
 
     # Validate mechanism-specific inputs
-    if mechanism in ['fixed_burst', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'] and mech_params['burst_size'] <= 0:
-        return np.inf
+    if mechanism in ['fixed_burst', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion']:
+        if 'burst_size' not in mech_params or mech_params['burst_size'] <= 0:
+            return np.inf
+        # Additional validation: burst_size should be reasonable
+        if mech_params['burst_size'] > min(param_dict['N1'], param_dict['N2'], param_dict['N3']):
+            return np.inf
     if param_dict['k'] <= 0:
         return np.inf
+    
+    # Additional numerical validation
+    for key, value in param_dict.items():
+        if np.isnan(value) or np.isinf(value):
+            return np.inf
 
     # Sample sizes
     n12 = len(data12)
@@ -91,14 +124,14 @@ def wildtype_objective(vars_, mechanism, mechanism_info, data12, data32):
                                       param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12)) / n12
+    log_likelihood12 = robust_log_likelihood(pdf12) / n12
 
     # Chrom3–Chrom2
     pdf32 = compute_pdf_for_mechanism(mechanism, data32, param_dict['n3'], param_dict['N3'],
                                       param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32)) / n32
+    log_likelihood32 = robust_log_likelihood(pdf32) / n32
 
     total_nll = -weight * (log_likelihood12 + log_likelihood32)
 
@@ -131,14 +164,14 @@ def threshold_objective(vars_, mechanism, data12, data32, params_baseline):
         mechanism, data12, n1, N1_wt, n2, N2_wt, k_wt, mech_params, pair12=True)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12)) / n12
+    log_likelihood12 = robust_log_likelihood(pdf12) / n12
 
     # Chrom3–Chrom2
     pdf32 = compute_pdf_for_mechanism(
         mechanism, data32, n3, N3_wt, n2, N2_wt, k_wt, mech_params, pair12=False)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32)) / n32
+    log_likelihood32 = robust_log_likelihood(pdf32) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
@@ -167,14 +200,14 @@ def degrate_objective(vars_, mechanism, data12, data32, params_baseline):
         mechanism, data12, n1_wt, N1_wt, n2_wt, N2_wt, k, mech_params, pair12=True)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12)) / n12
+    log_likelihood12 = robust_log_likelihood(pdf12) / n12
 
     # Chrom3–Chrom2
     pdf32 = compute_pdf_for_mechanism(
         mechanism, data32, n3_wt, N3_wt, n2_wt, N2_wt, k, mech_params, pair12=False)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32)) / n32
+    log_likelihood32 = robust_log_likelihood(pdf32) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
@@ -203,14 +236,14 @@ def degrateAPC_objective(vars_, mechanism, data12, data32, params_baseline):
         mechanism, data12, n1_wt, N1_wt, n2_wt, N2_wt, k, mech_params, pair12=True)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12)) / n12
+    log_likelihood12 = robust_log_likelihood(pdf12) / n12
 
     # Chrom3–Chrom2
     pdf32 = compute_pdf_for_mechanism(
         mechanism, data32, n3_wt, N3_wt, n2_wt, N2_wt, k, mech_params, pair12=False)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32)) / n32
+    log_likelihood32 = robust_log_likelihood(pdf32) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
@@ -254,14 +287,14 @@ def initial_proteins_objective(vars_, mechanism, data12, data32, params_baseline
         mechanism, data12, n1_wt, N1, n2_wt, N2, k_wt, mech_params, pair12=True)
     if np.any(pdf12 <= 0) or np.any(np.isnan(pdf12)):
         return np.inf
-    log_likelihood12 = np.sum(np.log(pdf12)) / n12
+    log_likelihood12 = robust_log_likelihood(pdf12) / n12
 
     # Chrom3–Chrom2
     pdf32 = compute_pdf_for_mechanism(
         mechanism, data32, n3_wt, N3, n2_wt, N2, k_wt, mech_params, pair12=False)
     if np.any(pdf32 <= 0) or np.any(np.isnan(pdf32)):
         return np.inf
-    log_likelihood32 = np.sum(np.log(pdf32)) / n32
+    log_likelihood32 = robust_log_likelihood(pdf32) / n32
 
     return -weight * (log_likelihood12 + log_likelihood32)
 
@@ -328,7 +361,7 @@ def get_mechanism_info(mechanism):
         mechanism_bounds = []
     elif mechanism == 'fixed_burst':
         mechanism_params = ['burst_size']
-        mechanism_bounds = [(2, 10)]
+        mechanism_bounds = [(1, 20)]  # Increased upper bound for more flexibility
     elif mechanism == 'time_varying_k':
         mechanism_params = ['k_1']
         mechanism_bounds = [(0.00001, 0.02)]
@@ -426,11 +459,11 @@ def main():
         bounds=wt_bounds,
         args=(mechanism, mechanism_info, data_wt12, data_wt32),
         strategy='best1bin',
-        maxiter=500,        # Increased from 300 to allow more iterations for complex mechanism
-        popsize=30,         # Increased from 15 to maintain better population diversity
-        tol=1e-8,          # Decreased from 1e-6 for more precise convergence
-        mutation=(0.5, 1.0),  # Added mutation range for better exploration
-        recombination=0.7,   # Added recombination rate
+        maxiter=300,        # Restored original value
+        popsize=30,         # Restored original value
+        tol=1e-8,          # Restored original value
+        mutation=(0.5, 1.0),
+        recombination=0.7,
         disp=True,
         callback=callback
     )
@@ -493,23 +526,40 @@ def main():
     # d) Local optimization to refine top 5 wild-type solutions
     refined_wt_solutions = []
     for i, (_, params) in enumerate(top_5_solutions):
+        print(f"\nAttempting local optimization for solution {i+1}...")
+        
+        # Test initial objective value
+        initial_obj = wildtype_objective(params, mechanism, mechanism_info, data_wt12, data_wt32)
+        print(f"Initial objective value: {initial_obj}")
+        
+        if np.isinf(initial_obj):
+            print(f"Initial solution {i+1} has infinite objective value - skipping local optimization")
+            continue
+        
         result_local = minimize(
             wildtype_objective,
             x0=params,
             args=(mechanism, mechanism_info, data_wt12, data_wt32),
             method='L-BFGS-B',
             bounds=wt_bounds,
-            options={'disp': False}
+            options={'disp': True, 'maxiter': 1000}  # Enable display and increase iterations
         )
+        
         if result_local.success:
             refined_wt_solutions.append((result_local.fun, result_local.x))
+            print(f"✓ Local optimization succeeded for solution {i+1}")
         else:
-            print(f"Wild-type local optimization failed for solution {i+1}")
+            print(f"✗ Wild-type local optimization failed for solution {i+1}")
+            print(f"  Termination message: {result_local.message}")
+            print(f"  Final objective: {result_local.fun}")
+            print(f"  Number of iterations: {result_local.nit}")
 
     refined_wt_solutions.sort(key=lambda x: x[0])
     if not refined_wt_solutions:
-        print("No successful wild-type optimizations.")
-        return
+        print("Warning: No successful local optimizations. Using best differential evolution solutions instead.")
+        # Use the top 5 differential evolution solutions as fallback
+        refined_wt_solutions = top_5_solutions[:5]
+        print(f"Proceeding with {len(refined_wt_solutions)} differential evolution solutions.")
 
     # e) Optimize mutants for each top 5 wild-type solution using basinhopping
     n_mutant_bound = [(0.1, 0.9)]      # For alpha
