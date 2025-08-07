@@ -1,3 +1,13 @@
+"""
+Independent optimization for chromosome segregation mechanisms.
+
+TEMPORARY MODIFICATION: Initial proteins strain is excluded from fitting.
+Currently fits only: wildtype, threshold, degrate, degrateAPC datasets.
+
+To re-enable initial strain fitting, search for "TEMPORARILY EXCLUDED" 
+and restore the original initial_proteins_objective optimization code.
+"""
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import differential_evolution, minimize, basinhopping
@@ -418,7 +428,7 @@ def get_mechanism_info(mechanism):
 def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
-    mechanism = 'simple'  # Auto-set by RunAllMechanisms.py
+    mechanism = 'fixed_burst_feedback_onion'  # Auto-set by RunAllMechanisms.py
     
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
@@ -426,6 +436,8 @@ def main():
 
     print(f"Independent optimization for mechanism: {mechanism}")
     print(f"Gamma mode: {gamma_mode}")
+    print("NOTE: Initial proteins strain is TEMPORARILY EXCLUDED from fitting")
+    print("Fitting datasets: wildtype, threshold, degrate, degrateAPC")
 
     # Get mechanism-specific information
     mechanism_info = get_mechanism_info(mechanism)
@@ -687,48 +699,16 @@ def main():
             beta2_k = np.nan
             degrateAPC_nll_unweighted = np.inf
 
-        # Initial proteins mutant
-        minimizer_kwargs = {
-            "method": "L-BFGS-B",
-            "args": (mechanism, data_initial12, data_initial32, params_baseline, gamma_mode),
-            "bounds": N_mutant_bound
-        }
+        # Initial proteins mutant - TEMPORARILY EXCLUDED FROM FITTING
+        print("  Skipping initial proteins mutant optimization (temporarily excluded)")
+        initial_nll = 0.0  # Set to 0 to exclude from total NLL
+        initial_nll_unweighted = 0.0
         if gamma_mode == 'unified':
-            x0_initial = np.array([0.5])
+            gamma = np.nan  # Not fitted
+            gamma1 = gamma2 = gamma3 = np.nan
         else:  # separate mode
-            x0_initial = np.array([0.5, 0.5, 0.5])
-        
-        result_initial = basinhopping(
-            initial_proteins_objective,
-            x0=x0_initial,
-            minimizer_kwargs=minimizer_kwargs,
-            niter=100,
-            T=1.0,
-            stepsize=0.5,
-            take_step=BoundedStep(N_mutant_bound),
-            disp=False
-        )
-        if result_initial.lowest_optimization_result.success:
-            initial_nll = result_initial.lowest_optimization_result.fun
-            gamma_values = result_initial.lowest_optimization_result.x
-            initial_nll_unweighted = -initial_proteins_objective(
-                gamma_values, mechanism, data_initial12, data_initial32, params_baseline, gamma_mode)
-            
-            if gamma_mode == 'unified':
-                gamma = gamma_values[0]
-                gamma1 = gamma2 = gamma3 = np.nan
-            else:  # separate mode
-                gamma1, gamma2, gamma3 = gamma_values[0], gamma_values[1], gamma_values[2]
-                gamma = np.nan
-        else:
-            initial_nll = np.inf
-            if gamma_mode == 'unified':
-                gamma = np.nan
-                gamma1 = gamma2 = gamma3 = np.nan
-            else:  # separate mode
-                gamma1 = gamma2 = gamma3 = np.nan
-                gamma = np.nan
-            initial_nll_unweighted = np.inf
+            gamma1 = gamma2 = gamma3 = np.nan
+            gamma = np.nan
 
         # Total negative log-likelihood (weighted for optimization)
         total_nll = wt_nll + threshold_nll + degrate_nll + degrateAPC_nll + initial_nll
@@ -808,12 +788,7 @@ def main():
         f"Degradation Rate Mutant: NLL = {best_result['degrate_nll']:.4f}, beta_k = {best_result['beta_k']:.2f}")
     print(
         f"Degradation Rate APC Mutant: NLL = {best_result['degrateAPC_nll']:.4f}, beta2_k = {best_result['beta2_k']:.2f}")
-    if 'gamma' in best_result:  # unified mode
-        print(
-            f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma = {best_result['gamma']:.2f}")
-    else:  # separate mode
-        print(
-            f"Initial Proteins Mutant: NLL = {best_result['initial_nll']:.4f}, gamma1 = {best_result['gamma1']:.2f}, gamma2 = {best_result['gamma2']:.2f}, gamma3 = {best_result['gamma3']:.2f}")
+    print("Initial Proteins Mutant: EXCLUDED FROM FITTING (temporarily)")
 
     # g) Save optimized parameters to a text file
     filename = f"optimized_parameters_{mechanism}_independent.txt"
@@ -861,17 +836,16 @@ def main():
         f.write(f"alpha: {best_result['alpha']:.6f}\n")
         f.write(f"beta_k: {best_result['beta_k']:.6f}\n")
         f.write(f"beta2_k: {best_result['beta2_k']:.6f}\n")
-        if 'gamma' in best_result:  # unified mode
-            f.write(f"gamma: {best_result['gamma']:.6f}\n")
-        else:  # separate mode
-            f.write(f"gamma1: {best_result['gamma1']:.6f}\n")
-            f.write(f"gamma2: {best_result['gamma2']:.6f}\n")
-            f.write(f"gamma3: {best_result['gamma3']:.6f}\n")
+        f.write("# Initial proteins mutant parameters - EXCLUDED FROM FITTING\n")
+        f.write("# gamma: not_fitted\n")
+        f.write("# gamma1: not_fitted\n")
+        f.write("# gamma2: not_fitted\n")
+        f.write("# gamma3: not_fitted\n")
         f.write(f"threshold_nll: {best_result['threshold_nll']:.6f}\n")
         f.write(f"degrate_nll: {best_result['degrate_nll']:.6f}\n")
         f.write(f"degrateAPC_nll: {best_result['degrateAPC_nll']:.6f}\n")
-        f.write(f"initial_nll: {best_result['initial_nll']:.6f}\n")
-        f.write(f"total_nll: {best_result['total_nll_unweighted']:.6f}\n")
+        f.write(f"initial_nll: {best_result['initial_nll']:.6f}  # EXCLUDED (set to 0.0)\n")
+        f.write(f"total_nll: {best_result['total_nll_unweighted']:.6f}  # Excludes initial strain\n")
 
     print(f"Optimized parameters saved to {filename}")
 

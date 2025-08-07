@@ -5,6 +5,10 @@ Comprehensive Mechanism Analysis Script
 This script runs all implemented mechanisms with both joint and independent optimization strategies,
 organizes results in structured folders, generates comparison plots, and performs AIC/BIC model selection.
 
+TEMPORARY MODIFICATION: Initial proteins strain is excluded from fitting.
+Currently analyzes: wildtype, threshold, degrate, degrateAPC datasets.
+Plots show degrateAPC instead of initial strain.
+
 Author: Chromosome Segregation Modeling Project
 Date: 2024
 """
@@ -34,7 +38,7 @@ class MechanismRunner:
         self.base_results_dir = base_results_dir
         self.mechanisms = ['simple', 'fixed_burst', 'time_varying_k', 'feedback_onion', 'fixed_burst_feedback_onion']
         self.strategies = ['join', 'independent']
-        self.datasets = ['wildtype', 'initial', 'threshold', 'degrate']  # Ordered as requested
+        self.datasets = ['wildtype', 'threshold', 'degrate', 'degrateAPC']  # Initial strain temporarily excluded
         self.results_summary = []
         
         # Create base results directory
@@ -138,18 +142,18 @@ class MechanismRunner:
         x_min, x_max = -140, 140  # Default range from TestDataPlot.py
         x_grid = np.linspace(x_min, x_max, 401)
         
-        # Dataset arrangement: 
-        # Row 1: wildtype12, wildtype32, initial12, initial32
-        # Row 2: threshold12, threshold32, degrate12, degrate32
+        # Dataset arrangement (initial strain replaced with degrateAPC):
+        # Row 1: wildtype12, wildtype32, threshold12, threshold32
+        # Row 2: degrateAPC12, degrateAPC32, degrate12, degrate32
         plot_config = [
             # Row 1
             ('wildtype', 'Chrom1-2', 0, 0),
             ('wildtype', 'Chrom3-2', 0, 1), 
-            ('initial', 'Chrom1-2', 0, 2),
-            ('initial', 'Chrom3-2', 0, 3),
+            ('threshold', 'Chrom1-2', 0, 2),
+            ('threshold', 'Chrom3-2', 0, 3),
             # Row 2  
-            ('threshold', 'Chrom1-2', 1, 0),
-            ('threshold', 'Chrom3-2', 1, 1),
+            ('degrateAPC', 'Chrom1-2', 1, 0),
+            ('degrateAPC', 'Chrom3-2', 1, 1),
             ('degrate', 'Chrom1-2', 1, 2),
             ('degrate', 'Chrom3-2', 1, 3)
         ]
@@ -228,8 +232,8 @@ class MechanismRunner:
             total_nll = 0
             total_data_points = 0
             
-            # Calculate NLL for each dataset
-            for dataset in ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']:
+            # Calculate NLL for each dataset (initial strain temporarily excluded)
+            for dataset in ['wildtype', 'threshold', 'degrate', 'degrateAPC']:
                 try:
                     data12, data32 = load_dataset(df, dataset)
                     n1, n2, n3, N1, N2, N3, k = apply_mutant_params(params, dataset)
@@ -272,8 +276,8 @@ class MechanismRunner:
     
     def count_parameters(self, mechanism):
         """Count the number of parameters for each mechanism."""
-        # Base parameters: n2, N2, k, r21, r23, R21, R23, alpha, beta_k, beta2_k, gamma (or gamma1,2,3)
-        base_count = 7 + 5  # 7 wild-type + 5 mutant (alpha, beta_k, beta2_k, gamma or gamma1,2,3)
+        # Base parameters: n2, N2, k, r21, r23, R21, R23, alpha, beta_k, beta2_k (gamma excluded)
+        base_count = 7 + 3  # 7 wild-type + 3 mutant (alpha, beta_k, beta2_k - initial strain excluded)
         
         mechanism_params = {
             'simple': 0,

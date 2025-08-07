@@ -281,7 +281,7 @@ def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=Non
         f"Empirical Variance: {emp_var32:.4f}, MoM Variance: {mom_var32:.4f}")
 
     # Plot histograms with MoM PDF
-    x_min, x_max = (-240, 240)
+    x_min, x_max = (-50, 50)
     x_grid = np.linspace(x_min, x_max, 401)
     pdf12, pdf32 = compute_pdf_parameters(
         mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechanism_params
@@ -312,13 +312,13 @@ if __name__ == "__main__":
     # Common parameters for all mechanisms
     N1, N2, N3 = 100, 150, 200  # Initial protein counts
     n1, n2, n3 = 3, 5, 8      # Threshold protein counts
-    k = 0.02                     # Base degradation rate
+    k = 0.05                     # Base degradation rate
 
     # Mechanism-specific parameters (optional - will use defaults if not specified)
     mechanism_params = {
         'simple': {},  # No additional parameters
         'fixed_burst': {'burst_size': 8},
-        'time_varying_k': {'k_1': 0.005},
+        'time_varying_k': {'k_1': 0.01},
         'feedback_linear': {'w1': 0.005591, 'w2': 0.004757, 'w3': 0.005733},
         'feedback_onion': {'n_inner': 10},
         'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120},
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     # ========== TEST CONFIGURATION ==========
     # Specify which mechanism(s) to test:
     # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion', or 'all'
-    mechanism = 'fixed_burst_feedback_onion'  # Change this to test specific mechanisms
+    mechanism = 'time_varying_k'  # Change this to test specific mechanisms
 
     # ========== RUN TESTS ==========
     test_mom_matching(
