@@ -127,28 +127,44 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
             raise ValueError(
                 "k_1 must be provided for time_varying mechanism.")
 
-        def compute_tm(m, N, k, k1):
-            if k1 == 0:
-                return (1 / k) * np.log(N / m)
-            discriminant = k**2 + 2 * k1 * np.log(N / m)
-            return (-k + np.sqrt(discriminant)) / k1
+        def mom_time_varying_k_approx(N, n, k1):
+            """
+            Computes moments for k(t) = k1*t using an effective rate approximation.
+            1. Estimate total time T_est using a deterministic ODE model.
+            2. Calculate the average rate k_avg over T_est.
+            3. Use k_avg as an effective constant rate in the standard MoM formulas.
+            """
+            if N <= n or k1 <= 0:
+                return 0.0, 0.0
 
-        def kt(t, k, k1):
-            return k + k1 * t
+            # Step 1: Estimate total time T_est = sqrt(2*ln(N/n)/k1)
+            # This comes from solving dM/dt = -k1*t*M
+            log_ratio = np.log(N / n)
+            t_est = np.sqrt(2 * log_ratio / k1)
 
-        def mom_time_varying_k(N, n, k, k1):
-            expected_time = 0
-            variance = 0
-            for m in range(int(n + 1), int(N + 1)):
-                t_m = compute_tm(m, N, k, k1)
-                rate = kt(t_m, k, k1) * m
-                tau_mean = 1 / rate
-                expected_time += tau_mean
-                variance += tau_mean**2
-            return expected_time, variance
+            # Step 2: Calculate the average rate over that time, k_avg = k1 * T_est / 2
+            k_eff = (k1 * t_est) / 2
+            
+            # If k_eff is zero or negligible, no degradation occurs.
+            if k_eff < 1e-10:
+                return 0.0, 0.0
 
-        mean_Ti, var_Ti = mom_time_varying_k(N_i, n_i, k, k_1)
-        mean_Tj, var_Tj = mom_time_varying_k(N_j, n_j, k, k_1)
+            # Step 3: Use k_eff in the standard MoM harmonic sum formulas
+            final_state = max(1, int(round(n)))
+            initial_state = int(N)
+            
+            m_range = range(final_state + 1, initial_state + 1)
+            
+            sum1 = sum(1/m for m in m_range)
+            sum2 = sum(1/(m**2) for m in m_range)
+            
+            mean_T = sum1 / k_eff
+            var_T = sum2 / (k_eff**2)
+            
+            return mean_T, var_T
+
+        mean_Ti, var_Ti = mom_time_varying_k_approx(N_i, n_i, k_1)
+        mean_Tj, var_Tj = mom_time_varying_k_approx(N_j, n_j, k_1)
 
     elif mechanism == 'feedback_linear':
         if w1 is None or w2 is None:

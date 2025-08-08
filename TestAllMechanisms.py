@@ -53,6 +53,10 @@ def build_rate_params(mechanism, k, mechanism_params):
     Returns:
         dict: Complete rate_params for simulation
     """
+    if mechanism == 'time_varying_k':
+        # This mechanism does not use the base 'k', only 'k_1'.
+        return mechanism_params.copy()
+
     rate_params = {'k': k}
 
     if mechanism != 'simple':
@@ -318,7 +322,7 @@ if __name__ == "__main__":
     mechanism_params = {
         'simple': {},  # No additional parameters
         'fixed_burst': {'burst_size': 8},
-        'time_varying_k': {'k_1': 0.01},
+        'time_varying_k': {'k_1': 0.005, 'k_max': 0.05},
         'feedback_linear': {'w1': 0.005591, 'w2': 0.004757, 'w3': 0.005733},
         'feedback_onion': {'n_inner': 10},
         'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120},
