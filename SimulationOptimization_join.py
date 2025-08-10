@@ -107,7 +107,7 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k=None):
     return params, n0_list
 
 
-def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=10):
+def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     """
     Run multiple simulations for a given parameter set and calculate timing statistics.
     
@@ -207,7 +207,7 @@ def calculate_likelihood(experimental_data, simulated_data):
         return 1e6
 
 
-def joint_objective(params_vector, mechanism, datasets, num_simulations=10):
+def joint_objective(params_vector, mechanism, datasets, num_simulations=500):
     """
     Joint objective function for all datasets.
     
@@ -220,24 +220,53 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=10):
     Returns:
         float: Total negative log-likelihood across all datasets
     """
+    # Add debugging to see parameter values being tried
+    if hasattr(joint_objective, 'call_count'):
+        joint_objective.call_count += 1
+    else:
+        joint_objective.call_count = 1
+    
+    if joint_objective.call_count <= 5:  # Print first 5 calls for debugging
+        print(f"Call {joint_objective.call_count}: Testing parameters {params_vector[:6]}")  # Show first 6 params
     try:
-        # Unpack parameters based on mechanism
+        # Unpack parameters based on mechanism - using ratio-based approach
         if mechanism == 'time_varying_k':
-            n1, n2, n3, N1, N2, N3, k_1, k_max, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, alpha, beta_k, beta2_k = params_vector
+            # Calculate derived parameters from ratios
+            n1 = max(r21 * n2, 1)
+            n3 = max(r23 * n2, 1)
+            N1 = max(R21 * N2, 1)
+            N3 = max(R23 * N2, 1)
+            
+            # Add constraint checks similar to MoM optimization
+            if n1 >= N1 or n2 >= N2 or n3 >= N3:
+                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
+                return 1e6
+            
             base_params = {
                 'n1': n1, 'n2': n2, 'n3': n3,
                 'N1': N1, 'N2': N2, 'N3': N3,
                 'k_1': k_1, 'k_max': k_max
             }
         elif mechanism == 'time_varying_k_fixed_burst':
-            n1, n2, n3, N1, N2, N3, k_1, k_max, burst_size, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_k = params_vector
+            # Calculate derived parameters from ratios
+            n1 = max(r21 * n2, 1)
+            n3 = max(r23 * n2, 1)
+            N1 = max(R21 * N2, 1)
+            N3 = max(R23 * N2, 1)
             base_params = {
                 'n1': n1, 'n2': n2, 'n3': n3,
                 'N1': N1, 'N2': N2, 'N3': N3,
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
             }
         elif mechanism == 'time_varying_k_feedback_onion':
-            n1, n2, n3, N1, N2, N3, k_1, k_max, n_inner, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta2_k = params_vector
+            # Calculate derived parameters from ratios
+            n1 = max(r21 * n2, 1)
+            n3 = max(r23 * n2, 1)
+            N1 = max(R21 * N2, 1)
+            N3 = max(R23 * N2, 1)
             base_params = {
                 'n1': n1, 'n2': n2, 'n3': n3,
                 'N1': N1, 'N2': N2, 'N3': N3,
@@ -261,6 +290,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=10):
             )
             
             if sim_delta_t12 is None or sim_delta_t32 is None:
+                print(f"Simulation failed for dataset {dataset_name}")
                 return 1e6
             
             # Extract experimental data
@@ -270,6 +300,11 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=10):
             # Calculate likelihoods
             nll_12 = calculate_likelihood(exp_delta_t12, sim_delta_t12)
             nll_32 = calculate_likelihood(exp_delta_t32, sim_delta_t32)
+            
+            # Check for penalty values in likelihood calculation
+            if nll_12 >= 1e6 or nll_32 >= 1e6:
+                print(f"High likelihood penalty for dataset {dataset_name}: nll_12={nll_12:.1f}, nll_32={nll_32:.1f}")
+                return 1e6
             
             # Weight and add to total
             weight = dataset_weights.get(dataset_name, 1.0)
@@ -292,16 +327,16 @@ def get_parameter_bounds(mechanism):
     Returns:
         list: List of (min, max) bounds for each parameter
     """
-    # Common bounds
+    # Common bounds - using ratio-based approach like MoMOptimization_join.py
     bounds = [
-        (1, 20),      # n1
-        (1, 30),      # n2  
-        (1, 50),      # n3
-        (50, 500),    # N1
-        (100, 800),   # N2
-        (200, 1200),  # N3
+        (3, 50),      # n2
+        (100, 500),   # N2
         (0.0001, 0.01),  # k_1
         (0.01, 0.2),     # k_max
+        (0.5, 3.0),   # r21 (n1/n2 ratio)
+        (0.5, 3.0),   # r23 (n3/n2 ratio)
+        (0.4, 2.0),   # R21 (N1/N2 ratio)
+        (0.5, 5.0),   # R23 (N3/N2 ratio)
     ]
     
     # Mechanism-specific bounds
@@ -320,7 +355,7 @@ def get_parameter_bounds(mechanism):
     return bounds
 
 
-def run_optimization(mechanism, datasets, max_iterations=500):
+def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500):
     """
     Run joint optimization for all datasets.
     
@@ -346,7 +381,7 @@ def run_optimization(mechanism, datasets, max_iterations=500):
     result = differential_evolution(
         joint_objective,
         bounds,
-        args=(mechanism, datasets),
+        args=(mechanism, datasets, num_simulations),
         maxiter=max_iterations,
         popsize=15,
         seed=42,
@@ -354,46 +389,52 @@ def run_optimization(mechanism, datasets, max_iterations=500):
         workers=1  # Use single worker to avoid multiprocessing issues
     )
     
-    if result.success:
-        print(f"✅ Optimization converged!")
-        print(f"Best negative log-likelihood: {result.fun:.4f}")
-        
-        # Unpack and display results
-        params = result.x
-        if mechanism == 'time_varying_k':
-            param_names = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k_1', 'k_max', 'alpha', 'beta_k', 'beta2_k']
-        elif mechanism == 'time_varying_k_fixed_burst':
-            param_names = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k_1', 'k_max', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
-        elif mechanism == 'time_varying_k_feedback_onion':
-            param_names = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k_1', 'k_max', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
-        
-        param_dict = dict(zip(param_names, params))
-        
-        print("\nOptimized Parameters:")
-        print(f"  Wildtype: n1={param_dict['n1']:.1f}, n2={param_dict['n2']:.1f}, n3={param_dict['n3']:.1f}")
-        print(f"           N1={param_dict['N1']:.1f}, N2={param_dict['N2']:.1f}, N3={param_dict['N3']:.1f}")
-        print(f"           k_1={param_dict['k_1']:.6f}, k_max={param_dict['k_max']:.4f}")
-        
-        if 'burst_size' in param_dict:
-            print(f"           burst_size={param_dict['burst_size']:.1f}")
-        if 'n_inner' in param_dict:
-            print(f"           n_inner={param_dict['n_inner']:.1f}")
-        
-        print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_k={param_dict['beta2_k']:.3f}")
-        
-        return {
-            'success': True,
-            'params': param_dict,
-            'nll': result.fun,
-            'result': result
-        }
-    else:
-        print(f"❌ Optimization failed: {result.message}")
-        return {
-            'success': False,
-            'message': result.message,
-            'result': result
-        }
+    # Always extract and display the best solution found, even if not converged
+    convergence_status = "converged" if result.success else "did not converge"
+    print(f"🔍 Optimization {convergence_status}!")
+    print(f"Best negative log-likelihood: {result.fun:.4f}")
+    
+    if not result.success:
+        print(f"Note: {result.message}")
+    
+    # Unpack and display results
+    params = result.x
+    if mechanism == 'time_varying_k':
+        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_k']
+    elif mechanism == 'time_varying_k_fixed_burst':
+        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
+    elif mechanism == 'time_varying_k_feedback_onion':
+        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
+    
+    param_dict = dict(zip(param_names, params))
+    
+    # Calculate derived parameters for display
+    n1_derived = max(param_dict['r21'] * param_dict['n2'], 1)
+    n3_derived = max(param_dict['r23'] * param_dict['n2'], 1)
+    N1_derived = max(param_dict['R21'] * param_dict['N2'], 1)
+    N3_derived = max(param_dict['R23'] * param_dict['N2'], 1)
+    
+    print("\nBest Parameters Found:")
+    print(f"  Base: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}")
+    print(f"  Ratios: r21={param_dict['r21']:.2f}, r23={param_dict['r23']:.2f}, R21={param_dict['R21']:.2f}, R23={param_dict['R23']:.2f}")
+    print(f"  Derived: n1={n1_derived:.1f}, n3={n3_derived:.1f}, N1={N1_derived:.1f}, N3={N3_derived:.1f}")
+    print(f"  Rates: k_1={param_dict['k_1']:.6f}, k_max={param_dict['k_max']:.4f}")
+    
+    if 'burst_size' in param_dict:
+        print(f"           burst_size={param_dict['burst_size']:.1f}")
+    if 'n_inner' in param_dict:
+        print(f"           n_inner={param_dict['n_inner']:.1f}")
+    
+    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_k={param_dict['beta2_k']:.3f}")
+    
+    return {
+        'success': True,  # Always treat as success to save results
+        'converged': result.success,  # Track actual convergence status
+        'params': param_dict,
+        'nll': result.fun,
+        'result': result,
+        'message': result.message if not result.success else "Converged successfully"
+    }
 
 
 def save_results(mechanism, results, filename=None):
@@ -416,11 +457,26 @@ def save_results(mechanism, results, filename=None):
         f.write(f"Simulation-based Optimization Results\n")
         f.write(f"Mechanism: {mechanism}\n")
         f.write(f"Negative Log-Likelihood: {results['nll']:.6f}\n")
+        f.write(f"Converged: {results.get('converged', 'Unknown')}\n")
+        f.write(f"Status: {results.get('message', 'No message')}\n")
         f.write(f"Datasets: wildtype, threshold, degrate, degrateAPC\n\n")
         
-        f.write("Optimized Parameters:\n")
+        f.write("Optimized Parameters (ratio-based):\n")
         for param, value in results['params'].items():
             f.write(f"{param} = {value:.6f}\n")
+        
+        # Calculate and save derived parameters
+        if 'r21' in results['params']:
+            n1_derived = max(results['params']['r21'] * results['params']['n2'], 1)
+            n3_derived = max(results['params']['r23'] * results['params']['n2'], 1)
+            N1_derived = max(results['params']['R21'] * results['params']['N2'], 1)
+            N3_derived = max(results['params']['R23'] * results['params']['N2'], 1)
+            
+            f.write(f"\nDerived Parameters:\n")
+            f.write(f"n1 = {n1_derived:.6f}\n")
+            f.write(f"n3 = {n3_derived:.6f}\n")
+            f.write(f"N1 = {N1_derived:.6f}\n")
+            f.write(f"N3 = {N3_derived:.6f}\n")
     
     print(f"Results saved to: {filename}")
 
@@ -429,6 +485,9 @@ def main():
     """
     Main optimization routine.
     """
+    max_iterations = 100 # number of iterations for testing
+    num_simulations = 30  # Number of simulations per evaluation
+    
     print("Simulation-based Optimization for Time-Varying Mechanisms")
     print("=" * 60)
     
@@ -440,20 +499,20 @@ def main():
     
     # Test mechanisms
     mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion']
-    
-    for mechanism in mechanisms:
-        try:
-            results = run_optimization(mechanism, datasets, max_iterations=500)  # Reduced for testing
-            
-            if results['success']:
-                save_results(mechanism, results)
-            
-            print(f"\n{'-' * 60}")
-            
-        except Exception as e:
-            print(f"Error optimizing {mechanism}: {e}")
-            continue
-    
+    mechanism = mechanisms[1]  # Test only the first mechanism
+    #for mechanism in mechanisms:
+    try:
+        results = run_optimization(mechanism, datasets, max_iterations, num_simulations)  # Reduced for testing
+        
+        # Always save results (even if not converged)
+        save_results(mechanism, results)
+        
+        print(f"\n{'-' * 60}")
+        
+    except Exception as e:
+        print(f"Error optimizing {mechanism}: {e}")
+        #continue
+     
     print("Optimization complete!")
 
 

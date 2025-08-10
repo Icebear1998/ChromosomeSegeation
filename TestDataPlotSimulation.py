@@ -15,14 +15,14 @@ warnings.filterwarnings('ignore')
 
 def load_optimized_parameters(mechanism, filename=None):
     """
-    Load optimized parameters from file.
+    Load optimized parameters from file and calculate derived parameters.
     
     Args:
         mechanism (str): Mechanism name
         filename (str): Parameter file name (optional)
     
     Returns:
-        dict: Optimized parameters
+        dict: Optimized parameters including both ratio and derived parameters
     """
     if filename is None:
         filename = f"simulation_optimized_parameters_{mechanism}.txt"
@@ -34,16 +34,32 @@ def load_optimized_parameters(mechanism, filename=None):
             
         # Find the parameters section
         param_section = False
+        derived_section = False
+        
         for line in lines:
-            if "Optimized Parameters:" in line:
+            if "Optimized Parameters (ratio-based):" in line:
                 param_section = True
+                derived_section = False
+                continue
+            elif "Derived Parameters:" in line:
+                param_section = False
+                derived_section = True
                 continue
             
-            if param_section and "=" in line:
+            if (param_section or derived_section) and "=" in line and not line.startswith("#"):
                 key, value = line.strip().split(" = ")
                 params[key] = float(value)
         
+        # If we have ratio parameters but not derived ones, calculate them
+        if 'r21' in params and 'n1' not in params:
+            params['n1'] = max(params['r21'] * params['n2'], 1)
+            params['n3'] = max(params['r23'] * params['n2'], 1)
+            params['N1'] = max(params['R21'] * params['N2'], 1)
+            params['N3'] = max(params['R23'] * params['N2'], 1)
+            print("Calculated derived parameters from ratios")
+        
         print(f"Loaded parameters from {filename}")
+        print(f"Available parameters: {list(params.keys())}")
         return params
     
     except Exception as e:
@@ -313,6 +329,13 @@ def print_parameter_summary(mechanism, params):
         params (dict): Optimized parameters
     """
     print(f"\n=== Parameter Summary for {mechanism.upper()} ===")
+    
+    # Show ratio parameters if available
+    if 'r21' in params:
+        print(f"Base Parameters:")
+        print(f"  n2={params['n2']:.1f}, N2={params['N2']:.1f}")
+        print(f"  Ratios: r21={params['r21']:.2f}, r23={params['r23']:.2f}, R21={params['R21']:.2f}, R23={params['R23']:.2f}")
+    
     print(f"Wildtype Parameters:")
     print(f"  Thresholds: n1={params['n1']:.1f}, n2={params['n2']:.1f}, n3={params['n3']:.1f}")
     print(f"  Initial counts: N1={params['N1']:.1f}, N2={params['N2']:.1f}, N3={params['N3']:.1f}")
@@ -382,7 +405,7 @@ if __name__ == "__main__":
     
     # Single dataset configuration (only used if run_single_dataset = True)
     mechanism = 'time_varying_k'
-    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
+    dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
     
     if run_all_mechanisms:
         main()
