@@ -14,12 +14,13 @@ class MultiMechanismSimulationTimevary:
         Initialize the simulation.
 
         Args:
-            mechanism (str): 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion'
+            mechanism (str): 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined'
             initial_state_list (list): Initial cohesin counts [N1, N2, N3].
             rate_params (dict): 
                 For 'time_varying_k': {'k_1': k_1, 'k_max': k_max} (optional k_max for maximum rate).
                 For 'time_varying_k_fixed_burst': {'k_1': k_1, 'k_max': k_max, 'burst_size': b}.
                 For 'time_varying_k_feedback_onion': {'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner}.
+                For 'time_varying_k_combined': {'k_1': k_1, 'k_max': k_max, 'burst_size': b, 'n_inner': n_inner}.
             n0_list (list): Threshold counts [n01, n02, n03].
             max_time (float): Maximum expected simulation time.
         """
@@ -34,7 +35,7 @@ class MultiMechanismSimulationTimevary:
         self.separate_times = [None, None, None]
 
         # Validate mechanism and parameters
-        valid_mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion']
+        valid_mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
         if self.mechanism not in valid_mechanisms:
             raise ValueError(f"Mechanism must be one of: {valid_mechanisms}")
         
@@ -47,6 +48,12 @@ class MultiMechanismSimulationTimevary:
         
         if self.mechanism == 'time_varying_k_feedback_onion' and 'n_inner' not in rate_params:
             raise ValueError("time_varying_k_feedback_onion mechanism requires 'n_inner' in rate_params.")
+        
+        if self.mechanism == 'time_varying_k_combined':
+            if 'burst_size' not in rate_params:
+                raise ValueError("time_varying_k_combined mechanism requires 'burst_size' in rate_params.")
+            if 'n_inner' not in rate_params:
+                raise ValueError("time_varying_k_combined mechanism requires 'n_inner' in rate_params.")
 
     def _get_time_varying_rate(self):
         """
@@ -334,6 +341,107 @@ class MultiMechanismSimulationTimevary:
                 if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
                     self.separate_times[i] = self.time
 
+    def _simulate_time_varying_k_combined(self):
+        """
+        Simulate the combined mechanism: time-varying k + fixed burst + feedback onion.
+        
+        This mechanism combines all three features:
+        1. Time-varying degradation rate: k(t) = min(k_1 * t, k_max)
+        2. Fixed burst sizes: cohesins degrade in bursts of size b
+        3. Feedback onion mechanism: rate modified by W(N_i) = (N_i/n_inner)^(-1/3) for N_i > n_inner
+        
+        Each chromosome experiences bursts of size b at rate k(t) * W(N_i) * state[i].
+        """
+        burst_size = self.rate_params['burst_size']
+        
+        while True:
+            # Calculate current time-varying rate
+            k_t = self._get_time_varying_rate()
+            
+            # Calculate propensities with onion feedback for burst events
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
+                n_inner = self.rate_params['n_inner']
+                
+                # Calculate W_m based on onion feedback mechanism
+                if N_i > n_inner:
+                    W_m = (N_i / n_inner) ** (-1/3)
+                else:
+                    W_m = 1.0
+                
+                # Propensity for burst events: k(t) * W(N_i) * current_state
+                propensity = k_t * W_m * m
+                propensities.append(propensity)
+            
+            total_propensity = sum(propensities)
+
+            # Stop if no further bursts possible or all thresholds reached
+            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
+                break
+
+            # Calculate total effective state for time calculation
+            # Use sum of (W_i * state[i]) as the effective total state
+            total_effective_state = 0
+            for i in range(3):
+                N_i = self.initial_state_list[i]
+                n_inner = self.rate_params['n_inner']
+                if N_i > n_inner:
+                    W_i = (N_i / n_inner) ** (-1/3)
+                else:
+                    W_i = 1.0
+                total_effective_state += W_i * self.state[i]
+            
+            if total_effective_state == 0:
+                break  # No effective molecules left to degrade
+
+            # Calculate time to next event using effective state
+            tau = self._calculate_next_event_time(total_effective_state)
+            if tau <= 0:
+                continue  # Skip invalid time increments
+            
+            self.time += tau
+
+            # Recompute propensities at new time for reaction selection
+            k_t = self._get_time_varying_rate()
+            propensities = []
+            for i in range(3):
+                m = self.state[i]
+                N_i = self.initial_state_list[i]
+                n_inner = self.rate_params['n_inner']
+                
+                # Calculate W_m based on onion feedback mechanism
+                if N_i > n_inner:
+                    W_m = (N_i / n_inner) ** (-1/3)
+                else:
+                    W_m = 1.0
+                
+                # Propensity for burst events: k(t) * W(N_i) * current_state
+                propensity = k_t * W_m * m
+                propensities.append(propensity)
+            
+            total_propensity = sum(propensities)
+
+            # Choose which chromosome experiences a burst
+            r = np.random.uniform(0, total_propensity)
+            cumulative_propensity = 0
+            for i in range(3):
+                cumulative_propensity += propensities[i]
+                if r < cumulative_propensity:
+                    # Remove burst_size cohesins, but not below 0
+                    self.state[i] = max(0, self.state[i] - burst_size)
+                    break
+
+            # Record time and state
+            self.times.append(self.time)
+            self.states.append(self.state.copy())
+
+            # Check for separation times
+            for i in range(3):
+                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
+                    self.separate_times[i] = self.time
+
     def simulate(self):
         """
         Run the simulation based on the specified mechanism.
@@ -359,6 +467,8 @@ class MultiMechanismSimulationTimevary:
             self._simulate_time_varying_k_fixed_burst()
         elif self.mechanism == 'time_varying_k_feedback_onion':
             self._simulate_time_varying_k_feedback_onion()
+        elif self.mechanism == 'time_varying_k_combined':
+            self._simulate_time_varying_k_combined()
 
         # Issue warning if simulation time exceeds max_time
         if self.time > self.max_time:

@@ -94,6 +94,9 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             base_params['burst_size'] = params['burst_size']
         elif mechanism == 'time_varying_k_feedback_onion':
             base_params['n_inner'] = params['n_inner']
+        elif mechanism == 'time_varying_k_combined':
+            base_params['burst_size'] = params['burst_size']
+            base_params['n_inner'] = params['n_inner']
         
         # Apply mutant modifications
         mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k)
@@ -116,6 +119,13 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             rate_params = {
                 'k_1': mutant_params['k_1'],
                 'k_max': mutant_params['k_max'],
+                'n_inner': mutant_params['n_inner']
+            }
+        elif mechanism == 'time_varying_k_combined':
+            rate_params = {
+                'k_1': mutant_params['k_1'],
+                'k_max': mutant_params['k_max'],
+                'burst_size': mutant_params['burst_size'],
                 'n_inner': mutant_params['n_inner']
             }
         
@@ -345,6 +355,8 @@ def print_parameter_summary(mechanism, params):
         print(f"  Burst size: {params['burst_size']:.1f}")
     if 'n_inner' in params:
         print(f"  Inner threshold: {params['n_inner']:.1f}")
+    if 'burst_size' in params and 'n_inner' in params:
+        print(f"  Combined mechanism: burst_size={params['burst_size']:.1f}, n_inner={params['n_inner']:.1f}")
     
     print(f"\nMutant Modifiers:")
     print(f"  Threshold mutant (alpha): {params['alpha']:.3f}")
@@ -372,7 +384,7 @@ def main():
         return
     
     # Test available mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
     
     for mechanism in mechanisms:
         print(f"\n{'-' * 50}")
@@ -404,7 +416,7 @@ if __name__ == "__main__":
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'time_varying_k'
+    mechanism = 'time_varying_k_feedback_onion'
     dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
     
     if run_all_mechanisms:

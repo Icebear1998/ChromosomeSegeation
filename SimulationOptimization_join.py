@@ -141,6 +141,13 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
                 'k_max': params['k_max'],
                 'n_inner': params['n_inner']
             }
+        elif mechanism == 'time_varying_k_combined':
+            rate_params = {
+                'k_1': params['k_1'],
+                'k_max': params['k_max'],
+                'burst_size': params['burst_size'],
+                'n_inner': params['n_inner']
+            }
         else:
             raise ValueError(f"Unknown mechanism: {mechanism}")
         
@@ -272,6 +279,24 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500):
                 'N1': N1, 'N2': N2, 'N3': N3,
                 'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner
             }
+        elif mechanism == 'time_varying_k_combined':
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta2_k = params_vector
+            # Calculate derived parameters from ratios
+            n1 = max(r21 * n2, 1)
+            n3 = max(r23 * n2, 1)
+            N1 = max(R21 * N2, 1)
+            N3 = max(R23 * N2, 1)
+            
+            # Add constraint checks similar to MoM optimization
+            if n1 >= N1 or n2 >= N2 or n3 >= N3:
+                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
+                return 1e6
+            
+            base_params = {
+                'n1': n1, 'n2': n2, 'n3': n3,
+                'N1': N1, 'N2': N2, 'N3': N3,
+                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
+            }
         else:
             return 1e6
         
@@ -344,6 +369,9 @@ def get_parameter_bounds(mechanism):
         bounds.append((1, 20))  # burst_size
     elif mechanism == 'time_varying_k_feedback_onion':
         bounds.append((10, 50))  # n_inner
+    elif mechanism == 'time_varying_k_combined':
+        bounds.append((1, 20))   # burst_size
+        bounds.append((10, 50))  # n_inner
     
     # Mutant parameter bounds
     bounds.extend([
@@ -405,6 +433,8 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
     elif mechanism == 'time_varying_k_feedback_onion':
         param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
+    elif mechanism == 'time_varying_k_combined':
+        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
     
     param_dict = dict(zip(param_names, params))
     
@@ -424,6 +454,8 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         print(f"           burst_size={param_dict['burst_size']:.1f}")
     if 'n_inner' in param_dict:
         print(f"           n_inner={param_dict['n_inner']:.1f}")
+    if 'burst_size' in param_dict and 'n_inner' in param_dict:
+        print(f"           Combined mechanism: burst_size={param_dict['burst_size']:.1f}, n_inner={param_dict['n_inner']:.1f}")
     
     print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_k={param_dict['beta2_k']:.3f}")
     
@@ -485,7 +517,7 @@ def main():
     """
     Main optimization routine.
     """
-    max_iterations = 100 # number of iterations for testing
+    max_iterations = 20 # number of iterations for testing
     num_simulations = 30  # Number of simulations per evaluation
     
     print("Simulation-based Optimization for Time-Varying Mechanisms")
@@ -498,8 +530,8 @@ def main():
         return
     
     # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion']
-    mechanism = mechanisms[1]  # Test only the first mechanism
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
+    mechanism = mechanisms[3]  # Test the combined mechanism
     #for mechanism in mechanisms:
     try:
         results = run_optimization(mechanism, datasets, max_iterations, num_simulations)  # Reduced for testing
