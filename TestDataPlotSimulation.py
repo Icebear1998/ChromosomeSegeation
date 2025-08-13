@@ -36,19 +36,44 @@ def load_optimized_parameters(mechanism, filename=None):
         param_section = False
         derived_section = False
         
+        mutant_section = False
+        
         for line in lines:
-            if "Optimized Parameters (ratio-based):" in line:
+            line_stripped = line.strip()
+            
+            # Handle different parameter section headers
+            if ("Optimized Parameters (ratio-based):" in line or 
+                "Wildtype Parameters (ratio-based):" in line):
                 param_section = True
                 derived_section = False
+                mutant_section = False
                 continue
-            elif "Derived Parameters:" in line:
+            elif ("Derived Parameters:" in line or 
+                  "Derived Wildtype Parameters:" in line):
                 param_section = False
                 derived_section = True
+                mutant_section = False
+                continue
+            elif ("=== MUTANT PARAMETERS ===" in line or 
+                  line_stripped.endswith("Mutant:") and not line_stripped.startswith("=")):
+                param_section = False
+                derived_section = False
+                mutant_section = True
+                continue
+            elif line_stripped.startswith("===") or line_stripped.startswith("---"):
+                param_section = False
+                derived_section = False
+                mutant_section = False
                 continue
             
-            if (param_section or derived_section) and "=" in line and not line.startswith("#"):
-                key, value = line.strip().split(" = ")
-                params[key] = float(value)
+            # Parse parameter lines
+            if "=" in line_stripped and not line_stripped.startswith("#"):
+                if param_section or derived_section or mutant_section:
+                    try:
+                        key, value = line_stripped.split(" = ", 1)
+                        params[key.strip()] = float(value.strip())
+                    except ValueError:
+                        continue
         
         # If we have ratio parameters but not derived ones, calculate them
         if 'r21' in params and 'n1' not in params:
@@ -416,8 +441,10 @@ if __name__ == "__main__":
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'time_varying_k_feedback_onion'
-    dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
+    mechanism = 'time_varying_k_combined'
+    #filename = 'simulation_optimized_parameters_time_varying_k_combined_independent.txt'
+    filename = 'bayesian_optimized_parameters_time_varying_k_combined.txt'
+    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
     
     if run_all_mechanisms:
         main()
@@ -431,7 +458,7 @@ if __name__ == "__main__":
             print("Error: Could not load experimental data!")
         else:
             # Load optimized parameters
-            params = load_optimized_parameters(mechanism)
+            params = load_optimized_parameters(mechanism, filename)
             if params:
                 print_parameter_summary(mechanism, params)
                 create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=500)
