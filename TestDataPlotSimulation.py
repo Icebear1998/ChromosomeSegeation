@@ -122,6 +122,8 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         elif mechanism == 'time_varying_k_combined':
             base_params['burst_size'] = params['burst_size']
             base_params['n_inner'] = params['n_inner']
+        elif mechanism == 'time_varying_k_burst_onion':
+            base_params['burst_size'] = params['burst_size']
         
         # Apply mutant modifications
         mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k)
@@ -152,6 +154,12 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
                 'k_max': mutant_params['k_max'],
                 'burst_size': mutant_params['burst_size'],
                 'n_inner': mutant_params['n_inner']
+            }
+        elif mechanism == 'time_varying_k_burst_onion':
+            rate_params = {
+                'k_1': mutant_params['k_1'],
+                'k_max': mutant_params['k_max'],
+                'burst_size': mutant_params['burst_size']
             }
         
         # Run simulations
@@ -382,6 +390,8 @@ def print_parameter_summary(mechanism, params):
         print(f"  Inner threshold: {params['n_inner']:.1f}")
     if 'burst_size' in params and 'n_inner' in params:
         print(f"  Combined mechanism: burst_size={params['burst_size']:.1f}, n_inner={params['n_inner']:.1f}")
+    elif 'burst_size' in params and 'n_inner' not in params:
+        print(f"  Burst mechanism: burst_size={params['burst_size']:.1f}")
     
     print(f"\nMutant Modifiers:")
     print(f"  Threshold mutant (alpha): {params['alpha']:.3f}")
@@ -409,7 +419,7 @@ def main():
         return
     
     # Test available mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
     
     for mechanism in mechanisms:
         print(f"\n{'-' * 50}")
@@ -441,10 +451,9 @@ if __name__ == "__main__":
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'time_varying_k_combined'
-    #filename = 'simulation_optimized_parameters_time_varying_k_combined_independent.txt'
-    filename = 'bayesian_optimized_parameters_time_varying_k_combined.txt'
-    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
+    mechanism = 'time_varying_k_fixed_burst'
+    filename = 'simulation_optimized_parameters_time_varying_k_fixed_burst_independent.txt'
+    dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
     
     if run_all_mechanisms:
         main()

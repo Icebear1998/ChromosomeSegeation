@@ -21,7 +21,7 @@ from SimulationOptimization_join import (
 import warnings
 warnings.filterwarnings('ignore')
 
-# Try to import scikit-optimize, provide fallback if not available
+# Try to import scikit-optimize
 try:
     from skopt import gp_minimize, forest_minimize
     from skopt.space import Real
@@ -32,125 +32,6 @@ try:
 except ImportError:
     SKOPT_AVAILABLE = False
     print("Warning: scikit-optimize not available. Install with: pip install scikit-optimize")
-    print("Falling back to multi-start local optimization")
-
-
-def load_previous_results_as_initial_guess(mechanism, filename=None):
-    """
-    Load previous optimization results as initial guess.
-    
-    Args:
-        mechanism (str): Mechanism name
-        filename (str): Optional filename, defaults to standard naming
-    
-    Returns:
-        list or None: Initial parameter vector or None if not found
-    """
-    if filename is None:
-        # Try different possible filenames
-        possible_files = [
-            f"simulation_optimized_parameters_{mechanism}.txt",
-            f"simulation_optimized_parameters_{mechanism}_independent.txt",
-            f"optimized_parameters_{mechanism}.txt"
-        ]
-    else:
-        possible_files = [filename]
-    
-    for filepath in possible_files:
-        if os.path.exists(filepath):
-            try:
-                print(f"Loading initial guess from: {filepath}")
-                params = {}
-                
-                with open(filepath, 'r') as f:
-                    lines = f.readlines()
-                
-                # Parse parameters from file
-                param_section = False
-                derived_section = False
-                
-                for line in lines:
-                    line = line.strip()
-                    if "Optimized Parameters" in line or "ratio-based" in line:
-                        param_section = True
-                        derived_section = False
-                        continue
-                    elif "Derived Parameters:" in line:
-                        param_section = False
-                        derived_section = True
-                        continue
-                    elif line.startswith("===") or line.startswith("---"):
-                        param_section = False
-                        derived_section = False
-                        continue
-                    
-                    if (param_section or derived_section) and "=" in line and not line.startswith("#"):
-                        try:
-                            key, value = line.split(" = ")
-                            params[key.strip()] = float(value.strip())
-                        except:
-                            continue
-                
-                # If we have ratio parameters but not derived ones, calculate them
-                if 'r21' in params and 'n1' not in params:
-                    params['n1'] = max(params['r21'] * params['n2'], 1)
-                    params['n3'] = max(params['r23'] * params['n2'], 1)
-                    params['N1'] = max(params['R21'] * params['N2'], 1)
-                    params['N3'] = max(params['R23'] * params['N2'], 1)
-                
-                # Convert to parameter vector based on mechanism
-                initial_guess = create_parameter_vector(mechanism, params)
-                
-                if initial_guess is not None:
-                    print(f"Successfully loaded initial guess with {len(initial_guess)} parameters")
-                    return initial_guess
-                else:
-                    print(f"Could not create parameter vector from loaded parameters")
-                    
-            except Exception as e:
-                print(f"Error loading from {filepath}: {e}")
-                continue
-    
-    print("No previous results found, will use default initial guess")
-    return None
-
-
-def create_parameter_vector(mechanism, params):
-    """
-    Create parameter vector from parameter dictionary.
-    
-    Args:
-        mechanism (str): Mechanism name
-        params (dict): Parameter dictionary
-    
-    Returns:
-        list or None: Parameter vector or None if conversion failed
-    """
-    try:
-        if mechanism == 'time_varying_k':
-            required_params = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_k']
-        elif mechanism == 'time_varying_k_fixed_burst':
-            required_params = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
-        elif mechanism == 'time_varying_k_feedback_onion':
-            required_params = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
-        elif mechanism == 'time_varying_k_combined':
-            required_params = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
-        else:
-            return None
-        
-        # Check if all required parameters are available
-        missing_params = [p for p in required_params if p not in params]
-        if missing_params:
-            print(f"Missing parameters: {missing_params}")
-            return None
-        
-        # Create parameter vector in correct order
-        param_vector = [params[p] for p in required_params]
-        return param_vector
-        
-    except Exception as e:
-        print(f"Error creating parameter vector: {e}")
-        return None
 
 
 def get_default_initial_guess(mechanism):
@@ -170,9 +51,9 @@ def get_default_initial_guess(mechanism):
         0.003,   # k_1 - reasonable initial rate
         0.05,    # k_max - reasonable maximum rate
         1.2,     # r21 - slightly higher than n2
-        1.0,     # r23 - similar to n2
-        0.8,     # R21 - slightly lower than N2
-        1.5,     # R23 - higher than N2
+        1.2,     # r23 - similar to n2
+        1.2,     # R21 - slightly lower than N2
+        3,     # R23 - higher than N2
     ]
     
     # Mechanism-specific parameters
@@ -212,8 +93,9 @@ def run_bayesian_optimization(mechanism, datasets, n_calls=150, n_initial_points
         dict: Optimization results
     """
     if not SKOPT_AVAILABLE:
-        print("scikit-optimize not available, falling back to multi-start optimization")
-        return run_multistart_fallback(mechanism, datasets, num_simulations)
+        print("Error: scikit-optimize is required for Bayesian optimization")
+        print("Please install it with: pip install scikit-optimize")
+        return {'success': False, 'message': 'scikit-optimize not available'}
     
     print(f"\n=== Bayesian Optimization for {mechanism.upper()} ===")
     print(f"Datasets: {list(datasets.keys())}")
@@ -239,14 +121,9 @@ def run_bayesian_optimization(mechanism, datasets, n_calls=150, n_initial_points
     for i, (low, high) in enumerate(bounds):
         space.append(Real(low, high, name=param_names[i]))
     
-    # Try to load initial guess from previous results
-    initial_guess = load_previous_results_as_initial_guess(mechanism)
-    
-    if initial_guess is None:
-        initial_guess = get_default_initial_guess(mechanism)
-        print("Using default initial guess")
-    else:
-        print("Using initial guess from previous results")
+    # Use default initial guess
+    initial_guess = get_default_initial_guess(mechanism)
+    print("Using default initial guess")
     
     # Ensure initial guess is within bounds
     for i, (low, high) in enumerate(bounds):
@@ -321,101 +198,12 @@ def run_bayesian_optimization(mechanism, datasets, n_calls=150, n_initial_points
         
     except Exception as e:
         print(f"Bayesian optimization failed: {e}")
-        print("Falling back to multi-start local optimization")
-        return run_multistart_fallback(mechanism, datasets, num_simulations)
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'message': f'Bayesian optimization failed: {str(e)}'}
 
 
-def run_multistart_fallback(mechanism, datasets, num_simulations=500, n_starts=10, max_iterations=100):
-    """
-    Fallback multi-start local optimization when Bayesian optimization is not available.
-    
-    Args:
-        mechanism (str): Mechanism name
-        datasets (dict): Experimental datasets
-        num_simulations (int): Number of simulations per evaluation
-        n_starts (int): Number of different starting points
-        max_iterations (int): Maximum iterations per start
-    
-    Returns:
-        dict: Optimization results
-    """
-    print(f"\n=== Multi-Start Local Optimization for {mechanism.upper()} ===")
-    print(f"Number of starts: {n_starts}")
-    print(f"Max iterations per start: {max_iterations}")
-    
-    bounds = get_parameter_bounds(mechanism)
-    best_result = None
-    best_nll = float('inf')
-    
-    # Try to get initial guess from previous results
-    initial_guess = load_previous_results_as_initial_guess(mechanism)
-    if initial_guess is None:
-        initial_guess = get_default_initial_guess(mechanism)
-    
-    for i in range(n_starts):
-        print(f"\nStart {i+1}/{n_starts}")
-        
-        if i == 0:
-            # Use initial guess for first start
-            x0 = initial_guess.copy()
-        else:
-            # Generate random starting points for other starts
-            x0 = []
-            for low, high in bounds:
-                x0.append(np.random.uniform(low, high))
-        
-        # Ensure starting point is within bounds
-        for j, (low, high) in enumerate(bounds):
-            x0[j] = np.clip(x0[j], low, high)
-        
-        try:
-            result = minimize(
-                joint_objective,
-                x0,
-                args=(mechanism, datasets, num_simulations),
-                method='L-BFGS-B',
-                bounds=bounds,
-                options={'maxiter': max_iterations, 'disp': False}
-            )
-            
-            if result.fun < best_nll:
-                best_nll = result.fun
-                best_result = result
-                print(f"  New best: {result.fun:.4f}")
-            else:
-                print(f"  Result: {result.fun:.4f}")
-                
-        except Exception as e:
-            print(f"  Start {i+1} failed: {e}")
-            continue
-    
-    if best_result is None:
-        return {'success': False, 'message': 'All optimization starts failed'}
-    
-    # Format results similar to Bayesian optimization
-    if mechanism == 'time_varying_k':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_k']
-    elif mechanism == 'time_varying_k_fixed_burst':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
-    elif mechanism == 'time_varying_k_feedback_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
-    elif mechanism == 'time_varying_k_combined':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
-    
-    param_dict = dict(zip(param_names, best_result.x))
-    
-    print(f"\n🔍 Multi-start optimization completed!")
-    print(f"Best negative log-likelihood: {best_result.fun:.4f}")
-    
-    return {
-        'success': True,
-        'converged': best_result.success,
-        'params': param_dict,
-        'nll': best_result.fun,
-        'result': best_result,
-        'n_evaluations': n_starts * max_iterations,  # Approximate
-        'message': f"Multi-start optimization completed with {n_starts} starts"
-    }
+
 
 
 def save_bayesian_results(mechanism, results, filename=None):
@@ -464,7 +252,7 @@ def main():
     Main Bayesian optimization routine.
     """
     # ========== CONFIGURATION - MODIFY THESE VALUES ==========
-    num_simulations = 30    # Number of simulations per evaluation
+    num_simulations = 500    # Number of simulations per evaluation
                            # Recommended values:
                            # - Testing: 20-50 (faster)
                            # - Production: 100-500 (more accurate)
@@ -474,10 +262,10 @@ def main():
                            # - Quick test: 50-100
                            # - Production: 150-300
     
-    n_initial_points = 20   # Initial random points before Bayesian optimization starts
+    n_initial_points = 25   # Initial random points before Bayesian optimization starts
                            # Recommended: 15-30 (should be < n_calls/3)
     
-    acq_func = 'EI'        # Acquisition function: 'EI' (Expected Improvement), 'PI', 'LCB'
+    acq_func = 'LCB'        # Acquisition function: 'EI' (Expected Improvement), 'PI', 'LCB'
                            # 'EI' is usually best for most problems
     # ========================================================
     
