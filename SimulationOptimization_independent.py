@@ -604,8 +604,8 @@ def main():
     Main independent optimization routine.
     """
     max_iterations_wt = 100  # Wildtype iterations
-    max_iterations_mut = 50  # Mutant iterations
-    num_simulations = 200     # Simulations per evaluation
+    max_iterations_mut = 100  # Mutant iterations
+    num_simulations = 500     # Simulations per evaluation
     
     print("Simulation-based Independent Optimization for Time-Varying Mechanisms")
     print("=" * 70)

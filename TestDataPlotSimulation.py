@@ -348,10 +348,10 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     
     plt.tight_layout()
     
-    # Save plot
-    filename = f'simulation_fit_{mechanism}_{dataset_name}.png'
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"Plot saved as: {filename}")
+    # # Save plot
+    # filename = f'simulation_fit_{mechanism}_{dataset_name}.png'
+    # plt.savefig(filename, dpi=300, bbox_inches='tight')
+    # print(f"Plot saved as: {filename}")
     
     plt.show()
     
@@ -451,9 +451,9 @@ if __name__ == "__main__":
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'time_varying_k_fixed_burst'
-    filename = 'simulation_optimized_parameters_time_varying_k_fixed_burst_independent.txt'
-    dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
+    mechanism = 'time_varying_k_combined'  # Choose mechanism to test
+    filename = 'bayesian_optimized_parameters_time_varying_k_combined.txt'
+    dataset = 'degrate'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
     
     if run_all_mechanisms:
         main()

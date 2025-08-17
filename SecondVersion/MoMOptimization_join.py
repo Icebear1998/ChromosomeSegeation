@@ -13,6 +13,12 @@ import pandas as pd
 from scipy.optimize import differential_evolution, minimize
 from scipy.stats import norm
 from MoMCalculations import compute_pdf_for_mechanism
+from Chromosomes_Theory import (
+    calculate_bootstrap_likelihood,
+    calculate_weighted_likelihood,
+    BootstrappingFitnessCalculator,
+    analyze_dataset_sizes
+)
 
 
 def unpack_parameters(params, mechanism_info):
@@ -168,6 +174,261 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
     if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
+
+    # Initial Proteins Mutant - TEMPORARILY EXCLUDED FROM FITTING
+    # PDF calculations and NLL contribution removed as initial strain is not being fitted
+
+    return total_nll
+
+
+def joint_objective_with_bootstrapping(params, mechanism, mechanism_info, 
+                                     data_wt12, data_wt32, data_threshold12, data_threshold32,
+                                     data_degrate12, data_degrate32, data_initial12, data_initial32, 
+                                     data_degrateAPC12, data_degrateAPC32,
+                                     bootstrap_method='bootstrap', target_sample_size=50, 
+                                     num_bootstrap_samples=100, random_seed=None):
+    """
+    Joint objective function with bootstrapping to handle unequal data points.
+    
+    Args:
+        params: Parameters to optimize
+        mechanism: Mechanism type
+        mechanism_info: Mechanism information
+        data_*: Experimental datasets
+        bootstrap_method: 'bootstrap', 'weighted', or 'standard'
+        target_sample_size: Target sample size for bootstrapping
+        num_bootstrap_samples: Number of bootstrap samples
+        random_seed: Random seed for reproducibility
+    """
+    # Unpack parameters
+    param_dict = unpack_parameters(params, mechanism_info)
+
+    # Validate constraints: n_i < N_i for all chromosomes
+    if param_dict['n1'] >= param_dict['N1']:
+        return np.inf
+    if param_dict['n2'] >= param_dict['N2']:
+        return np.inf
+    if param_dict['n3'] >= param_dict['N3']:
+        return np.inf
+
+    # Additional validation for mutant scenarios
+    # Threshold mutant: ensure n_i * alpha < N_i
+    n1_th = max(param_dict['n1'] * param_dict['alpha'], 1)
+    n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
+    n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
+
+    if n1_th >= param_dict['N1'] or n2_th >= param_dict['N2'] or n3_th >= param_dict['N3']:
+        return np.inf
+
+    # Initialize bootstrapping calculator if needed
+    if bootstrap_method in ['bootstrap', 'weighted']:
+        bootstrap_calc = BootstrappingFitnessCalculator(
+            target_sample_size=target_sample_size,
+            num_bootstrap_samples=num_bootstrap_samples,
+            random_seed=random_seed
+        )
+
+    # Extract mechanism-specific parameters
+    mech_params = {}
+    if mechanism == 'fixed_burst':
+        mech_params['burst_size'] = param_dict['burst_size']
+    elif mechanism == 'time_varying_k':
+        mech_params['k_1'] = param_dict['k_1']
+    elif mechanism == 'feedback':
+        mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
+        mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
+    elif mechanism == 'feedback_linear':
+        mech_params['w1'] = param_dict['w1']
+        mech_params['w2'] = param_dict['w2']
+        mech_params['w3'] = param_dict['w3']
+    elif mechanism == 'feedback_onion':
+        mech_params['n_inner'] = param_dict['n_inner']
+    elif mechanism == 'feedback_zipper':
+        mech_params['z1'] = param_dict['z1']
+        mech_params['z2'] = param_dict['z2']
+        mech_params['z3'] = param_dict['z3']
+    elif mechanism == 'fixed_burst_feedback_linear':
+        mech_params['burst_size'] = param_dict['burst_size']
+        mech_params['w1'] = param_dict['w1']
+        mech_params['w2'] = param_dict['w2']
+        mech_params['w3'] = param_dict['w3']
+    elif mechanism == 'fixed_burst_feedback_onion':
+        mech_params['burst_size'] = param_dict['burst_size']
+        mech_params['n_inner'] = param_dict['n_inner']
+
+    total_nll = 0.0
+
+    # Helper function to calculate likelihood with bootstrapping
+    def calculate_dataset_likelihood(data_exp, data_theory):
+        """Calculate likelihood using specified bootstrap method."""
+        if bootstrap_method == 'bootstrap':
+            # Use theoretical PDF values as "simulated data" for bootstrapping
+            return bootstrap_calc.calculate_bootstrap_likelihood(data_exp, data_theory)
+        elif bootstrap_method == 'weighted':
+            return bootstrap_calc.calculate_weighted_likelihood(data_exp, data_theory)
+        else:  # standard method
+            if np.any(data_theory <= 0) or np.any(np.isnan(data_theory)):
+                return 1e6
+            return -np.sum(np.log(data_theory)) / len(data_exp)
+
+    # Wild-Type (Chrom1–Chrom2 and Chrom3–Chrom2)
+    pdf_wt12 = compute_pdf_for_mechanism(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
+                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_wt12)) / len(data_wt12)
+    else:
+        # For bootstrapping, we need to create "simulated" data from the theoretical PDF
+        # Sample from the theoretical distribution represented by the PDF
+        try:
+            # Create a discrete distribution from the PDF
+            pdf_normalized = pdf_wt12 / np.sum(pdf_wt12)
+            simulated_wt12 = np.random.choice(data_wt12, size=len(data_wt12)*3, p=pdf_normalized, replace=True)
+            nll_wt12 = calculate_dataset_likelihood(data_wt12, simulated_wt12)
+            if nll_wt12 >= 1e6:
+                return np.inf
+            total_nll += nll_wt12
+        except:
+            return np.inf
+
+    pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
+                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_wt32)) / len(data_wt32)
+    else:
+        try:
+            pdf_normalized = pdf_wt32 / np.sum(pdf_wt32)
+            simulated_wt32 = np.random.choice(data_wt32, size=len(data_wt32)*3, p=pdf_normalized, replace=True)
+            nll_wt32 = calculate_dataset_likelihood(data_wt32, simulated_wt32)
+            if nll_wt32 >= 1e6:
+                return np.inf
+            total_nll += nll_wt32
+        except:
+            return np.inf
+
+    # Threshold Mutant
+    pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
+                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_th12)) / len(data_threshold12)
+    else:
+        try:
+            pdf_normalized = pdf_th12 / np.sum(pdf_th12)
+            simulated_th12 = np.random.choice(data_threshold12, size=len(data_threshold12)*3, p=pdf_normalized, replace=True)
+            nll_th12 = calculate_dataset_likelihood(data_threshold12, simulated_th12)
+            if nll_th12 >= 1e6:
+                return np.inf
+            total_nll += nll_th12
+        except:
+            return np.inf
+
+    pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
+                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_th32)) / len(data_threshold32)
+    else:
+        try:
+            pdf_normalized = pdf_th32 / np.sum(pdf_th32)
+            simulated_th32 = np.random.choice(data_threshold32, size=len(data_threshold32)*3, p=pdf_normalized, replace=True)
+            nll_th32 = calculate_dataset_likelihood(data_threshold32, simulated_th32)
+            if nll_th32 >= 1e6:
+                return np.inf
+            total_nll += nll_th32
+        except:
+            return np.inf
+
+    # Degradation Rate Mutant
+    k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.001)
+    if param_dict['beta_k'] * param_dict['k'] < 0.001:
+        print("Warning: beta_k * k is less than 0.001, setting k_deg to 0.001")
+
+    pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
+                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_deg12)) / len(data_degrate12)
+    else:
+        try:
+            pdf_normalized = pdf_deg12 / np.sum(pdf_deg12)
+            simulated_deg12 = np.random.choice(data_degrate12, size=len(data_degrate12)*3, p=pdf_normalized, replace=True)
+            nll_deg12 = calculate_dataset_likelihood(data_degrate12, simulated_deg12)
+            if nll_deg12 >= 1e6:
+                return np.inf
+            total_nll += nll_deg12
+        except:
+            return np.inf
+
+    pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
+                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_deg32)) / len(data_degrate32)
+    else:
+        try:
+            pdf_normalized = pdf_deg32 / np.sum(pdf_deg32)
+            simulated_deg32 = np.random.choice(data_degrate32, size=len(data_degrate32)*3, p=pdf_normalized, replace=True)
+            nll_deg32 = calculate_dataset_likelihood(data_degrate32, simulated_deg32)
+            if nll_deg32 >= 1e6:
+                return np.inf
+            total_nll += nll_deg32
+        except:
+            return np.inf
+
+    # Degradation Rate APC Mutant
+    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
+    if param_dict['beta2_k'] * param_dict['k'] < 0.001:
+        print("Warning: beta2_k * k is less than 0.001, setting k_degAPC to 0.001")
+
+    pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
+                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_degAPC12)) / len(data_degrateAPC12)
+    else:
+        try:
+            pdf_normalized = pdf_degAPC12 / np.sum(pdf_degAPC12)
+            simulated_degAPC12 = np.random.choice(data_degrateAPC12, size=len(data_degrateAPC12)*3, p=pdf_normalized, replace=True)
+            nll_degAPC12 = calculate_dataset_likelihood(data_degrateAPC12, simulated_degAPC12)
+            if nll_degAPC12 >= 1e6:
+                return np.inf
+            total_nll += nll_degAPC12
+        except:
+            return np.inf
+
+    pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
+                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+    
+    if bootstrap_method == 'standard':
+        if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
+    else:
+        try:
+            pdf_normalized = pdf_degAPC32 / np.sum(pdf_degAPC32)
+            simulated_degAPC32 = np.random.choice(data_degrateAPC32, size=len(data_degrateAPC32)*3, p=pdf_normalized, replace=True)
+            nll_degAPC32 = calculate_dataset_likelihood(data_degrateAPC32, simulated_degAPC32)
+            if nll_degAPC32 >= 1e6:
+                return np.inf
+            total_nll += nll_degAPC32
+        except:
+            return np.inf
 
     # Initial Proteins Mutant - TEMPORARILY EXCLUDED FROM FITTING
     # PDF calculations and NLL contribution removed as initial strain is not being fitted
@@ -616,5 +877,183 @@ def main():
     print(f"Optimized parameters saved to {filename}")
 
 
+def main_with_bootstrapping():
+    """
+    Main optimization routine with bootstrapping comparison.
+    """
+    # ========== MECHANISM CONFIGURATION ==========
+    mechanism = 'fixed_burst_feedback_onion'  # Auto-set by RunAllMechanisms.py
+    gamma_mode = 'separate'  # Change this to 'separate' for individual gamma per chromosome
+
+    print(f"Bootstrapping optimization for mechanism: {mechanism}")
+    print(f"Gamma mode: {gamma_mode}")
+    print("NOTE: Initial proteins strain is TEMPORARILY EXCLUDED from fitting")
+    print("Fitting datasets: wildtype, threshold, degrate, degrateAPC")
+
+    # Get mechanism-specific information
+    mechanism_info = get_mechanism_info(mechanism, gamma_mode)
+    bounds = mechanism_info['bounds']
+
+    print(f"Parameters to optimize: {mechanism_info['params']}")
+    print(f"Number of parameters: {len(mechanism_info['params'])}")
+
+    # Read data
+    df = pd.read_excel("Data/All_strains_SCStimes.xlsx")
+    data_wt12 = df['wildtype12'].dropna().values
+    data_wt32 = df['wildtype32'].dropna().values
+    data_threshold12 = df['threshold12'].dropna().values
+    data_threshold32 = df['threshold32'].dropna().values
+    data_degrate12 = df['degRate12'].dropna().values
+    data_degrate32 = df['degRate32'].dropna().values
+    data_initial12 = df['initialProteins12'].dropna().values
+    data_initial32 = df['initialProteins32'].dropna().values
+    data_degrateAPC12 = df['degRateAPC12'].dropna().values
+    data_degrateAPC32 = df['degRateAPC32'].dropna().values
+
+    # Analyze dataset sizes
+    datasets = {
+        'wildtype': {'delta_t12': data_wt12, 'delta_t32': data_wt32},
+        'threshold': {'delta_t12': data_threshold12, 'delta_t32': data_threshold32},
+        'degrate': {'delta_t12': data_degrate12, 'delta_t32': data_degrate32},
+        'degrateAPC': {'delta_t12': data_degrateAPC12, 'delta_t32': data_degrateAPC32}
+    }
+    
+    print("\n" + "="*60)
+    print("DATASET ANALYSIS")
+    print("="*60)
+    size_analysis = analyze_dataset_sizes(datasets)
+    target_sample_size = size_analysis['recommended_target_size']
+
+    print(f"\n{'='*60}")
+    print("COMPARISON: Standard vs. Bootstrapping Methods")
+    print(f"{'='*60}")
+
+    methods = [
+        ('standard', 'Standard MoM Optimization'),
+        ('weighted', 'Weighted Likelihood Optimization'),
+        ('bootstrap', 'Bootstrap Optimization')
+    ]
+
+    results = {}
+    
+    for method, method_name in methods:
+        print(f"\n{'-'*40}")
+        print(f"{method_name.upper()}")
+        print(f"{'-'*40}")
+        
+        try:
+            # Choose objective function
+            if method == 'standard':
+                objective_func = joint_objective
+                args = (mechanism, mechanism_info, data_wt12, data_wt32,
+                       data_threshold12, data_threshold32, data_degrate12, data_degrate32,
+                       data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32)
+            else:
+                objective_func = joint_objective_with_bootstrapping
+                args = (mechanism, mechanism_info, data_wt12, data_wt32,
+                       data_threshold12, data_threshold32, data_degrate12, data_degrate32,
+                       data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32,
+                       method, target_sample_size, 50, 42)  # Reduced bootstrap samples for testing
+
+            # Run optimization
+            result = differential_evolution(
+                objective_func,
+                bounds=bounds,
+                args=args,
+                strategy='best1bin',
+                maxiter=100,  # Reduced for testing
+                popsize=15,   # Reduced for testing
+                tol=1e-6,
+                mutation=(0.5, 1.0),
+                recombination=0.7,
+                disp=True,
+                seed=42
+            )
+
+            if result.success:
+                param_dict = unpack_parameters(result.x, mechanism_info)
+                results[method] = {
+                    'nll': result.fun,
+                    'params': param_dict,
+                    'success': True
+                }
+                
+                print(f"✓ {method_name} completed successfully")
+                print(f"  Negative Log-Likelihood: {result.fun:.4f}")
+                print(f"  Parameters: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}, k={param_dict['k']:.4f}")
+                
+                # Save results
+                suffix = f"_{method}" if method != 'standard' else "_standard"
+                filename = f"optimized_parameters_{mechanism}_join{suffix}.txt"
+                
+                with open(filename, "w") as f:
+                    f.write(f"# Mechanism: {mechanism}\n")
+                    f.write(f"# Method: {method_name}\n")
+                    if method != 'standard':
+                        f.write(f"# Target Sample Size: {target_sample_size}\n")
+                    f.write(f"# Negative Log-Likelihood: {result.fun:.6f}\n\n")
+                    
+                    f.write("# Wild-Type Parameters\n")
+                    for key in ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k']:
+                        f.write(f"{key}: {param_dict[key]:.6f}\n")
+                    
+                    # Mechanism-specific parameters
+                    if mechanism == 'fixed_burst_feedback_onion':
+                        f.write(f"burst_size: {param_dict['burst_size']:.6f}\n")
+                        f.write(f"n_inner: {param_dict['n_inner']:.6f}\n")
+                    
+                    # Mutant parameters
+                    f.write("\n# Mutant Parameters\n")
+                    for key in ['alpha', 'beta_k', 'beta2_k']:
+                        f.write(f"{key}: {param_dict[key]:.6f}\n")
+                
+                print(f"  Results saved to: {filename}")
+                
+            else:
+                results[method] = {'success': False, 'nll': np.inf}
+                print(f"✗ {method_name} failed: {result.message}")
+                
+        except Exception as e:
+            results[method] = {'success': False, 'nll': np.inf}
+            print(f"✗ Error in {method_name}: {e}")
+
+    # Compare results
+    print(f"\n{'='*60}")
+    print("RESULTS COMPARISON")
+    print(f"{'='*60}")
+    
+    successful_results = {k: v for k, v in results.items() if v['success']}
+    
+    if successful_results:
+        for method, method_name in methods:
+            if method in successful_results:
+                nll = successful_results[method]['nll']
+                print(f"{method_name:30}: {nll:.4f}")
+        
+        # Calculate improvements
+        if 'standard' in successful_results:
+            standard_nll = successful_results['standard']['nll']
+            print(f"\nImprovement over standard:")
+            
+            for method in ['weighted', 'bootstrap']:
+                if method in successful_results:
+                    method_nll = successful_results[method]['nll']
+                    if method_nll < standard_nll:
+                        improvement = ((standard_nll - method_nll) / standard_nll) * 100
+                        print(f"  {method.capitalize():10}: {improvement:.1f}% better")
+                    else:
+                        change = ((method_nll - standard_nll) / standard_nll) * 100
+                        print(f"  {method.capitalize():10}: {change:.1f}% worse")
+    else:
+        print("No successful optimizations completed.")
+
+    print(f"\n{'-' * 60}")
+    print("Bootstrapping optimization comparison complete!")
+
+
 if __name__ == "__main__":
+    # Uncomment the line below to run bootstrapping comparison
+    # main_with_bootstrapping()
+    
+    # Standard optimization
     main()
