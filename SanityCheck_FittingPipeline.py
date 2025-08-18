@@ -16,6 +16,7 @@ import pandas as pd
 import os
 import sys
 from scipy.stats import gaussian_kde
+import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -587,6 +588,138 @@ def compare_parameters(true_params, recovered_params, method_name):
     return comparison
 
 
+def _build_mech_params(param_dict, mechanism):
+    """Helper: build mechanism-specific params dict from a parameter dictionary."""
+    mech_params = {}
+    if mechanism == 'fixed_burst':
+        if 'burst_size' in param_dict:
+            mech_params['burst_size'] = param_dict['burst_size']
+    elif mechanism == 'time_varying_k':
+        if 'k_1' in param_dict:
+            mech_params['k_1'] = param_dict['k_1']
+    elif mechanism == 'feedback':
+        for key in ['feedbackSteepness', 'feedbackThreshold']:
+            if key in param_dict:
+                mech_params[key] = param_dict[key]
+    elif mechanism == 'feedback_linear':
+        for key in ['w1', 'w2', 'w3']:
+            if key in param_dict:
+                mech_params[key] = param_dict[key]
+    elif mechanism == 'feedback_onion':
+        if 'n_inner' in param_dict:
+            mech_params['n_inner'] = param_dict['n_inner']
+    elif mechanism == 'feedback_zipper':
+        for key in ['z1', 'z2', 'z3']:
+            if key in param_dict:
+                mech_params[key] = param_dict[key]
+    elif mechanism == 'fixed_burst_feedback_linear':
+        for key in ['burst_size', 'w1', 'w2', 'w3']:
+            if key in param_dict:
+                mech_params[key] = param_dict[key]
+    elif mechanism == 'fixed_burst_feedback_onion':
+        for key in ['burst_size', 'n_inner']:
+            if key in param_dict:
+                mech_params[key] = param_dict[key]
+    return mech_params
+
+
+def _get_strain_adjusted_params(base_params, strain):
+    """Return adjusted (n1,n2,n3,N1,N2,N3,k) for a given strain based on mutant multipliers."""
+    n1 = base_params.get('n1'); n2 = base_params.get('n2'); n3 = base_params.get('n3')
+    N1 = base_params.get('N1'); N2 = base_params.get('N2'); N3 = base_params.get('N3')
+    k = base_params.get('k')
+    alpha = base_params.get('alpha', 1.0)
+    beta_k = base_params.get('beta_k', 1.0)
+    beta2_k = base_params.get('beta2_k', 1.0)
+    if any(v is None for v in [n1, n2, n3, N1, N2, N3, k]):
+        return None
+    if strain == 'threshold':
+        n1, n2, n3 = max(n1 * alpha, 1), max(n2 * alpha, 1), max(n3 * alpha, 1)
+    if strain == 'degrate':
+        k = max(k * beta_k, 0.001)
+    if strain == 'degrateAPC':
+        k = max(k * beta2_k, 0.001)
+    return n1, n2, n3, N1, N2, N3, k
+
+
+def plot_histograms_with_pdfs(datasets, mechanism, true_params, joint_params, independent_params, out_dir):
+    """
+    Plot histograms of synthetic data with overlaid PDFs from recovered parameters.
+    Draw both joint and independent PDFs when available.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+
+    strains = ['wildtype', 'threshold', 'degrate', 'degrateAPC']
+    for strain in strains:
+        for pair_key, pair12 in [('delta_t12', True), ('delta_t32', False)]:
+            data = datasets[strain][pair_key]
+            if data.size == 0:
+                continue
+            xmin = float(np.nanmin(data))
+            xmax = float(np.nanmax(data))
+            if not np.isfinite(xmin) or not np.isfinite(xmax) or xmin == xmax:
+                continue
+            x_grid = np.linspace(xmin, xmax, 400)
+
+            plt.figure(figsize=(7, 4))
+            plt.hist(data, bins=50, density=True, alpha=0.35, color='gray', edgecolor='none', label='Empirical')
+
+            # Plot theoretical PDFs using joint and independent recovered params
+            for method_name, params, color in [
+                ('Joint', joint_params, 'C0'),
+                ('Independent', independent_params, 'C1')
+            ]:
+                if params is None:
+                    continue
+                adj = _get_strain_adjusted_params(params, strain)
+                if adj is None:
+                    continue
+                n1, n2, n3, N1, N2, N3, k = adj
+                mech_params = _build_mech_params(params, mechanism)
+                try:
+                    if pair12:
+                        pdf_vals = compute_pdf_for_mechanism(mechanism, x_grid, n1, N1, n2, N2, k, mech_params, pair12=True)
+                    else:
+                        pdf_vals = compute_pdf_for_mechanism(mechanism, x_grid, n3, N3, n2, N2, k, mech_params, pair12=False)
+                    plt.plot(x_grid, pdf_vals, color=color, lw=2, label=f'{method_name} PDF')
+                except Exception as e:
+                    print(f"Plot warning: could not compute {method_name} PDF for {strain} {pair_key}: {e}")
+
+            title_pair = 'T1-T2' if pair12 else 'T3-T2'
+            plt.title(f"{strain} – {title_pair}")
+            plt.xlabel('Delta time')
+            plt.ylabel('Density')
+            plt.legend()
+            fname = os.path.join(out_dir, f"hist_pdf_{strain}_{'12' if pair12 else '32'}.png")
+            plt.tight_layout()
+            plt.savefig(fname, dpi=150)
+            plt.close()
+
+
+def plot_parameter_bars(true_params, recovered_params, method_name, out_dir):
+    """Bar plot comparing true vs recovered parameters."""
+    os.makedirs(out_dir, exist_ok=True)
+    keys_order = ['n1','n2','n3','N1','N2','N3','k','burst_size','k_1','feedbackSteepness','feedbackThreshold','w1','w2','w3','n_inner','z1','z2','z3','alpha','beta_k','beta2_k']
+    keys = [k for k in keys_order if k in true_params and recovered_params and k in recovered_params]
+    if not keys:
+        return
+    true_vals = [true_params[k] for k in keys]
+    rec_vals = [recovered_params[k] for k in keys]
+    x = np.arange(len(keys))
+    width = 0.38
+    plt.figure(figsize=(max(8, len(keys)*0.6), 4.5))
+    plt.bar(x - width/2, true_vals, width, label='True', color='C2', alpha=0.7)
+    plt.bar(x + width/2, rec_vals, width, label='Recovered', color='C0', alpha=0.7)
+    plt.xticks(x, keys, rotation=45, ha='right')
+    plt.ylabel('Value')
+    plt.title(f'Parameters: True vs {method_name}')
+    plt.legend()
+    plt.tight_layout()
+    fname = os.path.join(out_dir, f"params_{method_name.lower().replace(' ', '_')}.png")
+    plt.savefig(fname, dpi=150)
+    plt.close()
+
+
 def get_test_parameters(mechanism):
     """
     Get test parameters for a given mechanism.
@@ -708,7 +841,26 @@ def main():
     if independent_results['success']:
         independent_comparison = compare_parameters(true_params, independent_results['params'], "Independent Optimization")
     
-    # Step 5: Summary
+    # Step 5: Plots
+    print(f"\n{'='*60}")
+    print("STEP 5: PLOTTING RESULTS")
+    print(f"{'='*60}")
+    out_dir = os.path.join('Results', 'SanityCheck')
+    joint_params = joint_results['params'] if joint_results and joint_results.get('success') else None
+    indep_params = independent_results['params'] if independent_results and independent_results.get('success') else None
+    try:
+        plot_histograms_with_pdfs(datasets, mechanism, true_params, joint_params, indep_params, out_dir)
+    except Exception as e:
+        print(f"Plotting error (hist+pdf): {e}")
+    try:
+        if joint_params:
+            plot_parameter_bars(true_params, joint_params, 'Joint Optimization', out_dir)
+        if indep_params:
+            plot_parameter_bars(true_params, indep_params, 'Independent Optimization', out_dir)
+    except Exception as e:
+        print(f"Plotting error (params bars): {e}")
+
+    # Step 6: Summary
     print(f"\n{'='*60}")
     print("SANITY CHECK SUMMARY")
     print(f"{'='*60}")

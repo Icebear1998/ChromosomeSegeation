@@ -20,7 +20,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=500):
+def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=500, selected_strains=None):
     """
     Objective function for wildtype dataset only.
     
@@ -29,6 +29,7 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
         mechanism (str): Mechanism name
         wildtype_data (dict): Wildtype experimental data
         num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include (for compatibility)
     
     Returns:
         float: Negative log-likelihood for wildtype data
@@ -147,7 +148,7 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
         return 1e6
 
 
-def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mutant_type, num_simulations=500):
+def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mutant_type, num_simulations=500, selected_strains=None):
     """
     Objective function for a single mutant dataset with fixed wildtype parameters.
     
@@ -158,6 +159,7 @@ def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mut
         wildtype_params (dict): Fixed wildtype parameters
         mutant_type (str): Type of mutant
         num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include (for compatibility)
     
     Returns:
         float: Negative log-likelihood for mutant data
@@ -260,7 +262,7 @@ def get_mutant_parameter_bounds(mutant_type):
         return []
 
 
-def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulations=500):
+def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulations=500, selected_strains=None):
     """
     Optimize wildtype parameters.
     
@@ -269,6 +271,7 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
         wildtype_data (dict): Wildtype experimental data
         max_iterations (int): Maximum iterations
         num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include (for compatibility)
     
     Returns:
         dict: Optimization results
@@ -281,7 +284,7 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
     result = differential_evolution(
         wildtype_objective,
         bounds,
-        args=(mechanism, wildtype_data, num_simulations),
+        args=(mechanism, wildtype_data, num_simulations, selected_strains),
         maxiter=max_iterations,
         popsize=15,
         seed=42,
@@ -346,7 +349,7 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
     }
 
 
-def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_iterations=100, num_simulations=500):
+def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_iterations=100, num_simulations=500, selected_strains=None):
     """
     Optimize mutant parameters with fixed wildtype parameters.
     
@@ -357,6 +360,7 @@ def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_it
         mutant_type (str): Type of mutant
         max_iterations (int): Maximum iterations
         num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include (for compatibility)
     
     Returns:
         dict: Optimization results
@@ -372,7 +376,7 @@ def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_it
     result = differential_evolution(
         mutant_objective,
         bounds,
-        args=(mechanism, mutant_data, wildtype_params, mutant_type, num_simulations),
+        args=(mechanism, mutant_data, wildtype_params, mutant_type, num_simulations, selected_strains),
         maxiter=max_iterations,
         popsize=10,
         seed=42,
@@ -409,9 +413,9 @@ def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_it
     }
 
 
-def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max_iterations_mut=100, num_simulations=500):
+def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max_iterations_mut=100, num_simulations=500, selected_strains=None):
     """
-    Run independent optimization for all datasets.
+    Run independent optimization for selected datasets.
     
     Args:
         mechanism (str): Mechanism name
@@ -419,12 +423,15 @@ def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max
         max_iterations_wt (int): Maximum iterations for wildtype
         max_iterations_mut (int): Maximum iterations for mutants
         num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include in fitting
     
     Returns:
         dict: Complete optimization results
     """
     print(f"\n{'='*60}")
     print(f"Independent Optimization for {mechanism.upper()}")
+    if selected_strains is not None:
+        print(f"Selected strains: {selected_strains}")
     print(f"{'='*60}")
     
     results = {'mechanism': mechanism}
@@ -434,7 +441,7 @@ def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max
         print("Error: Wildtype data not found!")
         return {'success': False}
     
-    wt_results = optimize_wildtype(mechanism, datasets['wildtype'], max_iterations_wt, num_simulations)
+    wt_results = optimize_wildtype(mechanism, datasets['wildtype'], max_iterations_wt, num_simulations, selected_strains)
     if not wt_results['success']:
         print("Wildtype optimization failed!")
         return {'success': False}
@@ -443,7 +450,13 @@ def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max
     wildtype_params = wt_results['complete_params']
     
     # Step 2: Optimize each mutant separately
-    mutant_types = ['threshold', 'degrate', 'degrateAPC']
+    if selected_strains is None:
+        # Use all available mutants
+        mutant_types = ['threshold', 'degrate', 'degrateAPC']
+    else:
+        # Only optimize mutants that are in the selected strains
+        mutant_types = [strain for strain in selected_strains if strain != 'wildtype']
+    
     for mutant_type in mutant_types:
         if mutant_type not in datasets:
             print(f"Warning: {mutant_type} data not found, skipping...")
@@ -451,7 +464,7 @@ def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max
         
         mut_results = optimize_mutant(
             mechanism, datasets[mutant_type], wildtype_params, 
-            mutant_type, max_iterations_mut, num_simulations
+            mutant_type, max_iterations_mut, num_simulations, selected_strains
         )
         
         if mut_results['success']:
@@ -478,7 +491,7 @@ def run_independent_optimization(mechanism, datasets, max_iterations_wt=200, max
     return results
 
 
-def save_independent_results(mechanism, results, filename=None):
+def save_independent_results(mechanism, results, filename=None, selected_strains=None):
     """
     Save independent optimization results to file.
     
@@ -486,17 +499,31 @@ def save_independent_results(mechanism, results, filename=None):
         mechanism (str): Mechanism name
         results (dict): Optimization results
         filename (str): Output filename (optional)
+        selected_strains (list): List of strains used in fitting
     """
     if not results.get('success', False):
         print("Cannot save results - optimization failed")
         return
     
+    # Determine filename based on selected strains
     if filename is None:
-        filename = f"simulation_optimized_parameters_{mechanism}_independent.txt"
+        # Create strain suffix if specific strains were selected
+        strain_suffix = ""
+        if selected_strains is not None:
+            strain_suffix = f"_{'_'.join(selected_strains)}"
+        
+        filename = f"simulation_optimized_parameters_{mechanism}_independent{strain_suffix}.txt"
     
     with open(filename, 'w') as f:
         f.write(f"Simulation-based Independent Optimization Results\n")
         f.write(f"Mechanism: {mechanism}\n")
+        
+        # Add strain selection information
+        if selected_strains is not None:
+            f.write(f"Selected Strains: {', '.join(selected_strains)}\n")
+        else:
+            f.write(f"Selected Strains: all datasets\n")
+        
         f.write(f"Total Negative Log-Likelihood: {results['summary']['total_nll']:.6f}\n")
         f.write(f"Strategy: Independent optimization (wildtype first, then mutants separately)\n\n")
         
@@ -601,11 +628,11 @@ def print_independent_summary(mechanism, results):
 
 def main():
     """
-    Main independent optimization routine.
+    Main independent optimization routine with strain selection.
     """
     max_iterations_wt = 100  # Wildtype iterations
     max_iterations_mut = 100  # Mutant iterations
-    num_simulations = 500     # Simulations per evaluation
+    num_simulations = 200     # Simulations per evaluation
     
     print("Simulation-based Independent Optimization for Time-Varying Mechanisms")
     print("=" * 70)
@@ -617,17 +644,47 @@ def main():
         return
     
     # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
-    mechanism = mechanisms[1]  # Test burst_onion mechanism
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanism = mechanisms[1]  # Test fixed_burst mechanism
+    
+    # ========== STRAIN SELECTION CONFIGURATION ==========
+    # Choose which strains to include in fitting
+    # Options: None (all strains), or a list of specific strains
+    # Available strains: ['wildtype', 'threshold', 'degrate', 'degrateAPC']
+    
+    # Example 1: Fit all strains (default behavior)
+    selected_strains_all = None
+    
+    # Example 2: Fit only three strains (excluding one problematic strain)
+    selected_strains_three = ['wildtype', 'threshold', 'degrateAPC']  # Exclude degrateAPC
+    
+    # Example 3: Fit only wildtype and threshold
+    selected_strains_two = ['wildtype', 'threshold']
+    
+    # Example 4: Fit only wildtype (single strain)
+    selected_strains_one = ['wildtype']
+    
+    # Choose which configuration to run
+    strain_config = selected_strains_three  # Change this to test different combinations
+    
+    print(f"\n{'='*70}")
+    print("INDEPENDENT OPTIMIZATION WITH STRAIN SELECTION")
+    print(f"{'='*70}")
+    
+    if strain_config is None:
+        print("Testing with ALL strains")
+    else:
+        print(f"Testing with selected strains: {strain_config}")
     
     try:
         results = run_independent_optimization(
-            mechanism, datasets, max_iterations_wt, max_iterations_mut, num_simulations
+            mechanism, datasets, max_iterations_wt, max_iterations_mut, num_simulations,
+            selected_strains=strain_config
         )
         
         if results['success']:
             print_independent_summary(mechanism, results)
-            save_independent_results(mechanism, results)
+            save_independent_results(mechanism, results, selected_strains=strain_config)
         else:
             print("Independent optimization failed!")
         
@@ -641,5 +698,131 @@ def main():
     print("Independent optimization complete!")
 
 
+def test_independent_strain_combinations():
+    """
+    Test different strain combinations for independent optimization.
+    """
+    max_iterations_wt = 50  # Wildtype iterations
+    max_iterations_mut = 50  # Mutant iterations
+    num_simulations = 200    # Simulations per evaluation
+    
+    print("Testing Different Strain Combinations for Independent Optimization")
+    print("=" * 80)
+    
+    # Load experimental data
+    datasets = load_experimental_data()
+    if not datasets:
+        print("Error: No datasets loaded!")
+        return
+    
+    # Test mechanisms
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanism = mechanisms[1]  # Test fixed_burst mechanism
+    
+    # Define different strain combinations to test
+    strain_combinations = [
+        (None, "All strains"),
+        (['wildtype', 'threshold', 'degrate'], "Three strains (no degrateAPC)"),
+        (['wildtype', 'threshold', 'degrateAPC'], "Three strains (no degrate)"),
+        (['wildtype', 'degrate', 'degrateAPC'], "Three strains (no threshold)"),
+        (['wildtype', 'threshold'], "Two strains (wildtype + threshold)"),
+        (['wildtype', 'degrate'], "Two strains (wildtype + degrate)"),
+        (['wildtype', 'degrateAPC'], "Two strains (wildtype + degrateAPC)"),
+        (['wildtype'], "Single strain (wildtype only)")
+    ]
+    
+    results_summary = []
+    
+    for selected_strains, description in strain_combinations:
+        print(f"\n{'-'*60}")
+        print(f"Testing: {description}")
+        print(f"Strains: {selected_strains if selected_strains else 'ALL'}")
+        print(f"{'-'*60}")
+        
+        try:
+            # Run independent optimization with selected strains
+            results = run_independent_optimization(
+                mechanism, datasets, 
+                max_iterations_wt=max_iterations_wt,
+                max_iterations_mut=max_iterations_mut,
+                num_simulations=num_simulations,
+                selected_strains=selected_strains
+            )
+            
+            if results['success']:
+                # Save results with strain information
+                save_independent_results(mechanism, results, selected_strains=selected_strains)
+                
+                # Store results for comparison
+                results_summary.append({
+                    'description': description,
+                    'strains': selected_strains,
+                    'total_nll': results['summary']['total_nll'],
+                    'wildtype_nll': results['summary']['wildtype_nll'],
+                    'mutant_nlls': results['summary']['mutant_nlls'],
+                    'converged': all([results['wildtype']['converged']] + 
+                                   [results.get(mut, {}).get('converged', False) 
+                                    for mut in ['threshold', 'degrate', 'degrateAPC'] 
+                                    if mut in results])
+                })
+            else:
+                print(f"Independent optimization failed for {description}")
+                results_summary.append({
+                    'description': description,
+                    'strains': selected_strains,
+                    'total_nll': float('inf'),
+                    'wildtype_nll': float('inf'),
+                    'mutant_nlls': {},
+                    'converged': False
+                })
+            
+        except Exception as e:
+            print(f"Error testing {description}: {e}")
+            results_summary.append({
+                'description': description,
+                'strains': selected_strains,
+                'total_nll': float('inf'),
+                'wildtype_nll': float('inf'),
+                'mutant_nlls': {},
+                'converged': False
+            })
+    
+    # Print summary comparison
+    print(f"\n{'='*100}")
+    print("INDEPENDENT OPTIMIZATION STRAIN COMBINATION COMPARISON")
+    print(f"{'='*100}")
+    print(f"{'Description':<35} {'Total NLL':<12} {'WT NLL':<10} {'Converged':<10}")
+    print(f"{'-'*100}")
+    
+    # Sort by total NLL (best first)
+    results_summary.sort(key=lambda x: x['total_nll'])
+    
+    for result in results_summary:
+        status = "✅" if result['converged'] else "❌"
+        print(f"{result['description']:<35} {result['total_nll']:<12.4f} {result['wildtype_nll']:<10.4f} {status:<10}")
+    
+    # Highlight the best result
+    if results_summary:
+        best = results_summary[0]
+        print(f"\n🏆 BEST INDEPENDENT RESULT: {best['description']}")
+        print(f"   Total NLL: {best['total_nll']:.4f}")
+        print(f"   Wildtype NLL: {best['wildtype_nll']:.4f}")
+        print(f"   Strains: {best['strains'] if best['strains'] else 'ALL'}")
+        
+        if best['mutant_nlls']:
+            print(f"   Mutant NLLs:")
+            for mutant, nll in best['mutant_nlls'].items():
+                print(f"     {mutant}: {nll:.4f}")
+    
+    print(f"\n{'='*100}")
+
+
 if __name__ == "__main__":
-    main() 
+    # Choose which function to run:
+    
+    # Option 1: Run main() - tests a single strain combination
+    main()
+    
+    # Option 2: Run test_independent_strain_combinations() - tests all strain combinations
+    # Uncomment the line below to test all combinations:
+    # test_independent_strain_combinations() 

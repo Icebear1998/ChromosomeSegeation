@@ -227,11 +227,12 @@ def calculate_likelihood(experimental_data, simulated_data):
 
 
 def joint_objective_with_bootstrapping(params_vector, mechanism, datasets, 
-                                     num_simulations=500, 
-                                     bootstrap_method='bootstrap',
-                                     target_sample_size=50, 
-                                     num_bootstrap_samples=100,
-                                     random_seed=None):
+                                      num_simulations=500, 
+                                      bootstrap_method='bootstrap',
+                                      target_sample_size=50, 
+                                      num_bootstrap_samples=100,
+                                      random_seed=None,
+                                      selected_strains=None):
     """
     Joint objective function with bootstrapping to handle unequal data points.
     
@@ -350,7 +351,18 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
         
         total_nll = 0
         
-        for dataset_name, data_dict in datasets.items():
+        # Filter datasets based on selected strains
+        if selected_strains is None:
+            # Use all datasets if no selection specified
+            datasets_to_use = datasets
+        else:
+            datasets_to_use = {name: data for name, data in datasets.items() if name in selected_strains}
+        
+        if not datasets_to_use:
+            print("Error: No datasets selected for fitting!")
+            return 1e6
+        
+        for dataset_name, data_dict in datasets_to_use.items():
             # Apply mutant-specific modifications
             params, n0_list = apply_mutant_params(
                 base_params, dataset_name, alpha, beta_k, beta2_k
@@ -395,18 +407,19 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
         return 1e6
 
 
-def joint_objective(params_vector, mechanism, datasets, num_simulations=500):
+def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None):
     """
-    Joint objective function for all datasets.
+    Joint objective function for selected datasets.
     
     Args:
         params_vector (array): Parameter vector to optimize
         mechanism (str): Mechanism name
         datasets (dict): Experimental datasets
         num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include in fitting
     
     Returns:
-        float: Total negative log-likelihood across all datasets
+        float: Total negative log-likelihood across selected datasets
     """
     # Add debugging to see parameter values being tried
     if hasattr(joint_objective, 'call_count'):
@@ -502,7 +515,18 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500):
         total_nll = 0
         dataset_weights = {'wildtype': 1.0, 'threshold': 1.0, 'degrate': 1.0, 'degrateAPC': 1.0}
         
-        for dataset_name, data_dict in datasets.items():
+        # Filter datasets based on selected strains
+        if selected_strains is None:
+            # Use all datasets if no selection specified
+            datasets_to_use = datasets
+        else:
+            datasets_to_use = {name: data for name, data in datasets.items() if name in selected_strains}
+        
+        if not datasets_to_use:
+            print("Error: No datasets selected for fitting!")
+            return 1e6
+        
+        for dataset_name, data_dict in datasets_to_use.items():
             # Apply mutant-specific modifications
             params, n0_list = apply_mutant_params(
                 base_params, dataset_name, alpha, beta_k, beta2_k
@@ -584,20 +608,26 @@ def get_parameter_bounds(mechanism):
     return bounds
 
 
-def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500):
+def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500, selected_strains=None):
     """
-    Run joint optimization for all datasets.
+    Run joint optimization for selected datasets.
     
     Args:
         mechanism (str): Mechanism name
         datasets (dict): Experimental datasets
         max_iterations (int): Maximum iterations for optimization
+        num_simulations (int): Number of simulations per evaluation
+        selected_strains (list): List of strain names to include in fitting
     
     Returns:
         dict: Optimization results
     """
     print(f"\n=== Joint Optimization for {mechanism.upper()} ===")
-    print(f"Datasets: {list(datasets.keys())}")
+    if selected_strains is None:
+        print(f"Datasets: {list(datasets.keys())} (all datasets)")
+    else:
+        print(f"Selected datasets: {selected_strains}")
+        print(f"Available datasets: {list(datasets.keys())}")
     print(f"Max iterations: {max_iterations}")
     
     # Get parameter bounds
@@ -610,7 +640,7 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
     result = differential_evolution(
         joint_objective,
         bounds,
-        args=(mechanism, datasets, num_simulations),
+        args=(mechanism, datasets, num_simulations, selected_strains),
         maxiter=max_iterations,
         popsize=15,
         seed=42,
@@ -673,12 +703,13 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
 
 
 def run_optimization_with_bootstrapping(mechanism, datasets, 
-                                      max_iterations=300, 
-                                      num_simulations=500,
-                                      bootstrap_method='bootstrap',
-                                      target_sample_size=None,
-                                      num_bootstrap_samples=100,
-                                      random_seed=42):
+                                       max_iterations=300, 
+                                       num_simulations=500,
+                                       bootstrap_method='bootstrap',
+                                       target_sample_size=None,
+                                       num_bootstrap_samples=100,
+                                       random_seed=42,
+                                       selected_strains=None):
     """
     Run joint optimization with bootstrapping for all datasets.
     
@@ -697,11 +728,20 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
     """
     print(f"\n=== Bootstrapping Optimization for {mechanism.upper()} ===")
     print(f"Bootstrap method: {bootstrap_method}")
-    print(f"Datasets: {list(datasets.keys())}")
+    if selected_strains is None:
+        print(f"Datasets: {list(datasets.keys())} (all datasets)")
+    else:
+        print(f"Selected datasets: {selected_strains}")
+        print(f"Available datasets: {list(datasets.keys())}")
     print(f"Max iterations: {max_iterations}")
     
     # Analyze dataset sizes and determine target sample size
-    size_analysis = analyze_dataset_sizes(datasets)
+    if selected_strains is None:
+        datasets_to_analyze = datasets
+    else:
+        datasets_to_analyze = {name: data for name, data in datasets.items() if name in selected_strains}
+    
+    size_analysis = analyze_dataset_sizes(datasets_to_analyze)
     if target_sample_size is None:
         target_sample_size = size_analysis['recommended_target_size']
     
@@ -719,7 +759,7 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
         joint_objective_with_bootstrapping,
         bounds,
         args=(mechanism, datasets, num_simulations, bootstrap_method, 
-              target_sample_size, num_bootstrap_samples, random_seed),
+              target_sample_size, num_bootstrap_samples, random_seed, selected_strains),
         maxiter=max_iterations,
         popsize=15,
         seed=random_seed,
@@ -784,7 +824,7 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
     }
 
 
-def save_results(mechanism, results, filename=None):
+def save_results(mechanism, results, filename=None, selected_strains=None):
     """
     Save optimization results to file.
     
@@ -792,22 +832,34 @@ def save_results(mechanism, results, filename=None):
         mechanism (str): Mechanism name
         results (dict): Optimization results
         filename (str): Output filename (optional)
+        selected_strains (list): List of strains used in fitting
     """
     if not results['success']:
         print("Cannot save results - optimization failed")
         return
     
-    # Determine filename based on bootstrap method if applicable
+    # Determine filename based on bootstrap method and selected strains
     if filename is None:
+        # Create strain suffix if specific strains were selected
+        strain_suffix = ""
+        if selected_strains is not None:
+            strain_suffix = f"_{'_'.join(selected_strains)}"
+        
         if 'bootstrap_method' in results:
             bootstrap_suffix = f"_{results['bootstrap_method']}"
-            filename = f"simulation_optimized_parameters_{mechanism}{bootstrap_suffix}.txt"
+            filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}{bootstrap_suffix}.txt"
         else:
-            filename = f"simulation_optimized_parameters_{mechanism}.txt"
+            filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}.txt"
     
     with open(filename, 'w') as f:
         f.write(f"Simulation-based Optimization Results\n")
         f.write(f"Mechanism: {mechanism}\n")
+        
+        # Add strain selection information
+        if selected_strains is not None:
+            f.write(f"Selected Strains: {', '.join(selected_strains)}\n")
+        else:
+            f.write(f"Selected Strains: all datasets\n")
         
         # Add bootstrap information if available
         if 'bootstrap_method' in results:
@@ -818,7 +870,7 @@ def save_results(mechanism, results, filename=None):
         f.write(f"Negative Log-Likelihood: {results['nll']:.6f}\n")
         f.write(f"Converged: {results.get('converged', 'Unknown')}\n")
         f.write(f"Status: {results.get('message', 'No message')}\n")
-        f.write(f"Datasets: wildtype, threshold, degrate, degrateAPC\n\n")
+        f.write(f"Available Datasets: wildtype, threshold, degrate, degrateAPC\n\n")
         
         f.write("Optimized Parameters (ratio-based):\n")
         for param, value in results['params'].items():
@@ -842,10 +894,10 @@ def save_results(mechanism, results, filename=None):
 
 def main():
     """
-    Main optimization routine with bootstrapping demonstration.
+    Main optimization routine with strain selection demonstration.
     """
-    max_iterations = 20  # number of iterations for testing
-    num_simulations = 30  # Number of simulations per evaluation
+    max_iterations = 50  # number of iterations for testing
+    num_simulations = 200  # Number of simulations per evaluation
     
     print("Simulation-based Optimization for Time-Varying Mechanisms")
     print("=" * 60)
@@ -858,77 +910,151 @@ def main():
     
     # Test mechanisms
     mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
-    mechanism = mechanisms[4]  # Test the new burst_onion mechanism
+    mechanism = mechanisms[1]  # Test the new burst_onion mechanism
+    
+    # ========== STRAIN SELECTION CONFIGURATION ==========
+    # Choose which strains to include in fitting
+    # Options: None (all strains), or a list of specific strains
+    # Available strains: ['wildtype', 'threshold', 'degrate', 'degrateAPC']
+    
+    # Example 1: Fit all strains (default behavior)
+    selected_strains_all = None
+    
+    # Example 2: Fit only three strains (excluding one problematic strain)
+    selected_strains_three = ['wildtype', 'threshold', 'degrate']  # Exclude degrateAPC
+    
+    # Example 3: Fit only wildtype and threshold
+    selected_strains_two = ['wildtype', 'threshold']
+    
+    # Example 4: Fit only wildtype (single strain)
+    selected_strains_one = ['wildtype']
+    
+    # Choose which configuration to run
+    strain_config = selected_strains_three  # Change this to test different combinations
     
     print(f"\n{'='*60}")
-    print("COMPARISON: Standard vs. Bootstrapping Methods")
+    print("STRAIN SELECTION OPTIMIZATION")
     print(f"{'='*60}")
     
+    if strain_config is None:
+        print("Testing with ALL strains")
+    else:
+        print(f"Testing with selected strains: {strain_config}")
+    
     try:
-        # 1. Standard optimization (for comparison)
-        print(f"\n{'-'*40}")
-        print("1. STANDARD OPTIMIZATION")
-        print(f"{'-'*40}")
-        standard_results = run_optimization(mechanism, datasets, max_iterations, num_simulations)
-        save_results(mechanism, standard_results, f"simulation_optimized_parameters_{mechanism}_standard.txt")
-        
-        # 2. Weighted likelihood optimization
-        print(f"\n{'-'*40}")
-        print("2. WEIGHTED LIKELIHOOD OPTIMIZATION")
-        print(f"{'-'*40}")
-        weighted_results = run_optimization_with_bootstrapping(
+        # Run optimization with selected strains
+        results = run_optimization(
             mechanism, datasets, 
             max_iterations=max_iterations, 
             num_simulations=num_simulations,
-            bootstrap_method='weighted',
-            num_bootstrap_samples=50,  # Reduced for testing
-            random_seed=42
+            selected_strains=strain_config
         )
-        save_results(mechanism, weighted_results)
         
-        # 3. Bootstrap optimization
-        print(f"\n{'-'*40}")
-        print("3. BOOTSTRAP OPTIMIZATION")
-        print(f"{'-'*40}")
-        bootstrap_results = run_optimization_with_bootstrapping(
-            mechanism, datasets, 
-            max_iterations=max_iterations, 
-            num_simulations=num_simulations,
-            bootstrap_method='bootstrap',
-            num_bootstrap_samples=50,  # Reduced for testing
-            random_seed=42
-        )
-        save_results(mechanism, bootstrap_results)
-        
-        # Compare results
-        print(f"\n{'='*60}")
-        print("RESULTS COMPARISON")
-        print(f"{'='*60}")
-        print(f"Standard NLL:   {standard_results['nll']:.4f}")
-        print(f"Weighted NLL:   {weighted_results['nll']:.4f}")
-        print(f"Bootstrap NLL:  {bootstrap_results['nll']:.4f}")
-        
-        print(f"\nImprovement over standard:")
-        if weighted_results['nll'] < standard_results['nll']:
-            improvement = ((standard_results['nll'] - weighted_results['nll']) / standard_results['nll']) * 100
-            print(f"Weighted method: {improvement:.2f}% better")
-        else:
-            print(f"Weighted method: {((weighted_results['nll'] - standard_results['nll']) / standard_results['nll']) * 100:.2f}% worse")
-            
-        if bootstrap_results['nll'] < standard_results['nll']:
-            improvement = ((standard_results['nll'] - bootstrap_results['nll']) / standard_results['nll']) * 100
-            print(f"Bootstrap method: {improvement:.2f}% better")
-        else:
-            print(f"Bootstrap method: {((bootstrap_results['nll'] - standard_results['nll']) / standard_results['nll']) * 100:.2f}% worse")
+        # Save results with strain information
+        save_results(mechanism, results, selected_strains=strain_config)
         
         print(f"\n{'-' * 60}")
         
     except Exception as e:
-        print(f"Error during optimization comparison: {e}")
+        print(f"Error during optimization: {e}")
         import traceback
         traceback.print_exc()
      
     print("Optimization complete!")
+
+
+def test_strain_combinations():
+    """
+    Test different strain combinations to find the best fit.
+    """
+    max_iterations = 20  # number of iterations for testing
+    num_simulations = 30  # Number of simulations per evaluation
+    
+    print("Testing Different Strain Combinations")
+    print("=" * 60)
+    
+    # Load experimental data
+    datasets = load_experimental_data()
+    if not datasets:
+        print("Error: No datasets loaded!")
+        return
+    
+    # Test mechanisms
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanism = mechanisms[4]  # Test the new burst_onion mechanism
+    
+    # Define different strain combinations to test
+    strain_combinations = [
+        (None, "All strains"),
+        (['wildtype', 'threshold', 'degrate'], "Three strains (no degrateAPC)"),
+        (['wildtype', 'threshold', 'degrateAPC'], "Three strains (no degrate)"),
+        (['wildtype', 'degrate', 'degrateAPC'], "Three strains (no threshold)"),
+        (['threshold', 'degrate', 'degrateAPC'], "Three strains (no wildtype)"),
+        (['wildtype', 'threshold'], "Two strains (wildtype + threshold)"),
+        (['wildtype', 'degrate'], "Two strains (wildtype + degrate)"),
+        (['wildtype', 'degrateAPC'], "Two strains (wildtype + degrateAPC)"),
+        (['wildtype'], "Single strain (wildtype only)")
+    ]
+    
+    results_summary = []
+    
+    for selected_strains, description in strain_combinations:
+        print(f"\n{'-'*50}")
+        print(f"Testing: {description}")
+        print(f"Strains: {selected_strains if selected_strains else 'ALL'}")
+        print(f"{'-'*50}")
+        
+        try:
+            # Run optimization with selected strains
+            results = run_optimization(
+                mechanism, datasets, 
+                max_iterations=max_iterations, 
+                num_simulations=num_simulations,
+                selected_strains=selected_strains
+            )
+            
+            # Save results with strain information
+            save_results(mechanism, results, selected_strains=selected_strains)
+            
+            # Store results for comparison
+            results_summary.append({
+                'description': description,
+                'strains': selected_strains,
+                'nll': results['nll'],
+                'converged': results['converged']
+            })
+            
+        except Exception as e:
+            print(f"Error testing {description}: {e}")
+            results_summary.append({
+                'description': description,
+                'strains': selected_strains,
+                'nll': float('inf'),
+                'converged': False
+            })
+    
+    # Print summary comparison
+    print(f"\n{'='*80}")
+    print("STRAIN COMBINATION COMPARISON SUMMARY")
+    print(f"{'='*80}")
+    print(f"{'Description':<40} {'NLL':<12} {'Converged':<10}")
+    print(f"{'-'*80}")
+    
+    # Sort by NLL (best first)
+    results_summary.sort(key=lambda x: x['nll'])
+    
+    for result in results_summary:
+        status = "✅" if result['converged'] else "❌"
+        print(f"{result['description']:<40} {result['nll']:<12.4f} {status:<10}")
+    
+    # Highlight the best result
+    if results_summary:
+        best = results_summary[0]
+        print(f"\n🏆 BEST RESULT: {best['description']}")
+        print(f"   NLL: {best['nll']:.4f}")
+        print(f"   Strains: {best['strains'] if best['strains'] else 'ALL'}")
+    
+    print(f"\n{'='*80}")
 
 
 def main_simple():
@@ -976,4 +1102,15 @@ def main_simple():
 
 
 if __name__ == "__main__":
-    main() 
+    # Choose which function to run:
+    
+    # Option 1: Run main() - tests a single strain combination
+    main()
+    
+    # Option 2: Run test_strain_combinations() - tests all strain combinations
+    # Uncomment the line below to test all combinations:
+    # test_strain_combinations()
+    
+    # Option 3: Run main_simple() - simple bootstrapping test
+    # Uncomment the line below for simple bootstrapping:
+    # main_simple() 
