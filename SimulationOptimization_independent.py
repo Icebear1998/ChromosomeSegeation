@@ -35,9 +35,11 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
         float: Negative log-likelihood for wildtype data
     """
     try:
-        # Unpack wildtype parameters based on mechanism
+        # Unpack wildtype parameters based on mechanism - using tau = k_max/k_1
         if mechanism == 'time_varying_k':
-            n2, N2, k_1, k_max, r21, r23, R21, R23 = params_vector
+            n2, N2, k_max, tau, r21, r23, R21, R23 = params_vector
+            # Calculate k_1 from k_max and tau
+            k_1 = k_max / tau
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -54,7 +56,9 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
                 'k_1': k_1, 'k_max': k_max
             }
         elif mechanism == 'time_varying_k_fixed_burst':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size = params_vector
+            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size = params_vector
+            # Calculate k_1 from k_max and tau
+            k_1 = k_max / tau
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -70,7 +74,9 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
             }
         elif mechanism == 'time_varying_k_feedback_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner = params_vector
+            n2, N2, k_max, tau, r21, r23, R21, R23, n_inner = params_vector
+            # Calculate k_1 from k_max and tau
+            k_1 = k_max / tau
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -86,7 +92,9 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
                 'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_combined':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner = params_vector
+            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, n_inner = params_vector
+            # Calculate k_1 from k_max and tau
+            k_1 = k_max / tau
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -102,7 +110,9 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size = params_vector
+            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size = params_vector
+            # Calculate k_1 from k_max and tau
+            k_1 = k_max / tau
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -168,18 +178,18 @@ def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mut
         # Unpack mutant-specific parameters
         if mutant_type == 'threshold':
             alpha = mutant_params[0]
-            beta_k, beta2_k = 1.0, 1.0  # Not used for threshold mutant
+            beta_k, beta2_tau = 1.0, 1.0  # Not used for threshold mutant
         elif mutant_type == 'degrate':
             beta_k = mutant_params[0]
-            alpha, beta2_k = 1.0, 1.0  # Not used for degrate mutant
+            alpha, beta2_tau = 1.0, 1.0  # Not used for degrate mutant
         elif mutant_type == 'degrateAPC':
-            beta2_k = mutant_params[0]
+            beta2_tau = mutant_params[0]
             alpha, beta_k = 1.0, 1.0  # Not used for degrateAPC mutant
         else:
             return 1e6
         
         # Apply mutant modifications to wildtype parameters
-        params, n0_list = apply_mutant_params(wildtype_params, mutant_type, alpha, beta_k, beta2_k)
+        params, n0_list = apply_mutant_params(wildtype_params, mutant_type, alpha, beta_k, beta2_tau)
         
         # Run simulations
         sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
@@ -216,12 +226,12 @@ def get_wildtype_parameter_bounds(mechanism):
     Returns:
         list: List of (min, max) bounds for wildtype parameters
     """
-    # Common wildtype bounds - using ratio-based approach
+    # Common wildtype bounds - using ratio-based approach with tau = k_max/k_1
     bounds = [
         (3, 50),      # n2
         (100, 500),   # N2
-        (0.0001, 0.01),  # k_1
         (0.01, 0.2),     # k_max
+        (2, 240),     # tau = k_max/k_1 (2 seconds to 4 minutes, time units are in minutes)
         (0.5, 3.0),   # r21 (n1/n2 ratio)
         (0.5, 3.0),   # r23 (n3/n2 ratio)
         (0.4, 2.0),   # R21 (N1/N2 ratio)
@@ -257,7 +267,7 @@ def get_mutant_parameter_bounds(mutant_type):
     elif mutant_type == 'degrate':
         return [(0.1, 1.0)]  # beta_k
     elif mutant_type == 'degrateAPC':
-        return [(0.1, 1.0)]  # beta2_k
+        return [(2.0, 3.0)]  # beta2_tau (tau becomes 2-3 times larger for APC mutant)
     else:
         return []
 
@@ -302,15 +312,15 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
     # Unpack parameters
     params = result.x
     if mechanism == 'time_varying_k':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23']
     elif mechanism == 'time_varying_k_fixed_burst':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size']
     elif mechanism == 'time_varying_k_feedback_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner']
     elif mechanism == 'time_varying_k_combined':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner']
     elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size']
     
     param_dict = dict(zip(param_names, params))
     
@@ -320,11 +330,14 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
     N1_derived = max(param_dict['R21'] * param_dict['N2'], 1)
     N3_derived = max(param_dict['R23'] * param_dict['N2'], 1)
     
+    # Calculate k_1 from k_max and tau for complete params
+    k_1_derived = param_dict['k_max'] / param_dict['tau']
+    
     # Create complete parameter dictionary for simulations
     complete_params = {
         'n1': n1_derived, 'n2': param_dict['n2'], 'n3': n3_derived,
         'N1': N1_derived, 'N2': param_dict['N2'], 'N3': N3_derived,
-        'k_1': param_dict['k_1'], 'k_max': param_dict['k_max']
+        'k_1': k_1_derived, 'k_max': param_dict['k_max']
     }
     
     if 'burst_size' in param_dict:
@@ -336,7 +349,7 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
     print(f"  Base: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}")
     print(f"  Ratios: r21={param_dict['r21']:.2f}, r23={param_dict['r23']:.2f}, R21={param_dict['R21']:.2f}, R23={param_dict['R23']:.2f}")
     print(f"  Derived: n1={n1_derived:.1f}, n3={n3_derived:.1f}, N1={N1_derived:.1f}, N3={N3_derived:.1f}")
-    print(f"  Rates: k_1={param_dict['k_1']:.6f}, k_max={param_dict['k_max']:.4f}")
+    print(f"  Rates: k_max={param_dict['k_max']:.4f}, tau={param_dict['tau']:.1f} min, k_1={k_1_derived:.6f}")
     
     return {
         'success': True,
@@ -398,7 +411,7 @@ def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_it
     elif mutant_type == 'degrate':
         param_name = 'beta_k'
     elif mutant_type == 'degrateAPC':
-        param_name = 'beta2_k'
+        param_name = 'beta2_tau'
     
     print(f"{mutant_type.title()} parameter: {param_name} = {param_value:.3f}")
     
@@ -600,7 +613,10 @@ def print_independent_summary(mechanism, results):
     print(f"  Base: n2={wt_params['n2']:.1f}, N2={wt_params['N2']:.1f}")
     print(f"  Ratios: r21={wt_params['r21']:.2f}, r23={wt_params['r23']:.2f}, R21={wt_params['R21']:.2f}, R23={wt_params['R23']:.2f}")
     print(f"  Derived: n1={wt_complete['n1']:.1f}, n3={wt_complete['n3']:.1f}, N1={wt_complete['N1']:.1f}, N3={wt_complete['N3']:.1f}")
-    print(f"  Rates: k_1={wt_params['k_1']:.6f}, k_max={wt_params['k_max']:.4f}")
+    # Calculate k_1 from k_max and tau for display
+    k_1_display = wt_params['k_max'] / wt_params['tau'] if 'tau' in wt_params else wt_complete['k_1']
+    tau_display = f"{wt_params['tau']:.1f}" if 'tau' in wt_params else "N/A"
+    print(f"  Rates: k_max={wt_params['k_max']:.4f}, tau={tau_display} min, k_1={k_1_display:.6f}")
     
     if 'burst_size' in wt_params:
         print(f"  Burst size: {wt_params['burst_size']:.1f}")
@@ -628,7 +644,7 @@ def print_independent_summary(mechanism, results):
 
 def main():
     """
-    Main independent optimization routine with strain selection.
+    Main independent optimization routine for all strains.
     """
     max_iterations_wt = 100  # Wildtype iterations
     max_iterations_mut = 100  # Mutant iterations
@@ -647,44 +663,17 @@ def main():
     mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
     mechanism = mechanisms[1]  # Test fixed_burst mechanism
     
-    # ========== STRAIN SELECTION CONFIGURATION ==========
-    # Choose which strains to include in fitting
-    # Options: None (all strains), or a list of specific strains
-    # Available strains: ['wildtype', 'threshold', 'degrate', 'degrateAPC']
-    
-    # Example 1: Fit all strains (default behavior)
-    selected_strains_all = None
-    
-    # Example 2: Fit only three strains (excluding one problematic strain)
-    selected_strains_three = ['wildtype', 'threshold', 'degrateAPC']  # Exclude degrateAPC
-    
-    # Example 3: Fit only wildtype and threshold
-    selected_strains_two = ['wildtype', 'threshold']
-    
-    # Example 4: Fit only wildtype (single strain)
-    selected_strains_one = ['wildtype']
-    
-    # Choose which configuration to run
-    strain_config = selected_strains_three  # Change this to test different combinations
-    
-    print(f"\n{'='*70}")
-    print("INDEPENDENT OPTIMIZATION WITH STRAIN SELECTION")
-    print(f"{'='*70}")
-    
-    if strain_config is None:
-        print("Testing with ALL strains")
-    else:
-        print(f"Testing with selected strains: {strain_config}")
+    print(f"\nRunning independent optimization for {mechanism} with ALL strains")
     
     try:
         results = run_independent_optimization(
             mechanism, datasets, max_iterations_wt, max_iterations_mut, num_simulations,
-            selected_strains=strain_config
+            selected_strains=None  # Use all strains
         )
         
         if results['success']:
             print_independent_summary(mechanism, results)
-            save_independent_results(mechanism, results, selected_strains=strain_config)
+            save_independent_results(mechanism, results, selected_strains=None)
         else:
             print("Independent optimization failed!")
         
@@ -698,131 +687,9 @@ def main():
     print("Independent optimization complete!")
 
 
-def test_independent_strain_combinations():
-    """
-    Test different strain combinations for independent optimization.
-    """
-    max_iterations_wt = 50  # Wildtype iterations
-    max_iterations_mut = 50  # Mutant iterations
-    num_simulations = 200    # Simulations per evaluation
-    
-    print("Testing Different Strain Combinations for Independent Optimization")
-    print("=" * 80)
-    
-    # Load experimental data
-    datasets = load_experimental_data()
-    if not datasets:
-        print("Error: No datasets loaded!")
-        return
-    
-    # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
-    mechanism = mechanisms[1]  # Test fixed_burst mechanism
-    
-    # Define different strain combinations to test
-    strain_combinations = [
-        (None, "All strains"),
-        (['wildtype', 'threshold', 'degrate'], "Three strains (no degrateAPC)"),
-        (['wildtype', 'threshold', 'degrateAPC'], "Three strains (no degrate)"),
-        (['wildtype', 'degrate', 'degrateAPC'], "Three strains (no threshold)"),
-        (['wildtype', 'threshold'], "Two strains (wildtype + threshold)"),
-        (['wildtype', 'degrate'], "Two strains (wildtype + degrate)"),
-        (['wildtype', 'degrateAPC'], "Two strains (wildtype + degrateAPC)"),
-        (['wildtype'], "Single strain (wildtype only)")
-    ]
-    
-    results_summary = []
-    
-    for selected_strains, description in strain_combinations:
-        print(f"\n{'-'*60}")
-        print(f"Testing: {description}")
-        print(f"Strains: {selected_strains if selected_strains else 'ALL'}")
-        print(f"{'-'*60}")
-        
-        try:
-            # Run independent optimization with selected strains
-            results = run_independent_optimization(
-                mechanism, datasets, 
-                max_iterations_wt=max_iterations_wt,
-                max_iterations_mut=max_iterations_mut,
-                num_simulations=num_simulations,
-                selected_strains=selected_strains
-            )
-            
-            if results['success']:
-                # Save results with strain information
-                save_independent_results(mechanism, results, selected_strains=selected_strains)
-                
-                # Store results for comparison
-                results_summary.append({
-                    'description': description,
-                    'strains': selected_strains,
-                    'total_nll': results['summary']['total_nll'],
-                    'wildtype_nll': results['summary']['wildtype_nll'],
-                    'mutant_nlls': results['summary']['mutant_nlls'],
-                    'converged': all([results['wildtype']['converged']] + 
-                                   [results.get(mut, {}).get('converged', False) 
-                                    for mut in ['threshold', 'degrate', 'degrateAPC'] 
-                                    if mut in results])
-                })
-            else:
-                print(f"Independent optimization failed for {description}")
-                results_summary.append({
-                    'description': description,
-                    'strains': selected_strains,
-                    'total_nll': float('inf'),
-                    'wildtype_nll': float('inf'),
-                    'mutant_nlls': {},
-                    'converged': False
-                })
-            
-        except Exception as e:
-            print(f"Error testing {description}: {e}")
-            results_summary.append({
-                'description': description,
-                'strains': selected_strains,
-                'total_nll': float('inf'),
-                'wildtype_nll': float('inf'),
-                'mutant_nlls': {},
-                'converged': False
-            })
-    
-    # Print summary comparison
-    print(f"\n{'='*100}")
-    print("INDEPENDENT OPTIMIZATION STRAIN COMBINATION COMPARISON")
-    print(f"{'='*100}")
-    print(f"{'Description':<35} {'Total NLL':<12} {'WT NLL':<10} {'Converged':<10}")
-    print(f"{'-'*100}")
-    
-    # Sort by total NLL (best first)
-    results_summary.sort(key=lambda x: x['total_nll'])
-    
-    for result in results_summary:
-        status = "✅" if result['converged'] else "❌"
-        print(f"{result['description']:<35} {result['total_nll']:<12.4f} {result['wildtype_nll']:<10.4f} {status:<10}")
-    
-    # Highlight the best result
-    if results_summary:
-        best = results_summary[0]
-        print(f"\n🏆 BEST INDEPENDENT RESULT: {best['description']}")
-        print(f"   Total NLL: {best['total_nll']:.4f}")
-        print(f"   Wildtype NLL: {best['wildtype_nll']:.4f}")
-        print(f"   Strains: {best['strains'] if best['strains'] else 'ALL'}")
-        
-        if best['mutant_nlls']:
-            print(f"   Mutant NLLs:")
-            for mutant, nll in best['mutant_nlls'].items():
-                print(f"     {mutant}: {nll:.4f}")
-    
-    print(f"\n{'='*100}")
+
 
 
 if __name__ == "__main__":
-    # Choose which function to run:
-    
-    # Option 1: Run main() - tests a single strain combination
-    main()
-    
-    # Option 2: Run test_independent_strain_combinations() - tests all strain combinations
-    # Uncomment the line below to test all combinations:
-    # test_independent_strain_combinations() 
+    # Run main() - independent optimization for all strains
+    main() 

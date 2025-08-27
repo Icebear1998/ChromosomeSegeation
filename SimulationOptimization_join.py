@@ -71,7 +71,7 @@ def load_experimental_data():
         return {}
 
 
-def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k=None):
+def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_tau=None):
     """
     Apply mutant-specific parameter modifications.
     
@@ -80,7 +80,7 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k=None):
         mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrate', 'degrateAPC')
         alpha (float): Multiplier for threshold counts (threshold mutant)
         beta_k (float): Multiplier for k_max (separase mutant)
-        beta2_k (float): Multiplier for k_1 (APC mutant)
+        beta2_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger
     
     Returns:
         tuple: (modified_params, modified_n0_list)
@@ -102,9 +102,14 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k=None):
         if 'k_max' in params:
             params['k_max'] = beta_k * params['k_max']
     elif mutant_type == 'degrateAPC':
-        # APC mutant: affects k_1
-        if 'k_1' in params:
-            params['k_1'] = beta2_k * params['k_1']
+        # APC mutant: affects tau (makes it 2-3 times larger), which affects k_1
+        if 'k_1' in params and 'k_max' in params:
+            # Calculate current tau
+            current_tau = params['k_max'] / params['k_1']
+            # Apply multiplier to tau
+            new_tau = beta2_tau * current_tau
+            # Recalculate k_1 with new tau
+            params['k_1'] = params['k_max'] / new_tau
     
     # Update parameters (N values unchanged)
     params.update({'N1': N1, 'N2': N2, 'N3': N3})
@@ -269,7 +274,7 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
         
         # Unpack parameters based on mechanism - using ratio-based approach
         if mechanism == 'time_varying_k':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -287,7 +292,7 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
                 'k_1': k_1, 'k_max': k_max
             }
         elif mechanism == 'time_varying_k_fixed_burst':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -299,7 +304,7 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
             }
         elif mechanism == 'time_varying_k_feedback_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -311,7 +316,7 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
                 'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_combined':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -329,7 +334,7 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -365,7 +370,7 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
         for dataset_name, data_dict in datasets_to_use.items():
             # Apply mutant-specific modifications
             params, n0_list = apply_mutant_params(
-                base_params, dataset_name, alpha, beta_k, beta2_k
+                base_params, dataset_name, alpha, beta_k, beta2_tau
             )
             
             # Run simulations
@@ -430,9 +435,11 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
     if joint_objective.call_count <= 5:  # Print first 5 calls for debugging
         print(f"Call {joint_objective.call_count}: Testing parameters {params_vector[:6]}")  # Show first 6 params
     try:
-        # Unpack parameters based on mechanism - using ratio-based approach
+        # Unpack parameters based on mechanism - using ratio-based approach with tau = k_max/k_1
         if mechanism == 'time_varying_k':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_max, tau, r21, r23, R21, R23, alpha, beta_k, beta2_tau = params_vector
+            # Calculate k_1 from k_max and tau
+            k_1 = k_max / tau
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -450,7 +457,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 'k_1': k_1, 'k_max': k_max
             }
         elif mechanism == 'time_varying_k_fixed_burst':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -462,7 +469,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
             }
         elif mechanism == 'time_varying_k_feedback_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -474,7 +481,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_combined':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -492,7 +499,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_k = params_vector
+            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta2_tau = params_vector
             # Calculate derived parameters from ratios
             n1 = max(r21 * n2, 1)
             n3 = max(r23 * n2, 1)
@@ -529,7 +536,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         for dataset_name, data_dict in datasets_to_use.items():
             # Apply mutant-specific modifications
             params, n0_list = apply_mutant_params(
-                base_params, dataset_name, alpha, beta_k, beta2_k
+                base_params, dataset_name, alpha, beta_k, beta2_tau
             )
             
             # Run simulations
@@ -576,11 +583,12 @@ def get_parameter_bounds(mechanism):
         list: List of (min, max) bounds for each parameter
     """
     # Common bounds - using ratio-based approach like MoMOptimization_join.py
+    # Now using k_max and tau = k_max/k_1 instead of k_max and k_1
     bounds = [
         (3, 50),      # n2
         (100, 500),   # N2
-        (0.0001, 0.01),  # k_1
         (0.01, 0.2),     # k_max
+        (2, 240),     # tau = k_max/k_1 (2 seconds to 4 minutes, time units are in minutes)
         (0.5, 3.0),   # r21 (n1/n2 ratio)
         (0.5, 3.0),   # r23 (n3/n2 ratio)
         (0.4, 2.0),   # R21 (N1/N2 ratio)
@@ -602,7 +610,7 @@ def get_parameter_bounds(mechanism):
     bounds.extend([
         (0.1, 1.0),   # alpha
         (0.1, 1.0),   # beta_k
-        (0.1, 1.0),   # beta2_k
+        (2.0, 3.0),   # beta2_tau (tau becomes 2-3 times larger for APC mutant)
     ])
     
     return bounds
@@ -659,15 +667,15 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
     # Unpack and display results
     params = result.x
     if mechanism == 'time_varying_k':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_fixed_burst':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_feedback_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_combined':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_tau']
     
     param_dict = dict(zip(param_names, params))
     
@@ -677,11 +685,14 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
     N1_derived = max(param_dict['R21'] * param_dict['N2'], 1)
     N3_derived = max(param_dict['R23'] * param_dict['N2'], 1)
     
+    # Calculate k_1 from k_max and tau for display
+    k_1_derived = param_dict['k_max'] / param_dict['tau']
+    
     print("\nBest Parameters Found:")
     print(f"  Base: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}")
     print(f"  Ratios: r21={param_dict['r21']:.2f}, r23={param_dict['r23']:.2f}, R21={param_dict['R21']:.2f}, R23={param_dict['R23']:.2f}")
     print(f"  Derived: n1={n1_derived:.1f}, n3={n3_derived:.1f}, N1={N1_derived:.1f}, N3={N3_derived:.1f}")
-    print(f"  Rates: k_1={param_dict['k_1']:.6f}, k_max={param_dict['k_max']:.4f}")
+    print(f"  Rates: k_max={param_dict['k_max']:.4f}, tau={param_dict['tau']:.1f} min, k_1={k_1_derived:.6f}")
     
     if 'burst_size' in param_dict:
         print(f"           burst_size={param_dict['burst_size']:.1f}")
@@ -690,7 +701,7 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
     if 'burst_size' in param_dict and 'n_inner' in param_dict:
         print(f"           Combined mechanism: burst_size={param_dict['burst_size']:.1f}, n_inner={param_dict['n_inner']:.1f}")
     
-    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_k={param_dict['beta2_k']:.3f}")
+    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_tau={param_dict['beta2_tau']:.3f}")
     
     return {
         'success': True,  # Always treat as success to save results
@@ -778,15 +789,15 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
     # Unpack and display results
     params = result.x
     if mechanism == 'time_varying_k':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_fixed_burst':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_feedback_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_combined':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta2_tau']
     elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_1', 'k_max', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_k']
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta2_tau']
     
     param_dict = dict(zip(param_names, params))
     
@@ -809,7 +820,7 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
     if 'burst_size' in param_dict and 'n_inner' in param_dict:
         print(f"           Combined mechanism: burst_size={param_dict['burst_size']:.1f}, n_inner={param_dict['n_inner']:.1f}")
     
-    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_k={param_dict['beta2_k']:.3f}")
+    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta2_tau={param_dict['beta2_tau']:.3f}")
     
     return {
         'success': True,  # Always treat as success to save results
@@ -894,7 +905,7 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
 
 def main():
     """
-    Main optimization routine with strain selection demonstration.
+    Main optimization routine for all strains.
     """
     max_iterations = 50  # number of iterations for testing
     num_simulations = 200  # Number of simulations per evaluation
@@ -910,48 +921,21 @@ def main():
     
     # Test mechanisms
     mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
-    mechanism = mechanisms[1]  # Test the new burst_onion mechanism
+    mechanism = mechanisms[1]  # Test the burst_onion mechanism
     
-    # ========== STRAIN SELECTION CONFIGURATION ==========
-    # Choose which strains to include in fitting
-    # Options: None (all strains), or a list of specific strains
-    # Available strains: ['wildtype', 'threshold', 'degrate', 'degrateAPC']
-    
-    # Example 1: Fit all strains (default behavior)
-    selected_strains_all = None
-    
-    # Example 2: Fit only three strains (excluding one problematic strain)
-    selected_strains_three = ['wildtype', 'threshold', 'degrate']  # Exclude degrateAPC
-    
-    # Example 3: Fit only wildtype and threshold
-    selected_strains_two = ['wildtype', 'threshold']
-    
-    # Example 4: Fit only wildtype (single strain)
-    selected_strains_one = ['wildtype']
-    
-    # Choose which configuration to run
-    strain_config = selected_strains_three  # Change this to test different combinations
-    
-    print(f"\n{'='*60}")
-    print("STRAIN SELECTION OPTIMIZATION")
-    print(f"{'='*60}")
-    
-    if strain_config is None:
-        print("Testing with ALL strains")
-    else:
-        print(f"Testing with selected strains: {strain_config}")
+    print(f"\nOptimizing {mechanism} for ALL strains")
     
     try:
-        # Run optimization with selected strains
+        # Run optimization for all strains
         results = run_optimization(
             mechanism, datasets, 
             max_iterations=max_iterations, 
             num_simulations=num_simulations,
-            selected_strains=strain_config
+            selected_strains=None  # Use all strains
         )
         
-        # Save results with strain information
-        save_results(mechanism, results, selected_strains=strain_config)
+        # Save results
+        save_results(mechanism, results, selected_strains=None)
         
         print(f"\n{'-' * 60}")
         
@@ -963,98 +947,7 @@ def main():
     print("Optimization complete!")
 
 
-def test_strain_combinations():
-    """
-    Test different strain combinations to find the best fit.
-    """
-    max_iterations = 20  # number of iterations for testing
-    num_simulations = 30  # Number of simulations per evaluation
-    
-    print("Testing Different Strain Combinations")
-    print("=" * 60)
-    
-    # Load experimental data
-    datasets = load_experimental_data()
-    if not datasets:
-        print("Error: No datasets loaded!")
-        return
-    
-    # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
-    mechanism = mechanisms[4]  # Test the new burst_onion mechanism
-    
-    # Define different strain combinations to test
-    strain_combinations = [
-        (None, "All strains"),
-        (['wildtype', 'threshold', 'degrate'], "Three strains (no degrateAPC)"),
-        (['wildtype', 'threshold', 'degrateAPC'], "Three strains (no degrate)"),
-        (['wildtype', 'degrate', 'degrateAPC'], "Three strains (no threshold)"),
-        (['threshold', 'degrate', 'degrateAPC'], "Three strains (no wildtype)"),
-        (['wildtype', 'threshold'], "Two strains (wildtype + threshold)"),
-        (['wildtype', 'degrate'], "Two strains (wildtype + degrate)"),
-        (['wildtype', 'degrateAPC'], "Two strains (wildtype + degrateAPC)"),
-        (['wildtype'], "Single strain (wildtype only)")
-    ]
-    
-    results_summary = []
-    
-    for selected_strains, description in strain_combinations:
-        print(f"\n{'-'*50}")
-        print(f"Testing: {description}")
-        print(f"Strains: {selected_strains if selected_strains else 'ALL'}")
-        print(f"{'-'*50}")
-        
-        try:
-            # Run optimization with selected strains
-            results = run_optimization(
-                mechanism, datasets, 
-                max_iterations=max_iterations, 
-                num_simulations=num_simulations,
-                selected_strains=selected_strains
-            )
-            
-            # Save results with strain information
-            save_results(mechanism, results, selected_strains=selected_strains)
-            
-            # Store results for comparison
-            results_summary.append({
-                'description': description,
-                'strains': selected_strains,
-                'nll': results['nll'],
-                'converged': results['converged']
-            })
-            
-        except Exception as e:
-            print(f"Error testing {description}: {e}")
-            results_summary.append({
-                'description': description,
-                'strains': selected_strains,
-                'nll': float('inf'),
-                'converged': False
-            })
-    
-    # Print summary comparison
-    print(f"\n{'='*80}")
-    print("STRAIN COMBINATION COMPARISON SUMMARY")
-    print(f"{'='*80}")
-    print(f"{'Description':<40} {'NLL':<12} {'Converged':<10}")
-    print(f"{'-'*80}")
-    
-    # Sort by NLL (best first)
-    results_summary.sort(key=lambda x: x['nll'])
-    
-    for result in results_summary:
-        status = "✅" if result['converged'] else "❌"
-        print(f"{result['description']:<40} {result['nll']:<12.4f} {status:<10}")
-    
-    # Highlight the best result
-    if results_summary:
-        best = results_summary[0]
-        print(f"\n🏆 BEST RESULT: {best['description']}")
-        print(f"   NLL: {best['nll']:.4f}")
-        print(f"   Strains: {best['strains'] if best['strains'] else 'ALL'}")
-    
-    print(f"\n{'='*80}")
+
 
 
 def main_simple():
@@ -1097,20 +990,16 @@ def main_simple():
         print(f"Error optimizing {mechanism}: {e}")
         import traceback
         traceback.print_exc()
-     
+    
     print("Optimization complete!")
 
 
 if __name__ == "__main__":
     # Choose which function to run:
     
-    # Option 1: Run main() - tests a single strain combination
-    main()
+    # Option 1: Run main() - standard optimization for all strains
+    main() 
     
-    # Option 2: Run test_strain_combinations() - tests all strain combinations
-    # Uncomment the line below to test all combinations:
-    # test_strain_combinations()
-    
-    # Option 3: Run main_simple() - simple bootstrapping test
+    # Option 2: Run main_simple() - simple bootstrapping test
     # Uncomment the line below for simple bootstrapping:
     # main_simple() 

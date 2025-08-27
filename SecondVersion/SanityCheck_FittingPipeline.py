@@ -259,27 +259,23 @@ def run_join_optimization(mechanism, datasets, true_params):
         seed=42
     )
     
+    # Always extract the best parameters found, even if not converged
+    recovered_params = unpack_parameters(result.x, mechanism_info)
+    
     if result.success:
-        # Unpack results
-        recovered_params = unpack_parameters(result.x, mechanism_info)
-        
         print(f"✓ Joint optimization completed successfully!")
         print(f"  Negative Log-Likelihood: {result.fun:.4f}")
-        
-        return {
-            'success': True,
-            'nll': result.fun,
-            'params': recovered_params,
-            'result': result
-        }
     else:
-        print(f"✗ Joint optimization failed: {result.message}")
-        return {
-            'success': False,
-            'nll': np.inf,
-            'params': None,
-            'result': result
-        }
+        print(f"⚠️ Joint optimization did not converge: {result.message}")
+        print(f"  But extracting best parameters found (NLL: {result.fun:.4f})")
+    
+    return {
+        'success': True,  # Always return success to enable plotting
+        'converged': result.success,
+        'nll': result.fun,
+        'params': recovered_params,
+        'result': result
+    }
 
 
 def run_independent_optimization(mechanism, datasets, true_params):
@@ -338,13 +334,11 @@ def run_independent_optimization(mechanism, datasets, true_params):
     )
     
     if not result_wt.success:
-        print(f"✗ Wildtype optimization failed: {result_wt.message}")
-        return {
-            'success': False,
-            'nll': np.inf,
-            'params': None,
-            'result': result_wt
-        }
+        print(f"⚠️ Wildtype optimization did not converge: {result_wt.message}")
+        print(f"  But extracting best parameters found (NLL: {result_wt.fun:.4f})")
+    else:
+        print(f"✓ Wildtype optimization completed successfully!")
+        print(f"  Negative Log-Likelihood: {result_wt.fun:.4f}")
     
     # Unpack wildtype parameters
     wt_params = unpack_wildtype_parameters(result_wt.x, mechanism_info)
@@ -445,12 +439,13 @@ def run_independent_optimization(mechanism, datasets, true_params):
         'beta2_k': beta2_k
     })
     
-    print(f"✓ Independent optimization completed successfully!")
+    print(f"✓ Independent optimization completed!")
     print(f"  Wildtype NLL: {result_wt.fun:.4f}")
     print(f"  Alpha: {alpha:.3f}, Beta_k: {beta_k:.3f}, Beta2_k: {beta2_k:.3f}")
     
     return {
-        'success': True,
+        'success': True,  # Always return success to enable plotting
+        'converged': result_wt.success,
         'nll': result_wt.fun,
         'params': recovered_params,
         'wt_result': result_wt,
@@ -642,6 +637,114 @@ def _get_strain_adjusted_params(base_params, strain):
     return n1, n2, n3, N1, N2, N3, k
 
 
+def _simulate_from_params(mechanism, params, num_simulations=500, max_time=500):
+    """Helper: simulate datasets using MultiMechanismSimulation for a given parameter dict.
+    This mirrors generate_synthetic_data but accepts an arbitrary param dict (e.g., recovered).
+    """
+    try:
+        return generate_synthetic_data(mechanism, params, num_simulations=num_simulations, max_time=max_time)
+    except Exception as e:
+        print(f"Fitted simulation error: {e}")
+        return None
+
+
+def _kde(values, x_grid):
+    from scipy.stats import gaussian_kde
+    try:
+        if values is None or len(values) < 5:
+            return np.zeros_like(x_grid)
+        kde = gaussian_kde(values)
+        return kde(x_grid)
+    except Exception:
+        return np.zeros_like(x_grid)
+
+
+def plot_histograms_with_theoretical_curves(datasets_true, mechanism, param_sets, out_dir, true_params=None):
+    """
+    Plot synthetic data histogram (grey) with theoretical normal curves from MoM calculations.
+    param_sets: list of tuples (label, param_dict, color)
+    true_params: dict of true parameters for title display
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    strains = ['wildtype', 'threshold', 'degrate', 'degrateAPC']
+    
+    for strain in strains:
+        for key, pair12 in [('delta_t12', True), ('delta_t32', False)]:
+            true_vals = datasets_true.get(strain, {}).get(key)
+            if true_vals is None or true_vals.size == 0:
+                continue
+            xmin = float(np.nanmin(true_vals))
+            xmax = float(np.nanmax(true_vals))
+            if not np.isfinite(xmin) or not np.isfinite(xmax) or xmin == xmax:
+                continue
+            x_grid = np.linspace(xmin, xmax, 400)
+
+            plt.figure(figsize=(10, 5))
+            plt.hist(true_vals, bins=50, density=True, alpha=0.35, color='gray', edgecolor='none', label='Synthetic (empirical)')
+
+            # Plot theoretical curves using MoM calculations
+            for label, params, color in param_sets:
+                if params is None:
+                    continue
+                
+                # Get strain-adjusted parameters
+                adj = _get_strain_adjusted_params(params, strain)
+                if adj is None:
+                    continue
+                n1, n2, n3, N1, N2, N3, k = adj
+                mech_params = _build_mech_params(params, mechanism)
+                
+                try:
+                    # Use MoM calculations to get theoretical PDF
+                    if pair12:
+                        pdf_vals = compute_pdf_for_mechanism(mechanism, x_grid, n1, N1, n2, N2, k, mech_params, pair12=True)
+                    else:
+                        pdf_vals = compute_pdf_for_mechanism(mechanism, x_grid, n3, N3, n2, N2, k, mech_params, pair12=False)
+                    
+                    # Only plot if we got valid PDF values
+                    if pdf_vals is not None and len(pdf_vals) > 0 and np.any(pdf_vals > 0):
+                        plt.plot(x_grid, pdf_vals, color=color, lw=2, label=f'{label} (theoretical)')
+                    else:
+                        print(f"Warning: No valid PDF for {label} {strain} {key}")
+                        
+                except Exception as e:
+                    print(f"Warning: Could not compute theoretical PDF for {label} {strain} {key}: {e}")
+
+            # Build title with parameter comparison
+            title_pair = 'T1-T2' if pair12 else 'T3-T2'
+            title = f"{strain} – {title_pair}"
+            
+            if true_params is not None:
+                # Get true strain-adjusted parameters
+                true_adj = _get_strain_adjusted_params(true_params, strain)
+                if true_adj is not None:
+                    true_n1, true_n2, true_n3, true_N1, true_N2, true_N3, true_k = true_adj
+                    
+                    # Show relevant parameters for this timing pair
+                    if pair12:  # T1-T2
+                        title += f"\nTrue: n1={true_n1:.0f}, N1={true_N1:.0f}, k={true_k:.3f}"
+                    else:  # T3-T2
+                        title += f"\nTrue: n3={true_n3:.0f}, N3={true_N3:.0f}, k={true_k:.3f}"
+                    
+                    # Add recovered parameters from all param sets
+                    for label, params, color in param_sets:
+                        if params is not None:
+                            rec_adj = _get_strain_adjusted_params(params, strain)
+                            if rec_adj is not None:
+                                rec_n1, rec_n2, rec_n3, rec_N1, rec_N2, rec_N3, rec_k = rec_adj
+                                if pair12:  # T1-T2
+                                    title += f"\n{label}: n1={rec_n1:.0f}, N1={rec_N1:.0f}, k={rec_k:.3f}"
+                                else:  # T3-T2
+                                    title += f"\n{label}: n3={rec_n3:.0f}, N3={rec_N3:.0f}, k={rec_k:.3f}"
+            
+            plt.title(title, fontsize=10)
+            plt.xlabel('Delta time')
+            plt.ylabel('Density')
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+
+
 def plot_histograms_with_pdfs(datasets, mechanism, true_params, joint_params, independent_params, out_dir):
     """
     Plot histograms of synthetic data with overlaid PDFs from recovered parameters.
@@ -692,8 +795,7 @@ def plot_histograms_with_pdfs(datasets, mechanism, true_params, joint_params, in
             plt.legend()
             fname = os.path.join(out_dir, f"hist_pdf_{strain}_{'12' if pair12 else '32'}.png")
             plt.tight_layout()
-            plt.savefig(fname, dpi=150)
-            plt.close()
+            plt.show()
 
 
 def plot_parameter_bars(true_params, recovered_params, method_name, out_dir):
@@ -715,9 +817,7 @@ def plot_parameter_bars(true_params, recovered_params, method_name, out_dir):
     plt.title(f'Parameters: True vs {method_name}')
     plt.legend()
     plt.tight_layout()
-    fname = os.path.join(out_dir, f"params_{method_name.lower().replace(' ', '_')}.png")
-    plt.savefig(fname, dpi=150)
-    plt.close()
+    plt.show()
 
 
 def get_test_parameters(mechanism):
@@ -732,15 +832,15 @@ def get_test_parameters(mechanism):
     """
     # Base parameters (same for all mechanisms)
     base_params = {
-        'n1': 25.0,
-        'n2': 20.0,
-        'n3': 30.0,
+        'n1': 10.0,
+        'n2': 15.0,
+        'n3': 20.0,
         'N1': 200.0,
-        'N2': 150.0,
-        'N3': 250.0,
-        'k': 0.1,
-        'alpha': 0.7,
-        'beta_k': 0.8,
+        'N2': 250.0,
+        'N3': 800.0,
+        'k': 0.05,
+        'alpha': 0.5,
+        'beta_k': 0.7,
         'beta2_k': 0.6
     }
     
@@ -748,7 +848,7 @@ def get_test_parameters(mechanism):
     if mechanism == 'simple':
         return base_params
     elif mechanism == 'fixed_burst':
-        base_params['burst_size'] = 5.0
+        base_params['burst_size'] = 10.0
         return base_params
     elif mechanism == 'time_varying_k':
         base_params['k_1'] = 0.005
@@ -777,7 +877,7 @@ def get_test_parameters(mechanism):
         base_params['w3'] = 0.012
         return base_params
     elif mechanism == 'fixed_burst_feedback_onion':
-        base_params['burst_size'] = 5.0
+        base_params['burst_size'] = 10.0
         base_params['n_inner'] = 25.0
         return base_params
     else:
@@ -848,10 +948,22 @@ def main():
     out_dir = os.path.join('Results', 'SanityCheck')
     joint_params = joint_results['params'] if joint_results and joint_results.get('success') else None
     indep_params = independent_results['params'] if independent_results and independent_results.get('success') else None
+
+    # Plot theoretical curves using MoM calculations instead of simulation
     try:
-        plot_histograms_with_pdfs(datasets, mechanism, true_params, joint_params, indep_params, out_dir)
+        plot_histograms_with_theoretical_curves(
+            datasets_true=datasets,
+            mechanism=mechanism,
+            param_sets=[
+                ('Joint fit', joint_params, 'C0'),
+                ('Independent fit', indep_params, 'C1')
+            ],
+            out_dir=out_dir,
+            true_params=true_params
+        )
     except Exception as e:
-        print(f"Plotting error (hist+pdf): {e}")
+        print(f"Plotting error (theoretical curves): {e}")
+
     try:
         if joint_params:
             plot_parameter_bars(true_params, joint_params, 'Joint Optimization', out_dir)
