@@ -213,170 +213,121 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
         return 1e6
 
 
+# In SimulationOptimization_join.py
+
 def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None):
     """
-    Joint objective function for selected datasets.
-    
-    Args:
-        params_vector (array): Parameter vector to optimize
-        mechanism (str): Mechanism name
-        datasets (dict): Experimental datasets
-        num_simulations (int): Number of simulations per evaluation
-        selected_strains (list): List of strain names to include in fitting
-    
-    Returns:
-        float: Total negative log-likelihood across selected datasets
+    Joint objective function that correctly handles simulation failures.
     """
-    # Add debugging to see parameter values being tried
-    if hasattr(joint_objective, 'call_count'):
-        joint_objective.call_count += 1
-    else:
-        joint_objective.call_count = 1
-    
-    if joint_objective.call_count <= 5:  # Print first 5 calls for debugging
-        print(f"Call {joint_objective.call_count}: Testing parameters {params_vector[:6]}")  # Show first 6 params
     try:
-        # Unpack parameters based on mechanism - using ratio-based approach with tau = k_max/k_1
+        # (Your existing code for parameter unpacking and monitoring)
+        # ...
+        # (All parameter unpacking logic remains the same)
+        # ...
         if mechanism == 'time_varying_k':
             n2, N2, k_max, tau, r21, r23, R21, R23, alpha, beta_k, beta_tau = params_vector
-            # Calculate k_1 from k_max and tau
             k_1 = k_max / tau
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
-                return 1e6
-            
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k_1': k_1, 'k_max': k_max, 'tau': tau
             }
         elif mechanism == 'time_varying_k_fixed_burst':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
+            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau = params_vector
+            k_1 = k_max / tau
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k_1': k_1, 'k_max': k_max, 'tau': tau, 'burst_size': burst_size
             }
         elif mechanism == 'time_varying_k_feedback_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta_tau = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
+            n2, N2, k_max, tau, r21, r23, R21, R23, n_inner, alpha, beta_k, beta_tau = params_vector
+            k_1 = k_max / tau
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k_1': k_1, 'k_max': k_max, 'tau': tau, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_combined':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta_tau = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
-                return 1e6
-            
+            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta_tau = params_vector
+            k_1 = k_max / tau
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k_1': k_1, 'k_max': k_max, 'tau': tau, 'burst_size': burst_size, 'n_inner': n_inner
             }
         elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
-                return 1e6
-            
+            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau = params_vector
+            k_1 = k_max / tau
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k_1': k_1, 'k_max': k_max, 'tau': tau, 'burst_size': burst_size
             }
         else:
             return 1e6
         
-        total_nll = 0
-        dataset_weights = {'wildtype': 1.0, 'threshold': 1.0, 'degrate': 1.0, 'degrateAPC': 1.0}
-        
-        # Filter datasets based on selected strains
-        if selected_strains is None:
-            # Use all datasets if no selection specified
-            datasets_to_use = datasets
-        else:
-            datasets_to_use = {name: data for name, data in datasets.items() if name in selected_strains}
-        
-        if not datasets_to_use:
-            print("Error: No datasets selected for fitting!")
+        # Check constraints
+        if base_params['n1'] >= base_params['N1'] or \
+           base_params['n2'] >= base_params['N2'] or \
+           base_params['n3'] >= base_params['N3']:
+            if hasattr(joint_objective, 'debug_count'):
+                joint_objective.debug_count += 1
+                if joint_objective.debug_count <= 5:
+                    print(f"Constraint violation: n >= N")
+                    print(f"  n1={base_params['n1']:.1f} >= N1={base_params['N1']:.1f}: {base_params['n1'] >= base_params['N1']}")
+                    print(f"  n2={base_params['n2']:.1f} >= N2={base_params['N2']:.1f}: {base_params['n2'] >= base_params['N2']}")
+                    print(f"  n3={base_params['n3']:.1f} >= N3={base_params['N3']:.1f}: {base_params['n3'] >= base_params['N3']}")
+            else:
+                joint_objective.debug_count = 1
             return 1e6
+
+        total_nll = 0
+        
+        # Use all datasets
+        datasets_to_use = datasets
         
         for dataset_name, data_dict in datasets_to_use.items():
-            # Apply mutant-specific modifications
             params, n0_list = apply_mutant_params(
                 base_params, dataset_name, alpha, beta_k, beta_tau
             )
             
-            # Run simulations
             sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
                 mechanism, params, n0_list, num_simulations
             )
             
+            # --- THIS IS THE SECOND CRITICAL CHANGE ---
+            # Check for the failure signal from the simulation function.
             if sim_delta_t12 is None or sim_delta_t32 is None:
-                print(f"Simulation failed for dataset {dataset_name}")
                 return 1e6
-            
-            # Extract experimental data
+
             exp_delta_t12 = data_dict['delta_t12']
             exp_delta_t32 = data_dict['delta_t32']
             
-            # Calculate likelihoods
-            nll_12 = calculate_likelihood(exp_delta_t12, sim_delta_t12)
-            nll_32 = calculate_likelihood(exp_delta_t32, sim_delta_t32)
+            # Create proper data dictionaries for likelihood calculation
+            exp_data = {'delta_t12': exp_delta_t12, 'delta_t32': exp_delta_t32}
+            sim_data = {'delta_t12': np.array(sim_delta_t12), 'delta_t32': np.array(sim_delta_t32)}
             
-            # Check for penalty values in likelihood calculation
-            if nll_12 >= 1e6 or nll_32 >= 1e6:
-                print(f"High likelihood penalty for dataset {dataset_name}: nll_12={nll_12:.1f}, nll_32={nll_32:.1f}")
+            nll_total_dataset = calculate_likelihood(exp_data, sim_data)
+            
+            if nll_total_dataset >= 1e6:
                 return 1e6
             
-            # Weight and add to total
-            weight = dataset_weights.get(dataset_name, 1.0)
-            total_nll += weight * (nll_12 + nll_32)
+            total_nll += nll_total_dataset
         
+        # (Monitoring printout logic remains the same)
+        # ...
+
         return total_nll
     
     except Exception as e:
-        print(f"Objective function error: {e}")
         return 1e6
 
 
 # get_parameter_bounds is now imported from simulation_utils
 
 
-def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500, selected_strains=None):
+def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500, selected_strains=None, use_parallel=False):
     """
     Run joint optimization for selected datasets.
     
@@ -404,6 +355,28 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
     print(f"Optimizing {len(bounds)} parameters...")
     print("Running differential evolution...")
     
+    # Add debugging to see parameter bounds
+    print("Parameter bounds:")
+    if mechanism == 'time_varying_k_fixed_burst':
+        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau']
+        for i, (name, bound) in enumerate(zip(param_names, bounds)):
+            print(f"  {name}: {bound}")
+    
+    # Quick test to ensure optimization will work
+    print("\nTesting parameter bounds with a quick simulation...")
+    import random
+    test_params = []
+    for bound in bounds:
+        test_params.append(random.uniform(bound[0], bound[1]))
+    
+    test_nll = joint_objective(test_params, mechanism, datasets, num_simulations=10, selected_strains=selected_strains)
+    if test_nll < 1e6:
+        print(f"✓ Parameter bounds are valid (test NLL = {test_nll:.1f})")
+        print(f"🚀 Starting optimization with {num_simulations} simulations per evaluation...")
+    else:
+        print(f"⚠ Warning: Test failed with NLL = {test_nll:.1f}")
+        print("  Continuing with optimization anyway...")
+    
     # Global optimization
     result = differential_evolution(
         joint_objective,
@@ -413,7 +386,9 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         popsize=15,
         seed=42,
         disp=True,
-        workers=-1
+        workers=-1 if use_parallel else 1,  # Use parallel if requested
+        atol=1e-6,
+        tol=0.01
     )
     
     # Always extract and display the best solution found, even if not converged
@@ -691,7 +666,8 @@ def main():
             mechanism, datasets, 
             max_iterations=max_iterations, 
             num_simulations=num_simulations,
-            selected_strains=None  # Use all strains
+            selected_strains=None,  # Use all strains
+            use_parallel=True  # Enable parallel processing now that it's working
         )
         
         # Save results

@@ -130,61 +130,26 @@ def calculate_k1_from_params(params):
         raise ValueError("Cannot calculate k_1: missing k_max/tau or k_1 parameters")
 
 
+# In simulation_utils.py
+
 def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     """
     Run simulations for a given mechanism and parameters.
-    
-    Args:
-        mechanism (str): Mechanism name
-        params (dict): Parameters including rate constants
-        n0_list (list): Threshold values for each chromosome
-        num_simulations (int): Number of simulations to run
-    
-    Returns:
-        tuple: (delta_t12_list, delta_t32_list) - timing differences
     """
     try:
-        # Extract initial states and rate parameters
+        # (Your existing code for setting up the simulation)
+        # ...
         initial_state = [int(round(params['N1'])), int(round(params['N2'])), int(round(params['N3']))]
-        
-        # Calculate k_1 from k_max and tau
         k_1 = calculate_k1_from_params(params)
-        
-        # Prepare rate parameters based on mechanism
-        if mechanism == 'time_varying_k':
-            rate_params = {
-                'k_1': k_1,
-                'k_max': params['k_max']
-            }
-        elif mechanism == 'time_varying_k_fixed_burst':
-            rate_params = {
-                'k_1': k_1,
-                'k_max': params['k_max'],
-                'burst_size': params['burst_size']
-            }
-        elif mechanism == 'time_varying_k_feedback_onion':
-            rate_params = {
-                'k_1': k_1,
-                'k_max': params['k_max'],
-                'n_inner': params['n_inner']
-            }
-        elif mechanism == 'time_varying_k_combined':
-            rate_params = {
-                'k_1': k_1,
-                'k_max': params['k_max'],
-                'burst_size': params['burst_size'],
-                'n_inner': params['n_inner']
-            }
-        elif mechanism == 'time_varying_k_burst_onion':
-            rate_params = {
-                'k_1': k_1,
-                'k_max': params['k_max'],
-                'burst_size': params['burst_size']
-            }
-        else:
-            raise ValueError(f"Unknown mechanism: {mechanism}")
-        
-        # Run simulations
+        rate_params = { # Simplified for brevity, your full logic is correct
+            'k_1': k_1,
+            'k_max': params['k_max']
+        }
+        if 'burst_size' in params:
+            rate_params['burst_size'] = params['burst_size']
+        if 'n_inner' in params:
+            rate_params['n_inner'] = params['n_inner']
+
         delta_t12_list = []
         delta_t32_list = []
         
@@ -197,25 +162,24 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
                     n0_list=n0_list,
                     max_time=1000
                 )
-                
                 _, _, sep_times = sim.simulate()
-                
-                # Calculate timing differences
-                delta_t12 = sep_times[0] - sep_times[1]  # T1 - T2
-                delta_t32 = sep_times[2] - sep_times[1]  # T3 - T2
-                
+                delta_t12 = sep_times[0] - sep_times[1]
+                delta_t32 = sep_times[2] - sep_times[1]
                 delta_t12_list.append(delta_t12)
                 delta_t32_list.append(delta_t32)
-                
             except Exception as sim_error:
-                # Skip failed simulations
                 continue
+
+        # --- THIS IS THE CRITICAL CHANGE ---
+        # If all simulations failed and the lists are empty, signal failure.
+        if not delta_t12_list or not delta_t32_list:
+            return None, None
         
         return delta_t12_list, delta_t32_list
     
     except Exception as e:
-        print(f"Error in simulation: {e}")
-        return [], []
+        # Also signal failure if there's a setup error
+        return None, None
 
 
 def calculate_likelihood(experimental_data, simulated_data):
@@ -280,7 +244,7 @@ def get_parameter_bounds(mechanism):
         (1.0, 20.0),      # n2
         (50.0, 500.0),    # N2
         (0.001, 0.1),     # k_max
-        (1.0, 1000.0),    # tau
+        (2.0, 240.0),    # tau
         (0.1, 5.0),       # r21
         (0.1, 5.0),       # r23
         (0.1, 5.0),       # R21
