@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
-from SimulationOptimization_join import load_experimental_data, apply_mutant_params
+from simulation_utils import load_experimental_data, apply_mutant_params
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -76,7 +76,7 @@ def load_optimized_parameters(mechanism, filename=None):
                         continue
         
         # If we have ratio parameters but not derived ones, calculate them
-        if 'r21' in params and 'n1' not in params:
+        if 'r21' in params:
             params['n1'] = max(params['r21'] * params['n2'], 1)
             params['n3'] = max(params['r23'] * params['n2'], 1)
             params['N1'] = max(params['R21'] * params['N2'], 1)
@@ -92,7 +92,7 @@ def load_optimized_parameters(mechanism, filename=None):
         return {}
 
 
-def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta2_k, num_simulations=500):
+def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, num_simulations=500):
     """
     Run simulations with given parameters for a specific mutant type.
     
@@ -100,7 +100,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         mechanism (str): Mechanism name
         params (dict): Base parameters
         mutant_type (str): Mutant type
-        alpha, beta_k, beta2_k (float): Mutant parameters
+        alpha, beta_k, beta_tau (float): Mutant parameters
         num_simulations (int): Number of simulations
     
     Returns:
@@ -111,8 +111,16 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         base_params = {
             'n1': params['n1'], 'n2': params['n2'], 'n3': params['n3'],
             'N1': params['N1'], 'N2': params['N2'], 'N3': params['N3'],
-            'k_1': params['k_1'], 'k_max': params['k_max']
+            'k_max': params['k_max']
         }
+        
+        # Add tau parameter if available
+        if 'tau' in params:
+            base_params['tau'] = params['tau']
+        elif 'k_1' in params:
+            base_params['k_1'] = params['k_1']
+        
+        # k_1 calculation is now handled by simulation_utils.calculate_k1_from_params
         
         # Add mechanism-specific parameters
         if mechanism == 'time_varying_k_fixed_burst':
@@ -126,7 +134,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             base_params['burst_size'] = params['burst_size']
         
         # Apply mutant modifications
-        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta2_k)
+        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau)
         
         # Extract rate parameters
         initial_state = [mutant_params['N1'], mutant_params['N2'], mutant_params['N3']]
@@ -208,7 +216,7 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
     
     alpha = params['alpha']
     beta_k = params['beta_k']
-    beta2_k = params['beta2_k']
+    beta_tau = params['beta_tau']
     
     for i, (dataset_name, title) in enumerate(zip(dataset_names, dataset_titles)):
         if dataset_name not in experimental_data:
@@ -221,7 +229,7 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         # Run simulations
         print(f"Running simulations for {dataset_name}...")
         sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-            mechanism, params, dataset_name, alpha, beta_k, beta2_k, num_simulations
+            mechanism, params, dataset_name, alpha, beta_k, beta_tau, num_simulations
         )
         
         if not sim_delta_t12 or not sim_delta_t32:
@@ -304,12 +312,12 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     
     alpha = params['alpha']
     beta_k = params['beta_k']
-    beta2_k = params['beta2_k']
+    beta_tau = params['beta_tau']
     
     # Run simulations
     print(f"Running {num_simulations} simulations for {dataset_name}...")
     sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-        mechanism, params, dataset_name, alpha, beta_k, beta2_k, num_simulations
+        mechanism, params, dataset_name, alpha, beta_k, beta_tau, num_simulations
     )
     
     if not sim_delta_t12 or not sim_delta_t32:
@@ -382,7 +390,15 @@ def print_parameter_summary(mechanism, params):
     print(f"Wildtype Parameters:")
     print(f"  Thresholds: n1={params['n1']:.1f}, n2={params['n2']:.1f}, n3={params['n3']:.1f}")
     print(f"  Initial counts: N1={params['N1']:.1f}, N2={params['N2']:.1f}, N3={params['N3']:.1f}")
-    print(f"  Rates: k_1={params['k_1']:.6f}, k_max={params['k_max']:.4f}")
+    
+    # Handle both tau and k_1 parameter display
+    if 'tau' in params:
+        k_1_calc = params['k_max'] / params['tau']
+        print(f"  Rates: k_max={params['k_max']:.4f}, tau={params['tau']:.4f} (k_1={k_1_calc:.6f})")
+    elif 'k_1' in params:
+        print(f"  Rates: k_1={params['k_1']:.6f}, k_max={params['k_max']:.4f}")
+    else:
+        print(f"  Rates: k_max={params['k_max']:.4f}")
     
     if 'burst_size' in params:
         print(f"  Burst size: {params['burst_size']:.1f}")
@@ -396,13 +412,25 @@ def print_parameter_summary(mechanism, params):
     print(f"\nMutant Modifiers:")
     print(f"  Threshold mutant (alpha): {params['alpha']:.3f}")
     print(f"  Separase mutant (beta_k): {params['beta_k']:.3f}")
-    print(f"  APC mutant (beta2_k): {params['beta2_k']:.3f}")
+    
+    print(f"  APC mutant (beta_tau): {params['beta_tau']:.3f}")
+    beta_tau_value = params['beta_tau']
     
     # Show effective parameters for each mutant
     print(f"\nEffective Parameters by Mutant:")
     print(f"  Threshold: n1={params['alpha']*params['n1']:.1f}, n2={params['alpha']*params['n2']:.1f}, n3={params['alpha']*params['n3']:.1f}")
     print(f"  Separase: k_max={params['beta_k']*params['k_max']:.4f}")
-    print(f"  APC: k_1={params['beta2_k']*params['k_1']:.6f}")
+    
+    # Calculate effective k_1 or tau for APC mutant
+    if 'tau' in params:
+        effective_tau = beta_tau_value * params['tau']
+        effective_k1 = params['k_max'] / effective_tau
+        print(f"  APC: tau={effective_tau:.4f} (k_1={effective_k1:.6f})")
+    elif 'k_1' in params:
+        effective_k1 = beta_tau_value * params['k_1']
+        print(f"  APC: k_1={effective_k1:.6f}")
+    else:
+        print(f"  APC: modifier={beta_tau_value:.3f}")
 
 
 def main():
@@ -452,8 +480,8 @@ if __name__ == "__main__":
     
     # Single dataset configuration (only used if run_single_dataset = True)
     mechanism = 'time_varying_k_combined'  # Choose mechanism to test
-    filename = 'bayesian_optimized_parameters_time_varying_k_combined.txt'
-    dataset = 'degrate'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
+    filename = 'simulation_optimized_parameters_time_varying_k_combined_finetune.txt'
+    dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
     
     if run_all_mechanisms:
         main()
@@ -470,6 +498,6 @@ if __name__ == "__main__":
             params = load_optimized_parameters(mechanism, filename)
             if params:
                 print_parameter_summary(mechanism, params)
-                create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=500)
+                create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=800)
             else:
                 print(f"Could not load parameters for {mechanism}") 

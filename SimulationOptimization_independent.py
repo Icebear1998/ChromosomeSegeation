@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import differential_evolution, minimize
 from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
-from SimulationOptimization_join import load_experimental_data, apply_mutant_params, calculate_likelihood, run_simulation_for_dataset
+from simulation_utils import *
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -178,18 +178,18 @@ def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mut
         # Unpack mutant-specific parameters
         if mutant_type == 'threshold':
             alpha = mutant_params[0]
-            beta_k, beta2_tau = 1.0, 1.0  # Not used for threshold mutant
+            beta_k, beta_tau = 1.0, 1.0  # Not used for threshold mutant
         elif mutant_type == 'degrate':
             beta_k = mutant_params[0]
-            alpha, beta2_tau = 1.0, 1.0  # Not used for degrate mutant
+            alpha, beta_tau = 1.0, 1.0  # Not used for degrate mutant
         elif mutant_type == 'degrateAPC':
-            beta2_tau = mutant_params[0]
+            beta_tau = mutant_params[0]
             alpha, beta_k = 1.0, 1.0  # Not used for degrateAPC mutant
         else:
             return 1e6
         
         # Apply mutant modifications to wildtype parameters
-        params, n0_list = apply_mutant_params(wildtype_params, mutant_type, alpha, beta_k, beta2_tau)
+        params, n0_list = apply_mutant_params(wildtype_params, mutant_type, alpha, beta_k, beta_tau)
         
         # Run simulations
         sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
@@ -267,7 +267,7 @@ def get_mutant_parameter_bounds(mutant_type):
     elif mutant_type == 'degrate':
         return [(0.1, 1.0)]  # beta_k
     elif mutant_type == 'degrateAPC':
-        return [(2.0, 3.0)]  # beta2_tau (tau becomes 2-3 times larger for APC mutant)
+        return [(2.0, 3.0)]  # beta_tau (tau becomes 2-3 times larger for APC mutant)
     else:
         return []
 
@@ -299,7 +299,7 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
         popsize=15,
         seed=42,
         disp=True,
-        workers=1
+        workers=-1
     )
     
     convergence_status = "converged" if result.success else "did not converge"
@@ -411,7 +411,7 @@ def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_it
     elif mutant_type == 'degrate':
         param_name = 'beta_k'
     elif mutant_type == 'degrateAPC':
-        param_name = 'beta2_tau'
+        param_name = 'beta_tau'
     
     print(f"{mutant_type.title()} parameter: {param_name} = {param_value:.3f}")
     
