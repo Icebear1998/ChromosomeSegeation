@@ -19,9 +19,9 @@ During cell division, chromosomes must be properly separated to ensure each daug
 The project uses experimental data from different mutant strains:
 
 - **Wild-type**: Normal chromosome segregation timing
-- **Threshold mutants**: Reduced cohesin threshold for separation
+- **Threshold mutants**: Reduced cohesin threshold for separation (alpha parameter)
 - **Separase mutants**: Reduced degradation rate (beta_k parameter)
-- **APC mutants**: Alternative degradation rate reduction (beta2_k parameter)
+- **APC mutants**: Increased tau (time to reach maximum degradation rate) (beta2_tau parameter)
 - **Initial protein mutants**: Reduced initial cohesin protein levels (gamma parameters)
 
 ## Mathematical Framework
@@ -81,9 +81,11 @@ Where:
 
 ### 3. Time-Varying k Mechanism
 
-**Description**: Degradation rate changes over time
-**Parameters**: `k_1`
-**Mathematical Form**: `k(t) = k₀ + k₁ * t`
+**Description**: Degradation rate increases linearly with time until reaching maximum
+**Parameters**: `k_1`, `k_max`, `tau = k_max/k_1`
+**Mathematical Form**: `k(t) = min(k_1 * t, k_max)`
+**Time Scale**: `tau` represents the time (in minutes) to reach maximum degradation rate
+**Biological Significance**: `tau` reflects the activation timescale of the degradation machinery
 
 ### 4. Feedback Mechanisms
 
@@ -120,6 +122,24 @@ Where:
 **Description**: Combines burst degradation with onion feedback effects
 **Parameters**: `burst_size, n_inner`
 
+#### 5.3 Time-Varying k + Fixed Burst
+
+**Description**: Combines time-varying degradation rate with fixed-size bursts
+**Parameters**: `k_1, k_max, burst_size`
+**Mathematical Form**: `k(t) = min(k_1 * t, k_max)` with burst-based degradation
+
+#### 5.4 Time-Varying k + Onion Feedback
+
+**Description**: Combines time-varying degradation rate with onion feedback
+**Parameters**: `k_1, k_max, n_inner`
+**Mathematical Form**: `k(t) = min(k_1 * t, k_max)` with feedback modification
+
+#### 5.5 Time-Varying k + Fixed Burst + Onion Feedback (Combined)
+
+**Description**: Triple combination of time-varying rate, burst degradation, and onion feedback
+**Parameters**: `k_1, k_max, burst_size, n_inner`
+**Mathematical Form**: All three mechanisms applied simultaneously
+
 ## Implementation Structure
 
 ### Core Files
@@ -140,45 +160,103 @@ Where:
   - Proper rounding for threshold values
   - Support for all implemented mechanisms
 
-#### 3. `MoMOptimization_join.py`
+#### 2b. `MultiMechanismSimulationTimevary.py`
 
-- **Purpose**: Joint optimization across all mutant strains
-- **Strategy**: Optimize all parameters simultaneously
-- **Advantages**: Better parameter consistency across strains
-- **Disadvantages**: More complex optimization landscape
+- **Purpose**: Extended simulation engine for time-varying mechanisms
+- **Key Features**:
+  - Time-varying degradation rates: `k(t) = min(k_1 * t, k_max)`
+  - Combined mechanisms (time-varying + burst + feedback)
+  - Support for all time-varying mechanism combinations
+  - Optimized for simulation-based optimization
 
-#### 4. `MoMOptimization_independent.py`
+#### 3. MoM-based Optimization
 
-- **Purpose**: Independent optimization strategy
-- **Strategy**:
-  1. Optimize wild-type parameters first
-  2. Optimize mutant parameters separately using basinhopping
-- **Advantages**: More robust, easier to converge
-- **Disadvantages**: May miss global correlations
+##### 3a. `MoMOptimization_join.py`
 
-#### 5. `TestDataPlot.py`
+- **Purpose**: Joint MoM-based optimization across all mutant strains
+- **Strategy**: Optimize all parameters simultaneously using Method of Moments
+- **Advantages**: Fast computation, analytical PDF
+- **Disadvantages**: Normal approximation may not be accurate
 
-- **Purpose**: Visualization and validation of model fits
+##### 3b. `MoMOptimization_independent.py`
+
+- **Purpose**: Independent MoM-based optimization strategy
+- **Strategy**: Optimize wild-type first, then mutants separately
+- **Advantages**: More robust convergence
+- **Disadvantages**: May miss parameter correlations
+
+#### 4. Simulation-based Optimization
+
+##### 4a. `SimulationOptimization_join.py`
+
+- **Purpose**: Joint optimization using stochastic simulations
+- **Strategy**: Use KDE from simulation data for likelihood calculation
+- **Key Features**:
+  - Direct simulation-based parameter fitting
+  - Tau parameterization: `tau = k_max/k_1` (time to reach max rate)
+  - Support for time-varying mechanisms
+  - Strain selection capability
+- **Advantages**: No approximation, captures full distribution
+- **Disadvantages**: Computationally expensive
+
+##### 4b. `SimulationOptimization_independent.py`
+
+- **Purpose**: Independent simulation-based optimization
+- **Strategy**: Optimize wild-type first, then mutants independently
+- **Key Features**: Same as joint but with sequential optimization
+- **Advantages**: More robust convergence, easier debugging
+- **Disadvantages**: Longer computation time
+
+##### 4c. `SimulationOptimization_bayesian.py`
+
+- **Purpose**: Bayesian optimization for simulation-based fitting
+- **Strategy**: Uses Gaussian Process surrogate models
+- **Key Features**: Efficient exploration of parameter space
+- **Status**: Experimental, requires scikit-optimize
+
+#### 5. Visualization and Testing
+
+##### 5a. `TestDataPlot.py`
+
+- **Purpose**: Visualization for MoM-based optimization results
+- **Features**: Comparison of experimental data, simulation, and MoM PDF
+
+##### 5b. `TestDataPlotSimulation.py`
+
+- **Purpose**: Visualization for simulation-based optimization results
 - **Features**:
-  - Single dataset plotting
-  - All datasets in 2x5 layout
-  - Comparison of experimental data, simulation, and MoM PDF
-  - Statistical summaries
+  - Single and multi-dataset plotting
+  - Support for tau parameterization
+  - Backward compatibility with old parameter files
+  - Statistical comparison overlays
 
 ### Parameter Handling
 
 #### Wild-Type Parameters
 
-- `n₂, N₂, k`: Base parameters for chromosome 2
-- `r₂₁, r₂₃`: Ratios for chromosome 1 and 3 thresholds
-- `R₂₁, R₂₃`: Ratios for chromosome 1 and 3 initial counts
-- Mechanism-specific parameters (e.g., `burst_size`, `w₁`, etc.)
+**Base Parameters:**
+
+- `n₂, N₂`: Base threshold and initial count for chromosome 2
+- `r₂₁, r₂₃`: Ratios for chromosome 1 and 3 thresholds (n₁/n₂, n₃/n₂)
+- `R₂₁, R₂₃`: Ratios for chromosome 1 and 3 initial counts (N₁/N₂, N₃/N₂)
+
+**Rate Parameters (New Tau Parameterization):**
+
+- `k_max`: Maximum degradation rate
+- `tau`: Time to reach maximum rate (minutes), where `tau = k_max/k_1`
+- `k_1`: Initial degradation rate (derived: `k_1 = k_max/tau`)
+
+**Mechanism-Specific Parameters:**
+
+- `burst_size`: Size of degradation bursts (for burst mechanisms)
+- `n_inner`: Inner threshold for onion feedback
+- `w₁, w₂, w₃`: Linear feedback weights
 
 #### Mutant Parameters
 
 - `alpha`: Threshold reduction factor (threshold mutants)
-- `beta_k`: Degradation rate reduction factor (separase mutants)
-- `beta2_k`: Alternative degradation rate reduction factor (APC mutants)
+- `beta_k`: Maximum degradation rate reduction factor (separase mutants)
+- `beta2_tau`: Tau increase factor (APC mutants) - makes tau 2-3x larger
 - `gamma` or `gamma₁, gamma₂, gamma₃`: Initial protein reduction factors
 
 #### Gamma Mode Options
@@ -238,9 +316,28 @@ Where `f_X(x_i)` is the PDF value for experimental data point `x_i`.
 
 ### Parameter Constraints
 
-- **Biological**: `n_i < N_i` (threshold less than initial count)
-- **Mathematical**: All parameters must be positive
-- **Numerical**: Degradation rates bounded to prevent instability
+#### Biological Constraints:
+
+- **Threshold**: `n_i < N_i` (threshold less than initial count)
+- **Ratio bounds**: `r₂₁, r₂₃ ∈ [0.1, 10]` (reasonable chromosome differences)
+- **Initial count ratios**: `R₂₁, R₂₃ ∈ [0.1, 10]` (reasonable chromosome differences)
+
+#### Rate Parameter Bounds (Tau Parameterization):
+
+- **Maximum rate**: `k_max ∈ [0.01, 0.2]` (per minute)
+- **Time scale**: `tau ∈ [2, 240]` minutes (2 seconds to 4 hours)
+- **Derived**: `k_1 = k_max / tau` (automatically calculated)
+
+#### Mutant Parameter Bounds:
+
+- **Threshold mutant**: `alpha ∈ [0.1, 2.0]` (threshold modification)
+- **Separase mutant**: `beta_k ∈ [0.1, 2.0]` (rate modification)
+- **APC mutant**: `beta2_tau ∈ [2.0, 3.0]` (tau increase factor)
+
+#### Mechanism-Specific Bounds:
+
+- **Burst size**: `burst_size ∈ [1, 50]` (integer values)
+- **Inner threshold**: `n_inner ∈ [1, 200]` (feedback parameter)
 
 ## Current Status
 
@@ -255,52 +352,100 @@ Where `f_X(x_i)` is the PDF value for experimental data point `x_i`.
 
 ### Recent Improvements
 
-✅ Fixed discrete state handling (rounding vs. truncation)  
-✅ Added APC mutant strain support  
-✅ Enhanced 2x5 plotting layout  
-✅ Improved parameter bounds and validation
+✅ **Simulation-based Optimization Pipeline**: Complete implementation with KDE-based likelihood  
+✅ **Tau Parameterization**: Changed from `k_1, k_max` to `k_max, tau` for better biological interpretation  
+✅ **Combined Time-Varying Mechanisms**: Added 3 new mechanism combinations  
+✅ **APC Mutant Tau Effects**: APC mutants now affect tau (2-3x increase) instead of k_1  
+✅ **Enhanced Visualization**: Updated plotting for simulation results and tau parameters  
+✅ **Strain Selection**: Added capability to optimize subsets of strains  
+✅ **Bayesian Optimization**: Experimental Gaussian Process-based optimization  
+✅ **Sanity Check Scripts**: Comprehensive validation for both MoM and simulation pipelines
 
 ### Output Files
 
-Optimization results are saved as text files:
+#### MoM-based Optimization Results:
 
 - `optimized_parameters_{mechanism}_join.txt`
 - `optimized_parameters_{mechanism}_independent.txt`
 
+#### Simulation-based Optimization Results:
+
+- `simulation_optimized_parameters_{mechanism}.txt`
+- `simulation_optimized_parameters_{mechanism}_{strain_selection}.txt`
+
 Each file contains:
 
-- Wild-type parameters
+**MoM Files:**
+
+- Wild-type parameters (ratio-based)
+- Derived parameters (n₁, n₃, N₁, N₃)
 - Mechanism-specific parameters
 - Mutant parameters
 - Individual and total negative log-likelihoods
+
+**Simulation Files:**
+
+- Base parameters (n₂, N₂)
+- Ratio parameters (r₂₁, r₂₃, R₂₁, R₂₃)
+- Rate parameters (k_max, tau, derived k_1)
+- Mechanism-specific parameters (burst_size, n_inner)
+- Mutant parameters (alpha, beta_k, beta2_tau)
+- Optimization convergence information
 
 ## Usage Examples
 
 ### Running Optimization
 
+#### MoM-based Optimization:
+
 ```python
-# Joint optimization
+# Joint MoM optimization
 python MoMOptimization_join.py
 
-# Independent optimization
+# Independent MoM optimization
 python MoMOptimization_independent.py
+```
+
+#### Simulation-based Optimization:
+
+```python
+# Joint simulation optimization
+python SimulationOptimization_join.py
+
+# Independent simulation optimization
+python SimulationOptimization_independent.py
+
+# Bayesian optimization (experimental)
+python SimulationOptimization_bayesian.py
 ```
 
 ### Visualizing Results
 
-```python
-# Single dataset
-python TestDataPlot.py
+#### MoM Results:
 
-# All datasets (uncomment in main section)
-plot_all_datasets_2x2(params, mechanism="simple", num_sim=1500)
+```python
+# MoM-based results
+python TestDataPlot.py
 ```
 
-### Testing Mechanisms
+#### Simulation Results:
+
+```python
+# Simulation-based results
+python TestDataPlotSimulation.py
+```
+
+### Testing and Validation
 
 ```python
 # Test all mechanisms
 python TestAllMechanisms.py
+
+# Sanity check for MoM pipeline
+python SanityCheck_FittingPipeline.py
+
+# Sanity check for simulation pipeline
+python SanityCheck_SimulationFitting.py
 ```
 
 ## Future Directions
@@ -330,16 +475,31 @@ python TestAllMechanisms.py
 
 ### Computational Efficiency
 
+**MoM-based Optimization:**
+
 - MoM calculations: ~1ms per evaluation
-- Stochastic simulation: ~1-10 seconds per 1500 runs
-- Optimization: 5-30 minutes depending on mechanism complexity
+- Full optimization: 5-30 minutes depending on mechanism complexity
+
+**Simulation-based Optimization:**
+
+- Single simulation run: ~1-10ms per simulation
+- KDE calculation: ~10-50ms per evaluation
+- Full optimization: 2-8 hours depending on mechanism and iterations
+- Bayesian optimization: 30 minutes - 2 hours (more efficient parameter exploration)
 
 ### Dependencies
 
+**Core Dependencies:**
+
 - NumPy: Numerical computations
-- SciPy: Optimization algorithms
+- SciPy: Optimization algorithms and KDE
 - Matplotlib: Visualization
 - Pandas: Data handling
+
+**Optional Dependencies:**
+
+- scikit-optimize: Bayesian optimization (for SimulationOptimization_bayesian.py)
+- seaborn: Enhanced plotting (optional)
 
 ## Contact and References
 

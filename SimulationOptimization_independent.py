@@ -16,8 +16,110 @@ import pandas as pd
 from scipy.optimize import differential_evolution, minimize
 from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
 from simulation_utils import *
+from sklearn.neighbors import KernelDensity
 import warnings
 warnings.filterwarnings('ignore')
+
+
+def calculate_likelihood_kde(exp_data, sim_data):
+    """
+    Calculate negative log-likelihood using KDE on simulation data.
+    
+    Args:
+        exp_data (array): Experimental data points
+        sim_data (array): Simulated data points
+    
+    Returns:
+        float: Negative log-likelihood
+    """
+    try:
+        if len(exp_data) == 0 or len(sim_data) == 0:
+            return 1e6
+        
+        # Convert to numpy arrays if needed
+        exp_data = np.array(exp_data)
+        sim_data = np.array(sim_data)
+        
+        # Use KDE to estimate density from simulated data
+        kde = KernelDensity(kernel='gaussian', bandwidth=5.0)  # Reduced bandwidth
+        kde.fit(sim_data.reshape(-1, 1))
+        
+        # Evaluate likelihood of experimental data under this density
+        log_densities = kde.score_samples(exp_data.reshape(-1, 1))
+        
+        # Handle extreme outliers
+        log_densities = np.maximum(log_densities, -50)  # Cap extremely low densities
+        
+        # Sum negative log-likelihoods
+        nll = -np.sum(log_densities)
+        
+        return max(nll, 0.1)  # Ensure positive NLL
+    
+    except Exception as e:
+        print(f"Error in KDE likelihood calculation: {e}")
+        return 1e6
+
+
+def run_simulation_for_dataset_local(mechanism, params, n0_list, num_simulations=500):
+    """
+    Run simulations for a given mechanism and parameters.
+    Local implementation for independent optimization.
+    """
+    try:
+        # Setup simulation parameters
+        initial_state = [int(round(params['N1'])), int(round(params['N2'])), int(round(params['N3']))]
+        
+        # Ensure we have k_1 calculated
+        if 'k_1' not in params:
+            params['k_1'] = calculate_k1_from_params(params)
+        
+        rate_params = {
+            'k_1': params['k_1'],
+            'k_max': params['k_max']
+        }
+        
+        # Add mechanism-specific parameters
+        if 'burst_size' in params:
+            rate_params['burst_size'] = int(round(params['burst_size']))
+        if 'n_inner' in params:
+            rate_params['n_inner'] = params['n_inner']
+
+        delta_t12_list = []
+        delta_t32_list = []
+        
+        successful_sims = 0
+        for i in range(num_simulations):
+            try:
+                sim = MultiMechanismSimulationTimevary(
+                    mechanism=mechanism,
+                    initial_state_list=initial_state,
+                    rate_params=rate_params,
+                    n0_list=n0_list,
+                    max_time=2000  # Increased max time
+                )
+                _, _, sep_times = sim.simulate()
+                
+                if len(sep_times) >= 3:  # Ensure all chromosomes separated
+                    delta_t12 = sep_times[0] - sep_times[1]
+                    delta_t32 = sep_times[2] - sep_times[1]
+                    delta_t12_list.append(delta_t12)
+                    delta_t32_list.append(delta_t32)
+                    successful_sims += 1
+                    
+            except Exception as sim_error:
+                continue
+
+        # Check if we have enough successful simulations
+        if successful_sims < num_simulations * 0.3:  # At least 30% success rate
+            print(f"Warning: Only {successful_sims}/{num_simulations} simulations succeeded for {mechanism}")
+            if successful_sims == 0:
+                return None, None
+        
+        return delta_t12_list, delta_t32_list
+    
+    except Exception as e:
+        print(f"Error in run_simulation_for_dataset_local: {e}")
+        return None, None
 
 
 def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=500, selected_strains=None):
@@ -134,27 +236,40 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
         params, n0_list = apply_mutant_params(base_params, 'wildtype', 1.0, 1.0, 1.0)
         
         # Run simulations
-        sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
+        sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset_local(
             mechanism, params, n0_list, num_simulations
         )
         
         if sim_delta_t12 is None or sim_delta_t32 is None:
+            print(f"Wildtype simulation failed for mechanism: {mechanism}")
             return 1e6
+        
+        # Add some debugging info
+        if len(sim_delta_t12) < num_simulations * 0.5:  # Less than 50% success rate
+            print(f"Warning: Only {len(sim_delta_t12)}/{num_simulations} wildtype simulations succeeded")
         
         # Extract experimental data
         exp_delta_t12 = wildtype_data['delta_t12']
         exp_delta_t32 = wildtype_data['delta_t32']
         
-        # Calculate likelihoods
-        nll_12 = calculate_likelihood(exp_delta_t12, sim_delta_t12)
-        nll_32 = calculate_likelihood(exp_delta_t32, sim_delta_t32)
+        # Calculate likelihoods using KDE
+        nll_12 = calculate_likelihood_kde(exp_delta_t12, sim_delta_t12)
+        nll_32 = calculate_likelihood_kde(exp_delta_t32, sim_delta_t32)
+        
+        # Debug: Print NLL values occasionally
+        total_nll = nll_12 + nll_32
+        if np.random.random() < 0.01:  # Print 1% of the time
+            print(f"Debug wildtype NLL: 12={nll_12:.2f}, 32={nll_32:.2f}, total={total_nll:.2f}")
+            print(f"Exp data sizes: 12={len(exp_delta_t12)}, 32={len(exp_delta_t32)}")
+            print(f"Sim data sizes: 12={len(sim_delta_t12)}, 32={len(sim_delta_t32)}")
         
         if nll_12 >= 1e6 or nll_32 >= 1e6:
             return 1e6
         
-        return nll_12 + nll_32
+        return total_nll
     
     except Exception as e:
+        print(f"Exception in wildtype_objective: {e}")
         return 1e6
 
 
@@ -192,7 +307,7 @@ def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mut
         params, n0_list = apply_mutant_params(wildtype_params, mutant_type, alpha, beta_k, beta_tau)
         
         # Run simulations
-        sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
+        sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset_local(
             mechanism, params, n0_list, num_simulations
         )
         
@@ -203,9 +318,9 @@ def mutant_objective(mutant_params, mechanism, mutant_data, wildtype_params, mut
         exp_delta_t12 = mutant_data['delta_t12']
         exp_delta_t32 = mutant_data['delta_t32']
         
-        # Calculate likelihoods
-        nll_12 = calculate_likelihood(exp_delta_t12, sim_delta_t12)
-        nll_32 = calculate_likelihood(exp_delta_t32, sim_delta_t32)
+        # Calculate likelihoods using KDE
+        nll_12 = calculate_likelihood_kde(exp_delta_t12, sim_delta_t12)
+        nll_32 = calculate_likelihood_kde(exp_delta_t32, sim_delta_t32)
         
         if nll_12 >= 1e6 or nll_32 >= 1e6:
             return 1e6
@@ -646,9 +761,9 @@ def main():
     """
     Main independent optimization routine for all strains.
     """
-    max_iterations_wt = 100  # Wildtype iterations
-    max_iterations_mut = 100  # Mutant iterations
-    num_simulations = 200     # Simulations per evaluation
+    max_iterations_wt = 50   # Wildtype iterations (reduced for testing)
+    max_iterations_mut = 50  # Mutant iterations (reduced for testing)
+    num_simulations = 100    # Simulations per evaluation (reduced for testing)
     
     print("Simulation-based Independent Optimization for Time-Varying Mechanisms")
     print("=" * 70)
@@ -664,6 +779,7 @@ def main():
     mechanism = mechanisms[1]  # Test fixed_burst mechanism
     
     print(f"\nRunning independent optimization for {mechanism} with ALL strains")
+    print(f"Using {num_simulations} simulations per evaluation")
     
     try:
         results = run_independent_optimization(

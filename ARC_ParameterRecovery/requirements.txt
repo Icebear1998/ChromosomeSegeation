@@ -1,0 +1,17 @@
+# Parameter Recovery Study - Python Requirements
+# Install with: pip install -r requirements.txt
+
+# Core scientific computing
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Excel file reading
+openpyxl>=3.0.0
+
+# Additional utilities (if needed)
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# For potential future extensions
+scikit-learn>=1.0.0

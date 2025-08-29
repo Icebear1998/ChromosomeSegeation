@@ -1,54 +1,54 @@
 Simulation-based Independent Optimization Results
 Mechanism: time_varying_k_combined
-Total Negative Log-Likelihood: 4047.796315
+Total Negative Log-Likelihood: 3991.888157
 Strategy: Independent optimization (wildtype first, then mutants separately)
 
 === WILDTYPE PARAMETERS ===
 Converged: True
-Wildtype NLL: 1132.304988
+Wildtype NLL: 1133.869457
 Status: Converged successfully
 
 Wildtype Parameters (ratio-based):
-n2 = 3.735799
-N2 = 462.136960
-k_1 = 0.003129
-k_max = 0.048089
-r21 = 1.342543
-r23 = 2.871598
-R21 = 1.048744
-R23 = 2.037488
-burst_size = 4.067697
-n_inner = 28.431542
+n2 = 3.172542
+N2 = 363.389099
+k_1 = 0.009806
+k_max = 0.023234
+r21 = 1.699369
+r23 = 1.791898
+R21 = 0.858388
+R23 = 3.405036
+burst_size = 17.726520
+n_inner = 40.390489
 
 Derived Wildtype Parameters:
-n1 = 5.015471
-n3 = 10.727711
-N1 = 484.663233
-N3 = 941.598503
+n1 = 5.391319
+n3 = 5.684873
+N1 = 311.928853
+N3 = 1237.353052
 
 === MUTANT PARAMETERS ===
 
 Threshold Mutant:
 Converged: True
-Threshold NLL: 362.459296
+Threshold NLL: 371.503468
 Status: Converged successfully
-alpha = 0.226019
+alpha = 0.592984
 
 Degrate Mutant:
 Converged: True
-Degrate NLL: 1301.833490
+Degrate NLL: 1291.300894
 Status: Converged successfully
-beta_k = 0.474042
+beta_k = 0.490067
 
 Degrateapc Mutant:
 Converged: False
-Degrateapc NLL: 1251.198540
+Degrateapc NLL: 1195.214338
 Status: Maximum number of iterations has been exceeded.
-beta2_k = 0.351980
+beta2_k = 0.440373
 
 === SUMMARY ===
-Wildtype NLL: 1132.304988
-Threshold NLL: 362.459296
-Degrate NLL: 1301.833490
-Degrateapc NLL: 1251.198540
-Total NLL: 4047.796315
+Wildtype NLL: 1133.869457
+Threshold NLL: 371.503468
+Degrate NLL: 1291.300894
+Degrateapc NLL: 1195.214338
+Total NLL: 3991.888157
