@@ -143,8 +143,8 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
 
     # Degradation Rate Mutant
     k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.001)
-    if param_dict['beta_k'] * param_dict['k'] < 0.001:
-        print("Warning: beta_k * k is less than 0.001, setting k_deg to 0.001")
+    if param_dict['beta_k'] * param_dict['k'] < 0.0001:
+        print("Warning: beta_k * k is less than 0.0001, setting k_deg to 0.0001")
 
     pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
                                           param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
@@ -164,13 +164,13 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         print("Warning: beta2_k * k is less than 0.001, setting k_degAPC to 0.001")
 
     pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
     if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_degAPC12)) / len(data_degrateAPC12)
 
     pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
     if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
         return np.inf
     total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
@@ -181,15 +181,15 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
     return total_nll
 
 
-def joint_objective_with_bootstrapping(params, mechanism, mechanism_info, 
-                                     data_wt12, data_wt32, data_threshold12, data_threshold32,
-                                     data_degrate12, data_degrate32, data_initial12, data_initial32, 
-                                     data_degrateAPC12, data_degrateAPC32,
-                                     bootstrap_method='bootstrap', target_sample_size=50, 
-                                     num_bootstrap_samples=100, random_seed=None):
+def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
+                                       data_wt12, data_wt32, data_threshold12, data_threshold32,
+                                       data_degrate12, data_degrate32, data_initial12, data_initial32,
+                                       data_degrateAPC12, data_degrateAPC32,
+                                       bootstrap_method='bootstrap', target_sample_size=50,
+                                       num_bootstrap_samples=100, random_seed=None):
     """
     Joint objective function with bootstrapping to handle unequal data points.
-    
+
     Args:
         params: Parameters to optimize
         mechanism: Mechanism type
@@ -274,7 +274,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     # Wild-Type (Chrom1–Chrom2 and Chrom3–Chrom2)
     pdf_wt12 = compute_pdf_for_mechanism(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
                                          param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
-    
+
     if bootstrap_method == 'standard':
         if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
             return np.inf
@@ -285,7 +285,8 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
         try:
             # Create a discrete distribution from the PDF
             pdf_normalized = pdf_wt12 / np.sum(pdf_wt12)
-            simulated_wt12 = np.random.choice(data_wt12, size=len(data_wt12)*3, p=pdf_normalized, replace=True)
+            simulated_wt12 = np.random.choice(data_wt12, size=len(
+                data_wt12)*3, p=pdf_normalized, replace=True)
             nll_wt12 = calculate_dataset_likelihood(data_wt12, simulated_wt12)
             if nll_wt12 >= 1e6:
                 return np.inf
@@ -295,7 +296,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
 
     pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
                                          param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
-    
+
     if bootstrap_method == 'standard':
         if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
             return np.inf
@@ -303,7 +304,8 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_wt32 / np.sum(pdf_wt32)
-            simulated_wt32 = np.random.choice(data_wt32, size=len(data_wt32)*3, p=pdf_normalized, replace=True)
+            simulated_wt32 = np.random.choice(data_wt32, size=len(
+                data_wt32)*3, p=pdf_normalized, replace=True)
             nll_wt32 = calculate_dataset_likelihood(data_wt32, simulated_wt32)
             if nll_wt32 >= 1e6:
                 return np.inf
@@ -314,7 +316,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     # Threshold Mutant
     pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
                                          n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
-    
+
     if bootstrap_method == 'standard':
         if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
             return np.inf
@@ -322,8 +324,10 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_th12 / np.sum(pdf_th12)
-            simulated_th12 = np.random.choice(data_threshold12, size=len(data_threshold12)*3, p=pdf_normalized, replace=True)
-            nll_th12 = calculate_dataset_likelihood(data_threshold12, simulated_th12)
+            simulated_th12 = np.random.choice(data_threshold12, size=len(
+                data_threshold12)*3, p=pdf_normalized, replace=True)
+            nll_th12 = calculate_dataset_likelihood(
+                data_threshold12, simulated_th12)
             if nll_th12 >= 1e6:
                 return np.inf
             total_nll += nll_th12
@@ -332,7 +336,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
 
     pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
                                          n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
-    
+
     if bootstrap_method == 'standard':
         if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
             return np.inf
@@ -340,8 +344,10 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_th32 / np.sum(pdf_th32)
-            simulated_th32 = np.random.choice(data_threshold32, size=len(data_threshold32)*3, p=pdf_normalized, replace=True)
-            nll_th32 = calculate_dataset_likelihood(data_threshold32, simulated_th32)
+            simulated_th32 = np.random.choice(data_threshold32, size=len(
+                data_threshold32)*3, p=pdf_normalized, replace=True)
+            nll_th32 = calculate_dataset_likelihood(
+                data_threshold32, simulated_th32)
             if nll_th32 >= 1e6:
                 return np.inf
             total_nll += nll_th32
@@ -355,7 +361,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
 
     pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
                                           param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
-    
+
     if bootstrap_method == 'standard':
         if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
             return np.inf
@@ -363,8 +369,10 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_deg12 / np.sum(pdf_deg12)
-            simulated_deg12 = np.random.choice(data_degrate12, size=len(data_degrate12)*3, p=pdf_normalized, replace=True)
-            nll_deg12 = calculate_dataset_likelihood(data_degrate12, simulated_deg12)
+            simulated_deg12 = np.random.choice(data_degrate12, size=len(
+                data_degrate12)*3, p=pdf_normalized, replace=True)
+            nll_deg12 = calculate_dataset_likelihood(
+                data_degrate12, simulated_deg12)
             if nll_deg12 >= 1e6:
                 return np.inf
             total_nll += nll_deg12
@@ -373,7 +381,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
 
     pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
                                           param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
-    
+
     if bootstrap_method == 'standard':
         if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
             return np.inf
@@ -381,8 +389,10 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_deg32 / np.sum(pdf_deg32)
-            simulated_deg32 = np.random.choice(data_degrate32, size=len(data_degrate32)*3, p=pdf_normalized, replace=True)
-            nll_deg32 = calculate_dataset_likelihood(data_degrate32, simulated_deg32)
+            simulated_deg32 = np.random.choice(data_degrate32, size=len(
+                data_degrate32)*3, p=pdf_normalized, replace=True)
+            nll_deg32 = calculate_dataset_likelihood(
+                data_degrate32, simulated_deg32)
             if nll_deg32 >= 1e6:
                 return np.inf
             total_nll += nll_deg32
@@ -395,8 +405,8 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
         print("Warning: beta2_k * k is less than 0.001, setting k_degAPC to 0.001")
 
     pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
-    
+                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+
     if bootstrap_method == 'standard':
         if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
             return np.inf
@@ -404,8 +414,10 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_degAPC12 / np.sum(pdf_degAPC12)
-            simulated_degAPC12 = np.random.choice(data_degrateAPC12, size=len(data_degrateAPC12)*3, p=pdf_normalized, replace=True)
-            nll_degAPC12 = calculate_dataset_likelihood(data_degrateAPC12, simulated_degAPC12)
+            simulated_degAPC12 = np.random.choice(data_degrateAPC12, size=len(
+                data_degrateAPC12)*3, p=pdf_normalized, replace=True)
+            nll_degAPC12 = calculate_dataset_likelihood(
+                data_degrateAPC12, simulated_degAPC12)
             if nll_degAPC12 >= 1e6:
                 return np.inf
             total_nll += nll_degAPC12
@@ -413,8 +425,8 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
             return np.inf
 
     pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
-    
+                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+
     if bootstrap_method == 'standard':
         if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
             return np.inf
@@ -422,8 +434,10 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     else:
         try:
             pdf_normalized = pdf_degAPC32 / np.sum(pdf_degAPC32)
-            simulated_degAPC32 = np.random.choice(data_degrateAPC32, size=len(data_degrateAPC32)*3, p=pdf_normalized, replace=True)
-            nll_degAPC32 = calculate_dataset_likelihood(data_degrateAPC32, simulated_degAPC32)
+            simulated_degAPC32 = np.random.choice(data_degrateAPC32, size=len(
+                data_degrateAPC32)*3, p=pdf_normalized, replace=True)
+            nll_degAPC32 = calculate_dataset_likelihood(
+                data_degrateAPC32, simulated_degAPC32)
             if nll_degAPC32 >= 1e6:
                 return np.inf
             total_nll += nll_degAPC32
@@ -554,7 +568,7 @@ def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
     mechanism = 'fixed_burst_feedback_onion'  # Auto-set by RunAllMechanisms.py
-    
+
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
     gamma_mode = 'separate'  # Change this to 'separate' for individual gamma per chromosome
@@ -759,11 +773,11 @@ def main():
     degrateAPC_nll = 0
     k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
     pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
     if not (np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12))):
         degrateAPC_nll -= np.sum(np.log(pdf_degAPC12))
     pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
     if not (np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32))):
         degrateAPC_nll -= np.sum(np.log(pdf_degAPC32))
 
@@ -814,7 +828,8 @@ def main():
 
     print(f"Threshold Mutant: alpha = {param_dict['alpha']:.2f}")
     print(f"Degradation Rate Mutant: beta_k = {param_dict['beta_k']:.2f}")
-    print(f"Degradation Rate APC Mutant: beta2_k = {param_dict['beta2_k']:.2f}")
+    print(
+        f"Degradation Rate APC Mutant: beta2_k = {param_dict['beta2_k']:.2f}")
     print("Initial Proteins Mutant: EXCLUDED FROM FITTING (temporarily)")
 
     # g) Save optimized parameters to a text file
@@ -917,7 +932,7 @@ def main_with_bootstrapping():
         'degrate': {'delta_t12': data_degrate12, 'delta_t32': data_degrate32},
         'degrateAPC': {'delta_t12': data_degrateAPC12, 'delta_t32': data_degrateAPC32}
     }
-    
+
     print("\n" + "="*60)
     print("DATASET ANALYSIS")
     print("="*60)
@@ -935,25 +950,25 @@ def main_with_bootstrapping():
     ]
 
     results = {}
-    
+
     for method, method_name in methods:
         print(f"\n{'-'*40}")
         print(f"{method_name.upper()}")
         print(f"{'-'*40}")
-        
+
         try:
             # Choose objective function
             if method == 'standard':
                 objective_func = joint_objective
                 args = (mechanism, mechanism_info, data_wt12, data_wt32,
-                       data_threshold12, data_threshold32, data_degrate12, data_degrate32,
-                       data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32)
+                        data_threshold12, data_threshold32, data_degrate12, data_degrate32,
+                        data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32)
             else:
                 objective_func = joint_objective_with_bootstrapping
                 args = (mechanism, mechanism_info, data_wt12, data_wt32,
-                       data_threshold12, data_threshold32, data_degrate12, data_degrate32,
-                       data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32,
-                       method, target_sample_size, 50, 42)  # Reduced bootstrap samples for testing
+                        data_threshold12, data_threshold32, data_degrate12, data_degrate32,
+                        data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32,
+                        method, target_sample_size, 50, 42)  # Reduced bootstrap samples for testing
 
             # Run optimization
             result = differential_evolution(
@@ -977,42 +992,45 @@ def main_with_bootstrapping():
                     'params': param_dict,
                     'success': True
                 }
-                
+
                 print(f"✓ {method_name} completed successfully")
                 print(f"  Negative Log-Likelihood: {result.fun:.4f}")
-                print(f"  Parameters: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}, k={param_dict['k']:.4f}")
-                
+                print(
+                    f"  Parameters: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}, k={param_dict['k']:.4f}")
+
                 # Save results
                 suffix = f"_{method}" if method != 'standard' else "_standard"
                 filename = f"optimized_parameters_{mechanism}_join{suffix}.txt"
-                
+
                 with open(filename, "w") as f:
                     f.write(f"# Mechanism: {mechanism}\n")
                     f.write(f"# Method: {method_name}\n")
                     if method != 'standard':
-                        f.write(f"# Target Sample Size: {target_sample_size}\n")
+                        f.write(
+                            f"# Target Sample Size: {target_sample_size}\n")
                     f.write(f"# Negative Log-Likelihood: {result.fun:.6f}\n\n")
-                    
+
                     f.write("# Wild-Type Parameters\n")
                     for key in ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k']:
                         f.write(f"{key}: {param_dict[key]:.6f}\n")
-                    
+
                     # Mechanism-specific parameters
                     if mechanism == 'fixed_burst_feedback_onion':
-                        f.write(f"burst_size: {param_dict['burst_size']:.6f}\n")
+                        f.write(
+                            f"burst_size: {param_dict['burst_size']:.6f}\n")
                         f.write(f"n_inner: {param_dict['n_inner']:.6f}\n")
-                    
+
                     # Mutant parameters
                     f.write("\n# Mutant Parameters\n")
                     for key in ['alpha', 'beta_k', 'beta2_k']:
                         f.write(f"{key}: {param_dict[key]:.6f}\n")
-                
+
                 print(f"  Results saved to: {filename}")
-                
+
             else:
                 results[method] = {'success': False, 'nll': np.inf}
                 print(f"✗ {method_name} failed: {result.message}")
-                
+
         except Exception as e:
             results[method] = {'success': False, 'nll': np.inf}
             print(f"✗ Error in {method_name}: {e}")
@@ -1021,29 +1039,33 @@ def main_with_bootstrapping():
     print(f"\n{'='*60}")
     print("RESULTS COMPARISON")
     print(f"{'='*60}")
-    
+
     successful_results = {k: v for k, v in results.items() if v['success']}
-    
+
     if successful_results:
         for method, method_name in methods:
             if method in successful_results:
                 nll = successful_results[method]['nll']
                 print(f"{method_name:30}: {nll:.4f}")
-        
+
         # Calculate improvements
         if 'standard' in successful_results:
             standard_nll = successful_results['standard']['nll']
             print(f"\nImprovement over standard:")
-            
+
             for method in ['weighted', 'bootstrap']:
                 if method in successful_results:
                     method_nll = successful_results[method]['nll']
                     if method_nll < standard_nll:
-                        improvement = ((standard_nll - method_nll) / standard_nll) * 100
-                        print(f"  {method.capitalize():10}: {improvement:.1f}% better")
+                        improvement = (
+                            (standard_nll - method_nll) / standard_nll) * 100
+                        print(
+                            f"  {method.capitalize():10}: {improvement:.1f}% better")
                     else:
-                        change = ((method_nll - standard_nll) / standard_nll) * 100
-                        print(f"  {method.capitalize():10}: {change:.1f}% worse")
+                        change = ((method_nll - standard_nll) /
+                                  standard_nll) * 100
+                        print(
+                            f"  {method.capitalize():10}: {change:.1f}% worse")
     else:
         print("No successful optimizations completed.")
 
@@ -1054,6 +1076,6 @@ def main_with_bootstrapping():
 if __name__ == "__main__":
     # Uncomment the line below to run bootstrapping comparison
     # main_with_bootstrapping()
-    
+
     # Standard optimization
     main()
