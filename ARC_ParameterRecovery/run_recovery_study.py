@@ -151,7 +151,7 @@ def generate_synthetic_data(mechanism, ground_truth_params, num_simulations=1000
     return synthetic_datasets
 
 def run_single_recovery(run_id, mechanism, synthetic_datasets, ground_truth_params, 
-                       max_iterations=100, num_simulations=200):
+                       max_iterations=100, num_simulations=200, output_file=None):
     """
     Function to be run in parallel. Executes one full optimization run
     against the synthetic data from a random starting point.
@@ -163,6 +163,7 @@ def run_single_recovery(run_id, mechanism, synthetic_datasets, ground_truth_para
         ground_truth_params (dict): Ground truth parameters for reference
         max_iterations (int): Max iterations for recovery optimization
         num_simulations (int): Simulations per recovery evaluation
+        output_file (str): Path to save individual results incrementally
         
     Returns:
         dict: Recovery results or None if failed
@@ -203,10 +204,9 @@ def run_single_recovery(run_id, mechanism, synthetic_datasets, ground_truth_para
             for param, value in ground_truth_params.items():
                 result_data[f'{param}_truth'] = value
             
-            return result_data
         else:
             print(f"Recovery run #{run_id+1} failed after {elapsed_time:.1f}s")
-            return {
+            result_data = {
                 'run_id': run_id,
                 'converged': False,
                 'final_nll': 1e6,
@@ -218,7 +218,7 @@ def run_single_recovery(run_id, mechanism, synthetic_datasets, ground_truth_para
     except Exception as e:
         elapsed_time = time.time() - start_time
         print(f"Recovery run #{run_id+1} failed with error: {e}")
-        return {
+        result_data = {
             'run_id': run_id,
             'converged': False,
             'final_nll': 1e6,
@@ -226,6 +226,67 @@ def run_single_recovery(run_id, mechanism, synthetic_datasets, ground_truth_para
             **{param: np.nan for param in ground_truth_params.keys()},
             **{f'{param}_truth': value for param, value in ground_truth_params.items()}
         }
+    
+    # Save individual result immediately
+    if output_file:
+        save_individual_result(result_data, output_file)
+    
+    return result_data
+
+def save_individual_result(result_data, output_file):
+    """
+    Save individual recovery result to CSV file incrementally.
+    Creates file with header if it doesn't exist, otherwise appends.
+    
+    Args:
+        result_data (dict): Single recovery result
+        output_file (str): Path to CSV file
+    """
+    import fcntl  # For file locking on Unix systems
+    
+    try:
+        # Convert to DataFrame
+        result_df = pd.DataFrame([result_data])
+        
+        # Check if file exists
+        file_exists = os.path.exists(output_file)
+        
+        # Use file locking to prevent race conditions in parallel writing
+        with open(output_file, 'a' if file_exists else 'w') as f:
+            # Lock the file
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            
+            # Write header if new file
+            if not file_exists:
+                result_df.to_csv(f, index=False, header=True)
+            else:
+                result_df.to_csv(f, index=False, header=False)
+            
+            # Flush to ensure data is written
+            f.flush()
+            os.fsync(f.fileno())
+            
+        # Count how many results we have so far
+        if file_exists:
+            try:
+                existing_df = pd.read_csv(output_file)
+                total_completed = len(existing_df)
+                print(f"✓ Saved result for run #{result_data['run_id']+1} to {output_file} (Progress: {total_completed} runs completed)")
+                
+                # Create checkpoint backup every 10 runs
+                if total_completed % 10 == 0:
+                    checkpoint_file = output_file.replace('.csv', f'_checkpoint_{total_completed}.csv')
+                    existing_df.to_csv(checkpoint_file, index=False)
+                    print(f"✓ Created checkpoint backup: {checkpoint_file}")
+                    
+            except:
+                print(f"✓ Saved result for run #{result_data['run_id']+1} to {output_file}")
+        else:
+            print(f"✓ Saved result for run #{result_data['run_id']+1} to {output_file} (Progress: 1 runs completed)")
+        
+    except Exception as e:
+        print(f"Warning: Failed to save individual result for run #{result_data['run_id']+1}: {e}")
+        # Don't fail the entire run if saving fails
 
 def main(args):
     """
@@ -303,8 +364,14 @@ def main(args):
             synthetic_datasets=synthetic_datasets,
             ground_truth_params=ground_truth_params,
             max_iterations=args.max_iterations,
-            num_simulations=args.num_simulations
+            num_simulations=args.num_simulations,
+            output_file=args.output_file
         )
+        
+        # Initialize the output file with proper header
+        print(f"Initializing output file: {args.output_file}")
+        if os.path.exists(args.output_file):
+            print(f"Warning: Output file {args.output_file} already exists. Results will be appended.")
         
         # Run recovery optimizations in parallel
         recovery_start_time = time.time()
@@ -314,16 +381,30 @@ def main(args):
         
         recovery_time = time.time() - recovery_start_time
         
-        # Step 4: Collect results and save to CSV
+        # Step 4: Verify and finalize results
         print("=" * 60)
-        print("STEP 4: Processing and Saving Results")
+        print("STEP 4: Finalizing Results")
         print("=" * 60)
         
-        # Convert results to DataFrame
-        results_df = pd.DataFrame(results)
+        # Read the incrementally saved results
+        if os.path.exists(args.output_file):
+            results_df = pd.read_csv(args.output_file)
+            print(f"✓ Read {len(results_df)} results from incremental saves")
+        else:
+            # Fallback: create DataFrame from returned results
+            results_df = pd.DataFrame(results)
+            results_df.to_csv(args.output_file, index=False)
+            print(f"✓ Saved {len(results_df)} results to {args.output_file}")
         
-        # Save results
-        results_df.to_csv(args.output_file, index=False)
+        # Verify we have all expected results
+        expected_runs = set(range(args.num_runs))
+        actual_runs = set(results_df['run_id'].values) if 'run_id' in results_df.columns else set()
+        missing_runs = expected_runs - actual_runs
+        
+        if missing_runs:
+            print(f"Warning: Missing results for runs: {sorted(missing_runs)}")
+        else:
+            print(f"✓ All {args.num_runs} recovery runs completed and saved")
         
         # Generate summary
         total_time = time.time() - total_start_time

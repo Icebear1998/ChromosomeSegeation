@@ -19,6 +19,18 @@ ARC_ParameterRecovery/
 └── README.md                          # This file
 ```
 
+## ⭐ Key Features
+
+1. **Ground Truth Establishment**: Uses your best real-data fit as the "true" parameters
+2. **High-Quality Synthetic Data**: Generates noise-free target data for recovery
+3. **Parallel Processing**: Runs multiple recovery optimizations simultaneously
+4. **Incremental Saving**: ✨ **NEW!** Saves results immediately after each run completes
+5. **Checkpoint Backups**: ✨ **NEW!** Creates backup files every 10 completed runs
+6. **Progress Tracking**: ✨ **NEW!** Shows real-time progress as runs complete
+7. **Comprehensive Results**: Saves all parameter vectors and NLL scores for analysis
+8. **HPC Optimized**: Designed for long-running jobs on cluster systems
+9. **Fault Tolerant**: If the job gets interrupted, you won't lose completed results
+
 ## 🚀 Quick Start Guide
 
 ### Step 1: Transfer Files to ARC
@@ -204,6 +216,38 @@ The local analysis will generate:
 - **NLL and convergence analysis**: Assess optimization performance
 - **Recovery error summary**: Identify well-constrained vs. sloppy parameters
 - **Comprehensive text report**: Detailed analysis with recommendations
+
+## 💾 Incremental Saving & Progress Tracking
+
+**NEW FEATURE**: The recovery study now saves results incrementally as each run completes, making it much more robust for long-running jobs:
+
+### How It Works
+
+- **Real-time Saving**: Each recovery run saves its result immediately to the CSV file
+- **File Locking**: Uses proper file locking to prevent corruption during parallel writes
+- **Progress Updates**: Shows "Progress: X runs completed" after each save
+- **Checkpoint Backups**: Creates `recovery_results_checkpoint_10.csv`, `recovery_results_checkpoint_20.csv`, etc. every 10 runs
+- **Fault Tolerance**: If the job gets interrupted, you keep all completed results
+
+### Benefits
+
+- ✅ **No Lost Work**: If SLURM kills your job, you keep all completed runs
+- ✅ **Monitor Progress**: Check the CSV file anytime to see current progress
+- ✅ **Resume Capability**: Can restart from where you left off (manually)
+- ✅ **Early Analysis**: Start analyzing partial results while the job is still running
+
+### Monitoring Your Job
+
+```bash
+# Check how many results you have so far
+wc -l recovery_results.csv
+
+# View the latest results
+tail -5 recovery_results.csv
+
+# Check for checkpoint files
+ls -la *checkpoint*.csv
+```
 
 ## 🛠️ Troubleshooting
 
