@@ -1,13 +1,30 @@
 #!/bin/bash
 #
-# Deployment helper script for ARC Parameter Recovery Study
-# This script helps you deploy the study to your ARC system
+# Deployment script for ARC Parameter Recovery Study
 #
 
 echo "=========================================="
 echo "ARC Parameter Recovery Study Deployment"
 echo "=========================================="
 echo ""
+
+# --- Define experiment parameters ---
+echo "Configuring experiment parameters..."
+
+# Main parameters
+export MECHANISM="time_varying_k_combined"     # Mechanism to study
+export NUM_RUNS=60                            # Number of recovery attempts (default in script)
+export OUTPUT_FILE="recovery_results_${MECHANISM}_$(date +%Y%m%d_%H%M%S).csv"
+
+# Note: Ground truth parameters are now hard-coded in the get_ground_truth_params function
+# No need for GT_ITERATIONS and GT_SIMULATIONS anymore
+
+# Synthetic data settings
+export SYNTHETIC_SIZE=1000                    # Synthetic data points per strain (default in script)
+
+# Recovery optimization settings
+export MAX_ITERATIONS=200                     # Iterations per recovery run (default in script)
+export NUM_SIMULATIONS=300                    # Simulations per recovery evaluation (default in script)
 
 # Check if we're in the right directory
 if [ ! -f "run_recovery_study.py" ]; then
@@ -18,43 +35,16 @@ fi
 
 echo "✓ Found ARC_ParameterRecovery directory"
 
-# Function to prompt for user input
-prompt_user() {
-    local prompt="$1"
-    local default="$2"
-    local var_name="$3"
-    
-    if [ -n "$default" ]; then
-        read -p "$prompt [$default]: " user_input
-        if [ -z "$user_input" ]; then
-            user_input="$default"
-        fi
-    else
-        read -p "$prompt: " user_input
-        while [ -z "$user_input" ]; do
-            echo "This field is required."
-            read -p "$prompt: " user_input
-        done
-    fi
-    
-    eval "$var_name='$user_input'"
-}
-
-echo ""
-echo "This script will help you configure the SLURM job script for your ARC system."
-echo "Please provide the following information about your ARC system:"
-echo ""
-
-# Get ARC system information
-prompt_user "ARC hostname (e.g., arc.university.edu)" "" "ARC_HOST"
-prompt_user "Your username on ARC" "$USER" "ARC_USER"
-prompt_user "SLURM partition name" "normal_q" "SLURM_PARTITION"
-prompt_user "SLURM account name" "" "SLURM_ACCOUNT"
-prompt_user "Python module name (e.g., anaconda/2022.10)" "anaconda/2022.10" "PYTHON_MODULE"
-prompt_user "Conda environment name" "param_recovery" "CONDA_ENV"
-prompt_user "Number of CPU cores" "32" "CPU_CORES"
-prompt_user "Memory (GB)" "64" "MEMORY"
-prompt_user "Time limit (hours)" "24" "TIME_HOURS"
+# Pre-configured ARC system information
+ARC_HOST="owl1.arc.vt.edu"
+ARC_USER="kientp"
+SLURM_PARTITION="normal_q"
+SLURM_ACCOUNT="polya"
+PYTHON_MODULE="Miniforge3"
+CONDA_ENV="simulationOptimizationEnv"
+CPU_CORES="48"
+MEMORY="64"
+TIME_HOURS="12"
 
 echo ""
 echo "Configuration Summary:"
@@ -68,12 +58,6 @@ echo "  CPU Cores: $CPU_CORES"
 echo "  Memory: ${MEMORY}G"
 echo "  Time Limit: ${TIME_HOURS}:00:00"
 echo ""
-
-read -p "Is this configuration correct? (y/n): " confirm
-if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-    echo "❌ Configuration cancelled. Please run this script again."
-    exit 1
-fi
 
 echo ""
 echo "Updating SLURM job script..."
@@ -148,26 +132,21 @@ echo "Configuring experiment parameters..."
 
 # Main parameters
 MECHANISM="time_varying_k_combined"     # Mechanism to study
-NUM_RUNS=100                            # Number of recovery attempts
+NUM_RUNS=60                            # Number of recovery attempts
 OUTPUT_FILE="recovery_results_\${MECHANISM}_\$(date +%Y%m%d_%H%M%S).csv"
 
-# Ground truth optimization settings
-GT_ITERATIONS=150                       # Iterations for finding ground truth
-GT_SIMULATIONS=400                      # Simulations for ground truth optimization
-
 # Synthetic data settings
-SYNTHETIC_SIZE=1000                     # Synthetic data points per strain
+SYNTHETIC_SIZE=1000                    # Synthetic data points per strain (default in script)
 
 # Recovery optimization settings
-MAX_ITERATIONS=120                      # Iterations per recovery run
-NUM_SIMULATIONS=250                     # Simulations per recovery evaluation
+MAX_ITERATIONS=100                     # Iterations per recovery run (default in script)
+NUM_SIMULATIONS=200                    # Simulations per recovery evaluation (default in script)
 
 echo "Experiment Configuration:"
 echo "  Mechanism: \$MECHANISM"
 echo "  Recovery runs: \$NUM_RUNS"
 echo "  Output file: \$OUTPUT_FILE"
-echo "  Ground truth iterations: \$GT_ITERATIONS"
-echo "  Ground truth simulations: \$GT_SIMULATIONS"
+# Ground truth parameters are hard-coded in get_ground_truth_params function
 echo "  Synthetic data size: \$SYNTHETIC_SIZE"
 echo "  Recovery iterations: \$MAX_ITERATIONS"
 echo "  Recovery simulations: \$NUM_SIMULATIONS"
@@ -182,15 +161,7 @@ echo "Progress will be logged to recovery_study_\${SLURM_JOB_ID}.out"
 echo ""
 
 # Run the main Python script with all parameters
-python run_recovery_study.py \\
-    --mechanism \$MECHANISM \\
-    --num_runs \$NUM_RUNS \\
-    --output_file \$OUTPUT_FILE \\
-    --gt_iterations \$GT_ITERATIONS \\
-    --gt_simulations \$GT_SIMULATIONS \\
-    --synthetic_size \$SYNTHETIC_SIZE \\
-    --max_iterations \$MAX_ITERATIONS \\
-    --num_simulations \$NUM_SIMULATIONS
+python run_recovery_study.py --mechanism "time_varying_k_combined" --num_runs 80 --output_file \$OUTPUT_FILE --synthetic_size 300 --max_iterations 200 --num_simulations 300
 
 # Capture the exit status
 EXIT_STATUS=\$?

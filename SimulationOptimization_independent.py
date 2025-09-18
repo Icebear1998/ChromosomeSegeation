@@ -509,7 +509,7 @@ def optimize_mutant(mechanism, mutant_data, wildtype_params, mutant_type, max_it
         popsize=10,
         seed=42,
         disp=True,
-        workers=1
+        workers=-1
     )
     
     convergence_status = "converged" if result.success else "did not converge"
@@ -761,9 +761,9 @@ def main():
     """
     Main independent optimization routine for all strains.
     """
-    max_iterations_wt = 50   # Wildtype iterations (reduced for testing)
-    max_iterations_mut = 50  # Mutant iterations (reduced for testing)
-    num_simulations = 100    # Simulations per evaluation (reduced for testing)
+    max_iterations_wt = 150   # Wildtype iterations (reduced for testing)
+    max_iterations_mut = 150  # Mutant iterations (reduced for testing)
+    num_simulations = 300    # Simulations per evaluation (reduced for testing)
     
     print("Simulation-based Independent Optimization for Time-Varying Mechanisms")
     print("=" * 70)

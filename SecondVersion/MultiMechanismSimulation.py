@@ -1,773 +1,316 @@
+#!/usr/bin/env python3
+"""
+Simplified refactored version of MultiMechanismSimulation.py
+
+Key improvements:
+1. Single simulation core for all mechanisms
+2. Simple mechanism selection via functions
+3. Easy to add new mechanisms
+4. Reduced code duplication
+5. Better readability
+
+The main insight: All mechanisms share the same simulation loop,
+they only differ in how they calculate burst sizes.
+"""
+
 import numpy as np
 import warnings
+from typing import Dict, List, Tuple, Callable
 
 
 class MultiMechanismSimulation:
     """
-    A simulation class for modeling cohesin degradation during chromosome segregation
-    with multiple mechanisms. Supports Simple (gradual degradation) and Fixed Burst Sizes
-    (bursty degradation with fixed burst size and Poisson timing) models.
-    Issues a warning if simulation time exceeds max_time instead of stopping early.
+    Simplified simulation class where all mechanisms share the same core simulation loop.
+    The only difference between mechanisms is how they calculate burst sizes.
     """
-
-    def __init__(self, mechanism, initial_state_list, rate_params, n0_list, max_time):
+    
+    def __init__(self, mechanism: str, initial_state_list: List[float], 
+                 rate_params: Dict[str, float], n0_list: List[float], max_time: float):
         """
         Initialize the simulation.
-
+        
         Args:
-            mechanism (str): 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'time_varying_k_saturation', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', or 'fixed_burst_feedback_linear'.
-            initial_state_list (list): Initial cohesin counts [N1, N2, N3].
-            rate_params (dict): For 'simple': {'k_list': [k1, k2, k3]}.
-                               For 'fixed_burst': {'lambda_list': [lambda1, lambda2, lambda3], 'burst_size': b}.
-                               For 'time_varying_k': {'k_1': k_1, 'k_max': k_max} (optional k_max for maximum rate).
-                               For 'time_varying_k_saturation': {'k_max': k_max, 'k_2': k_2} (saturation-type growth).
-                               For 'fixed_burst_feedback_linear': {'k': k, 'burst_size': b, 'w1': w1, 'w2': w2, 'w3': w3}.
-                               For 'feedback_onion': {'k': k, 'n_inner': n_inner}.
-                               For 'feedback_zipper': {'k': k, 'z1': z1, 'z2': z2, 'z3': z3}.
-                               For 'fixed_burst_feedback_onion': {'k': k, 'burst_size': b, 'n_inner': n_inner}.
-            n0_list (list): Threshold counts [n01, n02, n03].
-            max_time (float): Maximum expected simulation time.
+            mechanism: Name of the mechanism ('simple', 'fixed_burst', etc.)
+            initial_state_list: Initial cohesin counts [N1, N2, N3]
+            rate_params: Parameters like {'k': 0.1, 'burst_size': 5.0}
+            n0_list: Threshold counts [n01, n02, n03]
+            max_time: Maximum simulation time
         """
         self.mechanism = mechanism
-        self.initial_state_list = initial_state_list.copy()
+        self.initial_state_list = list(initial_state_list)
         self.rate_params = rate_params.copy()
-        self.n0_list = n0_list.copy()
+        self.n0_list = list(n0_list)
         self.max_time = max_time
-        self.time = 0
-        self.times = [0]
-        self.states = [initial_state_list.copy()]
-        self.separate_times = [None, None, None]
-
-        # Validate mechanism and parameters
-        if self.mechanism not in ['simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'time_varying_k_saturation', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion']:
-            raise ValueError(
-                "Mechanism must be 'simple', 'fixed_burst', 'random_normal_burst', 'time_varying_k', 'time_varying_k_saturation', 'feedback_linear', 'feedback_onion', 'feedback', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'fixed_burst_feedback_onion'.")
-        if self.mechanism == 'fixed_burst' and 'burst_size' not in rate_params:
-            raise ValueError(
-                "Fixed burst mechanism requires 'lambda_list' and 'burst_size' in rate_params.")
-        if self.mechanism == 'fixed_burst_feedback_linear':
-            required_params = ['k', 'burst_size', 'w1', 'w2', 'w3']
-            missing_params = [param for param in required_params if param not in rate_params]
-            if missing_params:
-                raise ValueError(
-                    f"Fixed burst feedback linear mechanism requires {required_params} in rate_params. Missing: {missing_params}")
-        if self.mechanism == 'feedback_onion':
-            required_params = ['k', 'n_inner']
-            missing_params = [param for param in required_params if param not in rate_params]
-            if missing_params:
-                raise ValueError(
-                    f"Feedback onion mechanism requires {required_params} in rate_params. Missing: {missing_params}")
-        if self.mechanism == 'feedback_zipper':
-            required_params = ['k', 'z1', 'z2', 'z3']
-            missing_params = [param for param in required_params if param not in rate_params]
-            if missing_params:
-                raise ValueError(
-                    f"Feedback zipper mechanism requires {required_params} in rate_params. Missing: {missing_params}")
-        if self.mechanism == 'fixed_burst_feedback_onion':
-            required_params = ['k', 'burst_size', 'n_inner']
-            missing_params = [param for param in required_params if param not in rate_params]
-            if missing_params:
-                raise ValueError(
-                    f"Fixed burst feedback onion mechanism requires {required_params} in rate_params. Missing: {missing_params}")
-        if self.mechanism == 'time_varying_k_saturation':
-            required_params = ['k_max', 'k_2']
-            missing_params = [param for param in required_params if param not in rate_params]
-            if missing_params:
-                raise ValueError(
-                    f"Time varying k saturation mechanism requires {required_params} in rate_params. Missing: {missing_params}")
-
-    def _simulate_simple(self):
-        """
-        Simulate the Simple Model: gradual, independent cohesin degradation.
-        Each cohesin degrades at rate k_i * state[i], reducing state[i] by 1.
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        while True:
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = [self.rate_params['k'] * self.state[i]
-                            for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next degradation event
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_k_change(self):
-        """
-        Simulate the time-varying degradation model with k(t) = min(k_1 * t, k_max).
-        Each cohesin degrades at rate k(t) * state[i], reducing state[i] by 1.
-        Uses inhomogeneous Poisson process with direct sampling method for linear phase,
-        and standard Gillespie for constant phase when k(t) = k_max.
-        Continues until all chromosomes reach their thresholds.
-        """
-        while True:
-            # Get parameters
-            k_1 = self.rate_params['k_1']
-            k_max = self.rate_params.get('k_max', float('inf'))  # Default: no maximum
-            
-            # Calculate current rate: k(t) = min(k_1 * t, k_max)
-            k_linear = k_1 * self.time
-            k_t = min(k_linear, k_max)
-            k_t = max(k_t, 1e-10)  # Prevent zero propensity at t=0
-
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = [k_t * self.state[i] for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Calculate total state (sum of cohesins across all chromosomes)
-            total_state = sum(self.state)
-            if total_state == 0:
-                break  # No molecules left to degrade
-
-            # Handle edge case at t=0 where rate is zero
-            if self.time == 0:
-                # At t=0, rate is 0, so advance time slightly to avoid infinite tau
-                self.time = 1e-10
-                continue
-
-            # Determine if we're in linear phase or constant phase
-            t_max = k_max / k_1 if k_max != float('inf') else float('inf')  # Time when k(t) reaches k_max
-            
-            if self.time >= t_max:
-                # Constant phase: k(t) = k_max, use standard Gillespie
-                tau = np.random.exponential(1 / total_propensity)
-                self.time += tau
-                
-            else:
-                # Linear phase: k(t) = k_1 * t, use inhomogeneous Poisson process
-                r_1 = np.random.uniform(0, 1)
-                
-                # Check if the next event would occur after t_max
-                # If so, we need to handle the transition to constant phase
-                if k_max != float('inf'):
-                    # Calculate tau assuming linear phase continues
-                    # Solve: integral_t^{t+tau} k_1 * s * total_state ds = -ln(r_1)
-                    a = 1
-                    b = 2 * self.time
-                    c = 2 * np.log(r_1) / (k_1 * total_state)
-                    
-                    discriminant = b**2 - 4 * a * c
-                    if discriminant < 0:
-                        self.time += 1e-10
-                        continue
-                        
-                    tau_linear = (-b + np.sqrt(discriminant)) / (2 * a)
-                    
-                    if tau_linear <= 0:
-                        self.time += 1e-10
-                        continue
-                    
-                    # Check if this tau would take us beyond t_max
-                    if self.time + tau_linear > t_max:
-                        # Jump to t_max and continue with constant rate
-                        self.time = t_max
-                        continue
-                    else:
-                        # Stay in linear phase
-                        tau = tau_linear
-                        self.time += tau
-                else:
-                    # No maximum rate, pure linear phase
-                    # Solve: integral_t^{t+tau} k_1 * s * total_state ds = -ln(r_1)
-                    a = 1
-                    b = 2 * self.time
-                    c = 2 * np.log(r_1) / (k_1 * total_state)
-                    
-                    discriminant = b**2 - 4 * a * c
-                    if discriminant < 0:
-                        self.time += 1e-10
-                        continue
-                        
-                    tau = (-b + np.sqrt(discriminant)) / (2 * a)
-                    
-                    if tau <= 0:
-                        self.time += 1e-10
-                        continue
-                    
-                    self.time += tau
-
-            # Recompute propensities at new time for reaction selection
-            k_linear = k_1 * self.time
-            k_t = min(k_linear, k_max)
-            propensities = [k_t * self.state[i] for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_k_saturation(self):
-        """
-        Simulate the time-varying degradation model with k(t) = k_max * t / (k_2 + t).
-        Each cohesin degrades at rate k(t) * state[i], reducing state[i] by 1.
-        Uses inhomogeneous Poisson process with numerical root finding for tau.
-        Continues until all chromosomes reach their thresholds.
-        """
-        # Import scipy for numerical root finding
-        try:
-            from scipy.optimize import root_scalar
-        except ImportError:
-            raise ImportError("scipy is required for time_varying_k_saturation mechanism. Please install scipy.")
         
-        while True:
-            # Get parameters
-            k_max = self.rate_params['k_max']
-            k_2 = self.rate_params['k_2']
-            
-            # Calculate current rate: k(t) = k_max * t / (k_2 + t)
-            if self.time == 0:
-                k_t = 0  # Rate is 0 at t=0
-            else:
-                k_t = k_max * self.time / (k_2 + self.time)
-            k_t = max(k_t, 1e-10)  # Prevent zero propensity
-
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = [k_t * self.state[i] for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Calculate total state (sum of cohesins across all chromosomes)
-            total_state = sum(self.state)
-            if total_state == 0:
-                break  # No molecules left to degrade
-
-            # Handle edge case at t=0 where rate is zero
-            if self.time == 0:
-                # At t=0, rate is 0, so advance time slightly to avoid infinite tau
-                self.time = 1e-10
-                continue
-
-            # Time to next degradation event using inhomogeneous Poisson process
-            # Solve: integral_t^{t+tau} (k_max * s * total_state / (k_2 + s)) ds = -ln(r_1)
-            r_1 = np.random.uniform(0, 1)
-            
-            # Right-hand side of the integral equation
-            rhs = np.log(1 / r_1) / (k_max * total_state)
-            
-            # Constant for the equation: b - k_2 * ln(b) = c
-            # where b = k_2 + t + tau
-            c = k_2 + self.time + k_2 * np.log(k_2 + self.time) + rhs
-
-            # Define the function to solve: f(b) = b - k_2 * ln(b) - c = 0
-            def f(b):
-                if b <= 0:
-                    return float('inf')  # Avoid log of non-positive numbers
-                return b - k_2 * np.log(b) - c
-
-            # Solve for b = k_2 + t + tau using numerical root finding
-            b_min = k_2 + self.time + 1e-10  # Ensure b > k_2 + t
-            b_max = k_2 + self.time + 1000   # Upper bound for search
-            
-            try:
-                # Use Brent's method for robust root finding
-                result = root_scalar(f, bracket=[b_min, b_max], method='brentq')
-                b = result.root
-                tau = b - (k_2 + self.time)
-                
-                if tau <= 0:
-                    # Numerical safeguard: skip if tau is negative or invalid
-                    self.time += 1e-10
-                    continue
+        # Get the burst size calculator for this mechanism
+        self.calculate_burst_size = self._get_burst_calculator()
+        self.calculate_propensities = self._get_propensity_calculator()
+        
+        # Validate parameters
+        self._validate_parameters()
+    
+    def _get_burst_calculator(self) -> Callable[[], float]:
+        """Return the burst size calculation function for the current mechanism."""
+        
+        if self.mechanism == 'simple':
+            def simple_burst():
+                return 1.0
+            return simple_burst
+        
+        elif self.mechanism == 'fixed_burst':
+            def fixed_burst():
+                return self.rate_params['burst_size']
+            return fixed_burst
+        
+        elif self.mechanism == 'random_normal_burst':
+            def normal_burst():
+                mean = self.rate_params['burst_size']
+                std = np.sqrt(self.rate_params['var_burst_size'])
+                return max(0, np.random.normal(mean, std))
+            return normal_burst
+        
+        elif self.mechanism == 'geometric_burst':
+            def geometric_burst():
+                mean_burst = self.rate_params['burst_size']
+                p = min(max(1.0 / mean_burst, 1e-10), 1.0 - 1e-10)
+                return float(np.random.geometric(p))
+            return geometric_burst
+        
+        else:
+            raise ValueError(f"Unknown mechanism: {self.mechanism}")
+    
+    def _get_propensity_calculator(self) -> Callable[[List[int]], List[float]]:
+        """Return the propensity calculation function for the current mechanism."""
+        
+        if self.mechanism == 'feedback_onion':
+            def feedback_onion_propensities(states):
+                propensities = []
+                for i, state in enumerate(states):
+                    N_i = self.initial_state_list[i]
+                    n_inner = self.rate_params['n_inner']
                     
-            except (ValueError, RuntimeError):
-                # If solver fails, advance time slightly and retry
-                self.time += 1e-10
-                continue
-
-            # Advance time
-            self.time += tau
-
-            # Recompute propensities at new time t + tau for reaction selection
-            k_t = k_max * self.time / (k_2 + self.time)
-            propensities = [k_t * self.state[i] for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_fixed_burst(self):
+                    # Calculate feedback weight
+                    if N_i > n_inner:
+                        W_m = (N_i / n_inner) ** (-1/3)
+                    else:
+                        W_m = 1.0
+                    
+                    propensity = self.rate_params['k'] * W_m * max(state, 0)
+                    propensities.append(propensity)
+                return propensities
+            return feedback_onion_propensities
+        
+        elif self.mechanism == 'fixed_burst_feedback_onion':
+            def fixed_burst_feedback_onion_propensities(states):
+                propensities = []
+                for i, state in enumerate(states):
+                    N_i = self.initial_state_list[i]
+                    n_inner = self.rate_params['n_inner']
+                    
+                    # Calculate feedback weight
+                    if N_i > n_inner:
+                        W_m = (N_i / n_inner) ** (-1/3)
+                    else:
+                        W_m = 1.0
+                    
+                    propensity = self.rate_params['k'] * W_m * max(state, 0)
+                    propensities.append(propensity)
+                return propensities
+            return fixed_burst_feedback_onion_propensities
+        
+        else:
+            # Default propensity calculation for most mechanisms
+            def standard_propensities(states):
+                return [self.rate_params['k'] * max(state, 0) for state in states]
+            return standard_propensities
+    
+    def _validate_parameters(self):
+        """Check that all required parameters are present."""
+        required_params = {
+            'simple': ['k'],
+            'fixed_burst': ['k', 'burst_size'],
+            'random_normal_burst': ['k', 'burst_size', 'var_burst_size'],
+            'geometric_burst': ['k', 'burst_size'],
+            'feedback_onion': ['k', 'n_inner'],
+            'fixed_burst_feedback_onion': ['k', 'burst_size', 'n_inner']
+        }
+        
+        if self.mechanism not in required_params:
+            available = list(required_params.keys())
+            raise ValueError(f"Unknown mechanism '{self.mechanism}'. Available: {available}")
+        
+        required = required_params[self.mechanism]
+        missing = [param for param in required if param not in self.rate_params]
+        if missing:
+            raise ValueError(f"Mechanism '{self.mechanism}' requires {required}. Missing: {missing}")
+    
+    def simulate(self) -> Tuple[List[float], List[List[int]], List[float]]:
         """
-        Simulate the Fixed Burst Sizes Model: cohesins degrade in bursts of size b
-        at Poisson-distributed times with rate lambda_i * state[i].
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        burst_size = self.rate_params['burst_size']
-        while True:
-            # Calculate propensities: rate of bursts, proportional to remaining cohesins
-            propensities = [self.rate_params['k'] * self.state[i]
-                            for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Stop if no further bursts possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next burst
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome experiences a burst
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    # Remove burst_size cohesins, but not below 0
-                    self.state[i] = max(0, self.state[i] - burst_size)
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_random_normal_burst(self):
-        """
-        Simulate the Random Normal Burst Model: cohesins degrade in bursts with size
-        drawn from a normal distribution with mean mean_burst_size and variance var_burst_size,
-        at Poisson-distributed times with rate lambda_i * state[i].
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        while True:
-            # Calculate propensities: rate of bursts, proportional to remaining cohesins
-            propensities = [self.rate_params['k'] *
-                            max(self.state[i], 0) for i in range(3)]
-            total_propensity = sum(propensities)
-
-            # Stop if no further bursts possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next burst
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome experiences a burst
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    # Remove burst_size cohesins, but not below 0, drawn from normal distribution
-                    burst_size = max(np.random.normal(self.rate_params['burst_size'], np.sqrt(
-                        self.rate_params['var_burst_size'])), 0)
-                    self.state[i] = max(0, self.state[i] - burst_size)
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_feedbackLinear(self):
-        """
-        Simulate the Feedback Model: cohesin degradation with feedback mechanism.
-        Each cohesin degrades at a rate k_i * W(state[i]) * state[i], reducing state[i] by 1.
-        W(m) is a sigmoidal function increasing as m decreases, reflecting reduced blocking.
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        while True:
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = []
-            for i in range(3):
-                m = self.state[i]
-                W_m = 1 - self.rate_params['w' + str(i+1)]*m
-                propensity = self.rate_params['k'] * W_m * m
-                propensities.append(propensity)
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next degradation event
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_feedback(self):
-        """
-        Simulate the Feedback Model: cohesin degradation with feedback mechanism.
-        Each cohesin degrades at a rate k_i * W(state[i]) * state[i], reducing state[i] by 1.
-        W(m) is a sigmoidal function increasing as m decreases, reflecting reduced blocking.
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        while True:
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = []
-            for i in range(3):
-                m = self.state[i]
-                # Compute W(m) = 1 / (1 + e^(a * (m - m_threshold)))
-                W_m = 1 / (1 + np.exp(self.rate_params['feedbackSteepness'] * (
-                    m - self.rate_params['feedbackThreshold'])))
-                propensity = self.rate_params['k'] * W_m * m
-                propensities.append(propensity)
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next degradation event
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_fixed_burst_feedback_linear(self):
-        """
-        Simulate the Fixed Burst with Feedback Linear Model: cohesins degrade in bursts of size b
-        at rates modified by linear feedback effects.
-        The rate for each chromosome i is k * (1 - w_i * state[i]) * state[i].
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        burst_size = self.rate_params['burst_size']
-        while True:
-            # Calculate propensities: rate of bursts with feedback effect
-            propensities = []
-            for i in range(3):
-                m = self.state[i]
-                W_m = 1 - self.rate_params['w' + str(i+1)] * m
-                if W_m <= 0:  # Ensure positive rate
-                    W_m = 1e-10
-                propensity = self.rate_params['k'] * W_m * m
-                propensities.append(propensity)
-            total_propensity = sum(propensities)
-
-            # Stop if no further bursts possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next burst
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome experiences a burst
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    # Remove burst_size cohesins, but not below 0
-                    self.state[i] = max(0, self.state[i] - burst_size)
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_feedback_onion(self):
-        """
-        Simulate the Feedback Onion Model: cohesin degradation with onion feedback mechanism.
-        Each cohesin degrades at a rate k * W(N_i) * state[i], reducing state[i] by 1.
-        W(N_i) = (N_i/n_inner)^(-1/3) for N_i > n_inner, W(N_i) = 1 for N_i <= n_inner.
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        while True:
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = []
-            for i in range(3):
-                m = self.state[i]
-                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
-                n_inner = self.rate_params['n_inner']
-                
-                # Calculate W_m based on onion feedback mechanism
-                if N_i > n_inner:
-                    W_m = (N_i / n_inner) ** (-1/3)
-                else:
-                    W_m = 1.0
-                
-                propensity = self.rate_params['k'] * W_m * m
-                propensities.append(propensity)
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next degradation event
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_feedback_zipper(self):
-        """
-        Simulate the Feedback Zipper Model: cohesin degradation with zipper feedback mechanism.
-        Each cohesin degrades at a rate k * W(N_i) * state[i], reducing state[i] by 1.
-        W(N_i) = z_i / N_i where z_i is the feedback parameter for chromosome i.
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        while True:
-            # Calculate propensities: rate of degradation for each chromosome
-            propensities = []
-            for i in range(3):
-                m = self.state[i]
-                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
-                z = self.rate_params['z' + str(i+1)]
-                
-                # Calculate W_m based on zipper feedback mechanism: W_m = z / N_i
-                W_m = z / N_i
-                
-                propensity = self.rate_params['k'] * W_m * m
-                propensities.append(propensity)
-            total_propensity = sum(propensities)
-
-            # Stop if no further degradation possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next degradation event
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome's cohesin degrades
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    self.state[i] -= 1
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def _simulate_fixed_burst_feedback_onion(self):
-        """
-        Simulate the Fixed Burst with Feedback Onion Model: cohesins degrade in bursts of size b
-        at rates modified by onion feedback effects.
-        The rate for each chromosome i is k * W(N_i) * state[i], where
-        W(N_i) = (N_i/n_inner_i)^(-1/3) for N_i > n_inner_i, else W(N_i) = 1.
-        Continues until all chromosomes reach threshold or propensities are zero.
-        """
-        burst_size = self.rate_params['burst_size']
-        while True:
-            # Calculate propensities: rate of bursts with onion feedback effect
-            propensities = []
-            for i in range(3):
-                m = self.state[i]
-                N_i = self.initial_state_list[i]  # Initial cohesin count for chromosome i
-                n_inner = self.rate_params['n_inner']
-                
-                # Calculate W_m based on onion feedback mechanism
-                if N_i > n_inner:
-                    W_m = (N_i / n_inner) ** (-1/3)
-                else:
-                    W_m = 1.0
-                
-                propensity = self.rate_params['k'] * W_m * m
-                propensities.append(propensity)
-            total_propensity = sum(propensities)
-
-            # Stop if no further bursts possible or all thresholds reached
-            if total_propensity <= 0 or all(t is not None for t in self.separate_times):
-                break
-
-            # Time to next burst
-            tau = np.random.exponential(1 / total_propensity)
-            self.time += tau
-
-            # Choose which chromosome experiences a burst
-            r = np.random.uniform(0, total_propensity)
-            cumulative_propensity = 0
-            for i in range(3):
-                cumulative_propensity += propensities[i]
-                if r < cumulative_propensity:
-                    # Remove burst_size cohesins, but not below 0
-                    self.state[i] = max(0, self.state[i] - burst_size)
-                    break
-
-            # Record time and state
-            self.times.append(self.time)
-            self.states.append(self.state.copy())
-
-            # Check for separation times
-            for i in range(3):
-                if self.separate_times[i] is None and self.state[i] <= round(self.n0_list[i]):
-                    self.separate_times[i] = self.time
-
-    def simulate(self):
-        """
-        Run the simulation based on the specified mechanism.
-        Issues a warning if final simulation time exceeds max_time.
-
+        Run the simulation using the shared core algorithm.
+        
         Returns:
             tuple: (times, states, separate_times)
-                - times: List of event times.
-                - states: List of cohesin states at each event.
-                - separate_times: List of separation times [T1, T2, T3].
         """
-        # Reset state (ensure integer states)
-        self.state = [int(state) for state in self.initial_state_list]
-        self.time = 0
-        self.times = [0]
-        self.states = [self.state.copy()]
-        self.separate_times = [None, None, None]
-
-        # Run appropriate simulation
-        if self.mechanism == 'simple':
-            self._simulate_simple()
-        elif self.mechanism == 'fixed_burst':
-            self._simulate_fixed_burst()
-        elif self.mechanism == 'random_normal_burst':
-            self._simulate_random_normal_burst()
-        elif self.mechanism == 'time_varying_k':
-            self._simulate_k_change()
-        elif self.mechanism == 'time_varying_k_saturation':
-            self._simulate_k_saturation()
-        elif self.mechanism == 'feedback':
-            self._simulate_feedback()
-        elif self.mechanism == 'feedback_linear':
-            self._simulate_feedbackLinear()
-        elif self.mechanism == 'feedback_onion':
-            self._simulate_feedback_onion()
-        elif self.mechanism == 'feedback_zipper':
-            self._simulate_feedback_zipper()
-        elif self.mechanism == 'fixed_burst_feedback_linear':
-            self._simulate_fixed_burst_feedback_linear()
-        elif self.mechanism == 'fixed_burst_feedback_onion':
-            self._simulate_fixed_burst_feedback_onion()
-
-        # Issue warning if simulation time exceeds max_time
-        if self.time > self.max_time:
-            warnings.warn(
-                f"Simulation time ({self.time:.2f}) exceeded max_time ({self.max_time:.2f}). "
-                f"Parameters: mechanism={self.mechanism}, "
-                f"initial_state={self.initial_state_list}, "
-                f"rate_params={self.rate_params}, "
-                f"n0_list={self.n0_list}"
-            )
-
-        # Set unset separation times to final simulation time
+        # Initialize simulation state
+        current_state = [int(s) for s in self.initial_state_list]
+        current_time = 0.0
+        times = [0.0]
+        states = [current_state.copy()]
+        separate_times = [None, None, None]
+        
+        # Main simulation loop - SAME FOR ALL MECHANISMS
+        while True:
+            # Calculate propensities (mechanism-specific)
+            propensities = self.calculate_propensities(current_state)
+            total_propensity = sum(propensities)
+            
+            # Check if simulation should stop
+            if total_propensity <= 0 or all(t is not None for t in separate_times):
+                break
+            
+            # Calculate time to next event
+            tau = np.random.exponential(1.0 / total_propensity)
+            current_time += tau
+            
+            # Select which chromosome experiences degradation
+            r = np.random.uniform(0, total_propensity)
+            cumulative = 0.0
+            selected_chromosome = 0
+            
+            for i, propensity in enumerate(propensities):
+                cumulative += propensity
+                if r < cumulative:
+                    selected_chromosome = i
+                    break
+            
+            # Apply degradation (mechanism-specific burst size)
+            burst_size = self.calculate_burst_size()
+            current_state[selected_chromosome] = max(0, current_state[selected_chromosome] - burst_size)
+            
+            # Record this event
+            times.append(current_time)
+            states.append(current_state.copy())
+            
+            # Check for chromosome separation
+            for i in range(3):
+                if separate_times[i] is None and current_state[i] <= round(self.n0_list[i]):
+                    separate_times[i] = current_time
+        
+        # Finalize simulation
         for i in range(3):
-            if self.separate_times[i] is None:
-                self.separate_times[i] = self.time
+            if separate_times[i] is None:
+                separate_times[i] = current_time
+        
+        if current_time > self.max_time:
+            warnings.warn(f"Simulation time ({current_time:.2f}) exceeded max_time ({self.max_time:.2f})")
+        
+        return times, states, separate_times
+    
+    @staticmethod
+    def get_available_mechanisms() -> List[str]:
+        """Get list of all available mechanisms."""
+        return ['simple', 'fixed_burst', 'random_normal_burst', 'geometric_burst', 
+                'feedback_onion', 'fixed_burst_feedback_onion']
+    
+    @staticmethod
+    def get_mechanism_info(mechanism: str) -> Dict[str, str]:
+        """Get information about a specific mechanism."""
+        info = {
+            'simple': {
+                'name': 'Simple',
+                'description': 'Single cohesin degradation per event',
+                'parameters': 'k (degradation rate)'
+            },
+            'fixed_burst': {
+                'name': 'Fixed Burst',
+                'description': 'Fixed number of cohesins per burst',
+                'parameters': 'k (rate), burst_size (cohesins per burst)'
+            },
+            'random_normal_burst': {
+                'name': 'Random Normal Burst',
+                'description': 'Burst sizes from normal distribution',
+                'parameters': 'k (rate), burst_size (mean), var_burst_size (variance)'
+            },
+            'geometric_burst': {
+                'name': 'Geometric Burst',
+                'description': 'Burst sizes from geometric distribution',
+                'parameters': 'k (rate), burst_size (mean burst size)'
+            },
+            'feedback_onion': {
+                'name': 'Feedback Onion',
+                'description': 'Single cohesin with onion feedback',
+                'parameters': 'k (rate), n_inner (inner threshold)'
+            },
+            'fixed_burst_feedback_onion': {
+                'name': 'Fixed Burst + Onion Feedback',
+                'description': 'Fixed bursts with onion feedback',
+                'parameters': 'k (rate), burst_size (burst size), n_inner (inner threshold)'
+            }
+        }
+        
+        return info.get(mechanism, {'name': 'Unknown', 'description': 'Unknown mechanism', 'parameters': 'Unknown'})
 
-        return self.times, self.states, self.separate_times
+
+def add_new_mechanism(mechanism_name: str, burst_calculator: Callable[[], float], 
+                     required_params: List[str], propensity_calculator: Callable = None):
+    """
+    Easy way to add a new mechanism to the simulation.
+    
+    Args:
+        mechanism_name: Name for the new mechanism
+        burst_calculator: Function that returns burst size
+        required_params: List of required parameter names
+        propensity_calculator: Optional custom propensity function
+    
+    Example:
+        # Add exponential burst mechanism
+        def exp_burst():
+            return np.random.exponential(rate_params['burst_size'])
+        
+        add_new_mechanism('exponential_burst', exp_burst, ['k', 'burst_size'])
+    """
+    # This is a simplified example of how you could extend the class
+    # In practice, you'd modify the class methods above
+    print(f"To add '{mechanism_name}', modify the _get_burst_calculator() method")
+    print(f"Required parameters: {required_params}")
+    print("This is a design pattern suggestion - actual implementation would modify the class")
+
+
+if __name__ == "__main__":
+    # Example usage
+    print("Available mechanisms:", MultiMechanismSimulation.get_available_mechanisms())
+    print()
+    
+    # Show info for each mechanism
+    for mechanism in MultiMechanismSimulation.get_available_mechanisms():
+        info = MultiMechanismSimulation.get_mechanism_info(mechanism)
+        print(f"{info['name']}: {info['description']}")
+        print(f"  Parameters: {info['parameters']}")
+    print()
+    
+    # Test different mechanisms with the same simulation core
+    mechanisms_to_test = [
+        ('simple', {'k': 0.1}),
+        ('fixed_burst', {'k': 0.1, 'burst_size': 5.0}),
+        ('geometric_burst', {'k': 0.1, 'burst_size': 5.0})
+    ]
+    
+    for mechanism, params in mechanisms_to_test:
+        print(f"Testing {mechanism}:")
+        
+        sim = MultiMechanismSimulation(
+            mechanism=mechanism,
+            initial_state_list=[100, 80, 120],
+            rate_params=params,
+            n0_list=[10, 8, 12],
+            max_time=100.0
+        )
+        
+        times, states, separate_times = sim.simulate()
+        print(f"  Completed in {times[-1]:.2f} time units")
+        print(f"  {len(times)} total events")
+        print(f"  Separation times: {[f'{t:.2f}' for t in separate_times]}")
+        print()
+    
+    print("All mechanisms use the same simulation core!")
+    print("Only the burst size calculation differs between mechanisms.")

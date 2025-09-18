@@ -31,51 +31,70 @@ from simulation_utils import (
     calculate_likelihood
 )
 
-def get_ground_truth_params(mechanism, datasets, max_iterations=100, num_simulations=300):
+def get_ground_truth_params(mechanism, study_dir="."):
     """
-    Runs a single optimization against the REAL data to get a credible
-    "ground truth" parameter set.
+    Returns the ground truth parameters for the recovery study.
+    These values are copied from simulation_optimized_parameters_time_varying_k_combined_finetune.txt
+    and rounded to reasonable precision.
     
     Args:
         mechanism (str): Mechanism name
-        datasets (dict): Real experimental datasets
-        max_iterations (int): Iterations for ground truth optimization
-        num_simulations (int): Simulations per evaluation
+        study_dir (str): Directory to save the ground truth parameters file
         
     Returns:
-        dict: Ground truth parameters
+        dict: Ground truth parameters (rounded)
     """
     print("=" * 60)
-    print("STEP 1: Finding Ground Truth Parameters")
+    print("STEP 1: Setting Ground Truth Parameters")
     print("=" * 60)
     print(f"Mechanism: {mechanism}")
-    print(f"Max iterations: {max_iterations}")
-    print(f"Simulations per evaluation: {num_simulations}")
+    print("Using pre-defined ground truth parameters from fine-tuned optimization")
     print()
     
-    # Use existing optimization function to find ground truth
-    results = run_optimization(
-        mechanism=mechanism,
-        datasets=datasets,
-        max_iterations=max_iterations,
-        num_simulations=num_simulations,
-        selected_strains=None,  # Use all strains for ground truth
-        use_parallel=True
-    )
+    if mechanism == 'time_varying_k_combined':
+        # Ground truth parameters from simulation_optimized_parameters_time_varying_k_combined_finetune.txt
+        # Original values (rounded to reasonable precision for recovery study):
+        ground_truth_params = {
+            'n2': 5,           # Original: 5.121055
+            'N2': 180,           # Original: 168.842023  
+            'k_max': 0.015,   # Original: 0.013139
+            'tau': 120,         # Original: 47.262590
+            'r21': 2.415,        # Original: 2.415095
+            'r23': 1.458,        # Original: 1.457673
+            'R21': 1.293,        # Original: 1.292956
+            'R23': 2.475,        # Original: 2.474872
+            'burst_size': 16,  # Original: 14.276450
+            'n_inner': 20,     # Original: 20.503246
+            'alpha': 0.654,      # Original: 0.653572
+            'beta_k': 0.720,     # Original: 0.720142
+            'beta_tau': 2.5      # Original: 2.9
+        }
+    else:
+        raise ValueError(f"Ground truth parameters not defined for mechanism: {mechanism}")
     
-    if not results or not results.get('success'):
-        raise RuntimeError("Failed to find ground truth parameters.")
-    
-    print("✓ Ground truth parameters found successfully!")
-    print(f"  Final NLL: {results['nll']:.4f}")
-    print(f"  Converged: {results.get('converged', 'Unknown')}")
+    print("✓ Ground truth parameters set successfully!")
+    print(f"  Loaded {len(ground_truth_params)} parameters")
     
     # Print ground truth parameters
-    print("\nGround Truth Parameters:")
-    for param, value in results['params'].items():
-        print(f"  {param}: {value:.6f}")
+    print("\nGround Truth Parameters (rounded):")
+    for param, value in ground_truth_params.items():
+        print(f"  {param}: {value}")
     
-    return results['params']
+        # Save rounded parameters for reference in the study directory
+    rounded_file = os.path.join(study_dir, "ground_truth_parameters_rounded.txt")
+    with open(rounded_file, 'w') as f:
+        f.write("Ground Truth Parameters for Parameter Recovery Study\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Source: simulation_optimized_parameters_time_varying_k_combined_finetune.txt (manually copied)\n")
+        f.write(f"Mechanism: {mechanism}\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("\nRounded Parameters:\n")
+        for param, value in ground_truth_params.items():
+            f.write(f"{param} = {value}\n")
+    
+    print(f"✓ Rounded parameters saved to: {rounded_file}")
+    
+    return ground_truth_params
 
 def generate_synthetic_data(mechanism, ground_truth_params, num_simulations=1000):
     """
@@ -275,7 +294,13 @@ def save_individual_result(result_data, output_file):
                 
                 # Create checkpoint backup every 10 runs
                 if total_completed % 10 == 0:
-                    checkpoint_file = output_file.replace('.csv', f'_checkpoint_{total_completed}.csv')
+                    # Extract just the timestamp from the filename for checkpoint naming
+                    base_name = os.path.basename(output_file)
+                    if 'recovery_results_' in base_name:
+                        timestamp_part = base_name.replace('recovery_results_', '').replace('.csv', '')
+                        checkpoint_file = os.path.join(os.path.dirname(output_file), f'recovery_results_{timestamp_part}_checkpoint_{total_completed}.csv')
+                    else:
+                        checkpoint_file = output_file.replace('.csv', f'_checkpoint_{total_completed}.csv')
                     existing_df.to_csv(checkpoint_file, index=False)
                     print(f"✓ Created checkpoint backup: {checkpoint_file}")
                     
@@ -292,12 +317,35 @@ def main(args):
     """
     Main function to orchestrate the parameter recovery study.
     """
+    # Create organized output directory structure
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Create main Output folder
+    output_dir = "Output"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Find the next available Recovery folder number
+    recovery_num = 1
+    while True:
+        study_dir = os.path.join(output_dir, f"Recovery{recovery_num}")
+        if not os.path.exists(study_dir):
+            break
+        recovery_num += 1
+    
+    # Create the recovery study directory
+    os.makedirs(study_dir, exist_ok=True)
+    
+    # Update output file path to be in the recovery study directory
+    args.output_file = os.path.join(study_dir, f"recovery_results_{timestamp}.csv")
+    
     print("=" * 80)
     print("PARAMETER RECOVERY STUDY")
     print("=" * 80)
     print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Mechanism: {args.mechanism}")
     print(f"Recovery runs: {args.num_runs}")
+    print(f"Output directory: {output_dir}")
+    print(f"Study directory: {study_dir}")
     print(f"Output file: {args.output_file}")
     print(f"Available CPUs: {cpu_count()}")
     print()
@@ -313,12 +361,10 @@ def main(args):
             print(f"  {name}: {len(data['delta_t12'])} T1-T2, {len(data['delta_t32'])} T3-T2 points")
         print()
         
-        # Step 1: Get ground truth parameters by fitting to real data
+        # Step 1: Set ground truth parameters from fine-tuned optimization results
         ground_truth_params = get_ground_truth_params(
-            args.mechanism, 
-            datasets,
-            max_iterations=args.gt_iterations,
-            num_simulations=args.gt_simulations
+            args.mechanism,
+            study_dir
         )
         
         # Step 2: Generate synthetic dataset
@@ -328,8 +374,8 @@ def main(args):
             num_simulations=args.synthetic_size
         )
         
-        # Save synthetic data for reference
-        synthetic_filename = f"synthetic_data_{args.mechanism}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        # Save synthetic data for reference in the study directory
+        synthetic_filename = os.path.join(study_dir, f"synthetic_data_{args.mechanism}_{timestamp}.csv")
         synthetic_df_list = []
         for strain, data in synthetic_datasets.items():
             strain_df = pd.DataFrame({
@@ -424,8 +470,8 @@ def main(args):
             print(f"✓ Best recovered NLL: {best_nll:.4f}")
             print(f"✓ Mean recovered NLL: {mean_nll:.4f} ± {std_nll:.4f}")
         
-        # Create summary file
-        summary_filename = f"recovery_summary_{args.mechanism}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        # Create summary file in the study directory
+        summary_filename = os.path.join(study_dir, f"recovery_summary_{args.mechanism}_{timestamp}.txt")
         with open(summary_filename, 'w') as f:
             f.write("PARAMETER RECOVERY STUDY SUMMARY\n")
             f.write("=" * 50 + "\n")
@@ -491,11 +537,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_file', type=str, default="recovery_results.csv", 
                        help="Path to save the output CSV file (default: recovery_results.csv)")
     
-    # Ground truth optimization settings
-    parser.add_argument('--gt_iterations', type=int, default=100,
-                       help="Max iterations for ground truth optimization (default: 100)")
-    parser.add_argument('--gt_simulations', type=int, default=300,
-                       help="Simulations per evaluation for ground truth (default: 300)")
+    # Ground truth parameters are now hard-coded in the get_ground_truth_params function
     
     # Synthetic data settings
     parser.add_argument('--synthetic_size', type=int, default=1000,

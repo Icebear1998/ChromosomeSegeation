@@ -32,8 +32,8 @@ def load_experimental_data():
         dataset_mapping = {
             'wildtype': ('wildtype12', 'wildtype32'),
             'threshold': ('threshold12', 'threshold32'),
-            'degrate': ('degRate12', 'degRate32'),
-            'degrateAPC': ('degRateAPC12', 'degRateAPC32')
+            'degrade': ('degRade12', 'degRade32'),
+            'degradeAPC': ('degRadeAPC12', 'degRadeAPC32')
         }
         
         for dataset_name, (col_12, col_32) in dataset_mapping.items():
@@ -64,7 +64,7 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None):
     
     Args:
         base_params (dict): Base wildtype parameters
-        mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrate', 'degrateAPC')
+        mutant_type (str): Type of mutant ('wildtype', 'threshold', degrade', 'degradeAPC')
         alpha (float): Multiplier for threshold counts (threshold mutant)
         beta_k (float): Multiplier for k_max (separase mutant)
         beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger
@@ -84,10 +84,10 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None):
     elif mutant_type == 'threshold':
         # Threshold mutant: reduce threshold counts (small n)
         n1, n2, n3 = alpha * n1, alpha * n2, alpha * n3
-    elif mutant_type == 'degrate':
+    elif mutant_type == 'degrade':
         # Separase mutant: reduce k_max (slower degradation)
         params['k_max'] = beta_k * params['k_max']
-    elif mutant_type == 'degrateAPC':
+    elif mutant_type == 'degradeAPC':
         # APC mutant: affects tau (makes it 2-3 times larger), which affects k_1
         if 'tau' in params:
             # Apply multiplier directly to tau
@@ -264,8 +264,8 @@ def get_parameter_bounds(mechanism):
     
     # Add mutant parameter bounds
     bounds.extend([
-        (0.1, 2.0),       # alpha
-        (0.1, 2.0),       # beta_k
+        (0.1, 1.0),       # alpha
+        (0.1, 1.0),       # beta_k
         (2, 3.0),       # beta_tau
     ])
     
@@ -357,7 +357,7 @@ def save_optimization_results(mechanism, results, filename=None, selected_strain
             if selected_strains:
                 f.write(f"Datasets: {', '.join(selected_strains)}\n")
             else:
-                f.write("Datasets: wildtype, threshold, degrate, degrateAPC\n")
+                f.write("Datasets: wildtype, threshold, degrade, degradeAPC\n")
             f.write("\n")
             
             # Parse parameters

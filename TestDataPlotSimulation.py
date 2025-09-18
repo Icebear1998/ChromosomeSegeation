@@ -211,7 +211,7 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
     fig.suptitle(f'Simulation vs Experimental Data: {mechanism.upper()}', fontsize=16, y=0.98)
     
-    dataset_names = ['wildtype', 'threshold', 'degrate', 'degrateAPC']
+    dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC']
     dataset_titles = ['Wildtype', 'Threshold', 'Separase', 'APC']
     
     alpha = params['alpha']
@@ -480,8 +480,8 @@ if __name__ == "__main__":
     
     # Single dataset configuration (only used if run_single_dataset = True)
     mechanism = 'time_varying_k_combined'  # Choose mechanism to test
-    filename = 'simulation_optimized_parameters_time_varying_k_combined_finetune.txt'
-    dataset = 'degrateAPC'  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC'
+    filename = 'simulation_optimized_parameters_time_varying_k_combined.txt'
+    dataset = 'degrade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC'
     
     if run_all_mechanisms:
         main()

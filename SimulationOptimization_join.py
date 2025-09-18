@@ -510,7 +510,7 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
         popsize=15,
         seed=random_seed,
         disp=True,
-        workers=1  # Use single worker to avoid multiprocessing issues
+        workers=-1  # Use single worker to avoid multiprocessing issues
     )
     
     # Always extract and display the best solution found, even if not converged
@@ -595,7 +595,7 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
             bootstrap_suffix = f"_{results['bootstrap_method']}"
             filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}{bootstrap_suffix}.txt"
         else:
-            filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}.txt"
+            filename = f"simulation_optimized_parameters_500_{mechanism}{strain_suffix}.txt"
     
     with open(filename, 'w') as f:
         f.write(f"Simulation-based Optimization Results\n")
@@ -642,8 +642,8 @@ def main():
     """
     Main optimization routine for all strains.
     """
-    max_iterations = 100  # number of iterations for testing
-    num_simulations = 250  # Number of simulations per evaluation
+    max_iterations = 200  # number of iterations for testing
+    num_simulations = 500  # Number of simulations per evaluation
     
     print("Simulation-based Optimization for Time-Varying Mechanisms")
     print("=" * 60)
@@ -690,8 +690,8 @@ def main_simple():
     """
     Simple main function for testing just one method.
     """
-    max_iterations = 20  # number of iterations for testing
-    num_simulations = 30  # Number of simulations per evaluation
+    max_iterations = 200  # number of iterations for testing
+    num_simulations = 500  # Number of simulations per evaluation
     
     print("Simulation-based Optimization with Bootstrapping")
     print("=" * 60)
@@ -704,7 +704,7 @@ def main_simple():
     
     # Test mechanisms
     mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
-    mechanism = mechanisms[0]  # Test time_varying_k
+    mechanism = mechanisms[3]  # Test time_varying_k
     
     try:
         # Bootstrap optimization

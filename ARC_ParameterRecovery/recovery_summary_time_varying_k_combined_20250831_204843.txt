@@ -1,0 +1,34 @@
+PARAMETER RECOVERY STUDY SUMMARY
+==================================================
+Date: 2025-08-31 20:48:43
+Mechanism: time_varying_k_combined
+Recovery runs: 100
+Synthetic data size: 1000
+Max iterations: 120
+Simulations per evaluation: 250
+Parallel processes: 96
+Total runtime: 34090.8 seconds (9.47 hours)
+Recovery runtime: 34087.6 seconds (9.47 hours)
+Successful recoveries: 100/100 (100.0%)
+Best NLL: 31627.1214
+Mean NLL: 31684.7975 ± 29.0051
+
+Ground Truth Parameters:
+  n2: 7.485805
+  N2: 128.291252
+  k_max: 0.051740
+  tau: 198.391766
+  r21: 3.033489
+  r23: 3.190550
+  R21: 4.991634
+  R23: 1.618250
+  burst_size: 17.554087
+  n_inner: 60.275007
+  alpha: 1.212693
+  beta_k: 0.600922
+  beta_tau: 2.416393
+
+Output Files:
+  Results: recovery_results_20250831_112029.csv
+  Synthetic data: synthetic_data_time_varying_k_combined_20250831_112035.csv
+  Summary: recovery_summary_time_varying_k_combined_20250831_204843.txt

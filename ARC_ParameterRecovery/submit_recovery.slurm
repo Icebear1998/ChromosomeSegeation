@@ -26,12 +26,10 @@ echo "Working directory: $(pwd)"
 # Run the parameter recovery study
 python run_recovery_study.py \
     --mechanism time_varying_k_combined \
-    --num_runs 100 \
+    --num_runs 80 \
     --output_file recovery_results_$(date +%Y%m%d_%H%M%S).csv \
-    --gt_iterations 150 \
-    --gt_simulations 400 \
     --synthetic_size 1000 \
-    --max_iterations 120 \
-    --num_simulations 250
+    --max_iterations 200 \
+    --num_simulations 400
 
 echo "Job finished at: $(date)"
