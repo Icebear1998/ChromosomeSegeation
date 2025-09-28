@@ -5,11 +5,13 @@ using optimized parameters from fixed_burst_feedback_onion_join.txt
 """
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import sys
 import os
 from collections import defaultdict
 import time
+import warnings
 
 # Add the SecondVersion directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'SecondVersion'))
@@ -79,7 +81,7 @@ def run_burst_comparison():
     }
     
     # Run simulations
-    num_runs = 50  # Number of simulation runs per mechanism
+    num_runs = 1000  # Number of simulation runs per mechanism
     results = {}
     
     print(f"\nRunning {num_runs} simulations for each mechanism...")
@@ -144,7 +146,7 @@ def run_burst_comparison():
     return results
 
 def create_comparison_plots(results):
-    """Create comparison plots for the different mechanisms."""
+    """Create comparison plots for the different mechanisms in a 2x2 layout."""
     
     if len(results) < 2:
         print("❌ Need at least 2 successful mechanisms to create plots")
@@ -152,94 +154,67 @@ def create_comparison_plots(results):
     
     print(f"\nCreating comparison plots...")
     
-    # Set up the plot
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    # Set up the 2x2 plot
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle('Burst Mechanisms Comparison', fontsize=16, fontweight='bold')
     
     mechanisms = list(results.keys())
     colors = ['blue', 'red', 'green', 'orange', 'purple'][:len(mechanisms)]
     
-    # Plot 1: Time differences T1-T2
+    # Plot 1 (Top Left): Time differences T1-T2 histogram
     ax = axes[0, 0]
     for i, (mech, data) in enumerate(results.items()):
-        ax.hist(data['time_diffs_12'], bins=20, alpha=0.6, color=colors[i], 
-               label=f"{mech}\n(μ={np.mean(data['time_diffs_12']):.2f})", density=True)
+        ax.hist(data['time_diffs_12'], bins=20, alpha=0.4, color=colors[i], 
+               label=f"{mech} (μ={np.mean(data['time_diffs_12']):.2f})", density=True)
     ax.set_xlabel('T1 - T2 (time units)')
     ax.set_ylabel('Density')
     ax.set_title('Time Difference: Chromosome 1 - 2')
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     
-    # Plot 2: Time differences T3-T2
+    # Plot 2 (Top Right): Time differences T3-T2 histogram
     ax = axes[0, 1]
     for i, (mech, data) in enumerate(results.items()):
-        ax.hist(data['time_diffs_32'], bins=20, alpha=0.6, color=colors[i],
-               label=f"{mech}\n(μ={np.mean(data['time_diffs_32']):.2f})", density=True)
+        ax.hist(data['time_diffs_32'], bins=20, alpha=0.4, color=colors[i],
+               label=f"{mech} (μ={np.mean(data['time_diffs_32']):.2f})", density=True)
     ax.set_xlabel('T3 - T2 (time units)')
     ax.set_ylabel('Density')
     ax.set_title('Time Difference: Chromosome 3 - 2')
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     
-    # Plot 3: Final simulation times
-    ax = axes[0, 2]
-    final_times_data = [data['final_times'] for data in results.values()]
-    labels = [f"{mech}\n(μ={np.mean(data['final_times']):.1f})" for mech, data in results.items()]
-    bp = ax.boxplot(final_times_data, labels=labels, patch_artist=True)
-    for patch, color in zip(bp['boxes'], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-    ax.set_ylabel('Final Time')
-    ax.set_title('Final Simulation Times')
-    ax.grid(True, alpha=0.3)
-    
-    # Plot 4: Number of events
+    # Plot 3 (Bottom Left): T1-T2 boxplot
     ax = axes[1, 0]
-    events_data = [data['num_events'] for data in results.values()]
-    labels = [f"{mech}\n(μ={np.mean(data['num_events']):.0f})" for mech, data in results.items()]
-    bp = ax.boxplot(events_data, labels=labels, patch_artist=True)
+    time_diffs_12_data = [data['time_diffs_12'] for data in results.values()]
+    mechanism_names = list(results.keys())
+    # Suppress matplotlib deprecation warning for labels parameter
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=matplotlib.MatplotlibDeprecationWarning)
+        bp = ax.boxplot(time_diffs_12_data, labels=mechanism_names, patch_artist=True)
     for patch, color in zip(bp['boxes'], colors):
         patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-    ax.set_ylabel('Number of Events')
-    ax.set_title('Number of Simulation Events')
+        patch.set_alpha(0.4)
+    ax.set_ylabel('T1 - T2 (time units)')
+    ax.set_title('Time Difference: Chromosome 1 - 2 (Boxplot)')
     ax.grid(True, alpha=0.3)
+    # Rotate x-axis labels for better readability
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     
-    # Plot 5: Runtime comparison
+    # Plot 4 (Bottom Right): T3-T2 boxplot
     ax = axes[1, 1]
-    runtime_data = [[t*1000 for t in data['run_times']] for data in results.values()]  # Convert to ms
-    labels = [f"{mech}\n(μ={np.mean(data['run_times'])*1000:.1f}ms)" for mech, data in results.items()]
-    bp = ax.boxplot(runtime_data, labels=labels, patch_artist=True)
+    time_diffs_32_data = [data['time_diffs_32'] for data in results.values()]
+    # Suppress matplotlib deprecation warning for labels parameter
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=matplotlib.MatplotlibDeprecationWarning)
+        bp = ax.boxplot(time_diffs_32_data, labels=mechanism_names, patch_artist=True)
     for patch, color in zip(bp['boxes'], colors):
         patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-    ax.set_ylabel('Runtime (ms)')
-    ax.set_title('Simulation Runtime')
+        patch.set_alpha(0.4)
+    ax.set_ylabel('T3 - T2 (time units)')
+    ax.set_title('Time Difference: Chromosome 3 - 2 (Boxplot)')
     ax.grid(True, alpha=0.3)
-    
-    # Plot 6: Summary statistics table
-    ax = axes[1, 2]
-    ax.axis('off')
-    
-    # Create summary table
-    table_data = []
-    headers = ['Mechanism', 'Mean T1-T2', 'Mean T3-T2', 'Mean Events', 'Mean Time (ms)']
-    
-    for mech, data in results.items():
-        row = [
-            mech,
-            f"{np.mean(data['time_diffs_12']):.2f}",
-            f"{np.mean(data['time_diffs_32']):.2f}",
-            f"{np.mean(data['num_events']):.0f}",
-            f"{np.mean(data['run_times'])*1000:.1f}"
-        ]
-        table_data.append(row)
-    
-    table = ax.table(cellText=table_data, colLabels=headers, cellLoc='center', loc='center')
-    table.auto_set_font_size(False)
-    table.set_fontsize(9)
-    table.scale(1, 2)
-    ax.set_title('Summary Statistics')
+    # Rotate x-axis labels for better readability
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     
     plt.tight_layout()
     

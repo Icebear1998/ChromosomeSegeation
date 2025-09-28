@@ -76,6 +76,16 @@ class MultiMechanismSimulation:
                 return float(np.random.geometric(p))
             return geometric_burst
         
+        elif self.mechanism == 'feedback_onion':
+            def feedback_onion_burst():
+                return 1.0
+            return feedback_onion_burst
+        
+        elif self.mechanism == 'fixed_burst_feedback_onion':
+            def fixed_burst_feedback_onion_burst():
+                return self.rate_params['burst_size']
+            return fixed_burst_feedback_onion_burst
+        
         else:
             raise ValueError(f"Unknown mechanism: {self.mechanism}")
     

@@ -33,7 +33,8 @@ def load_experimental_data():
             'wildtype': ('wildtype12', 'wildtype32'),
             'threshold': ('threshold12', 'threshold32'),
             'degrade': ('degRade12', 'degRade32'),
-            'degradeAPC': ('degRadeAPC12', 'degRadeAPC32')
+            'degradeAPC': ('degRadeAPC12', 'degRadeAPC32'),
+            'velcade': ('degRadeVel12', 'degRadeVel32')
         }
         
         for dataset_name, (col_12, col_32) in dataset_mapping.items():
@@ -58,16 +59,17 @@ def load_experimental_data():
         return {}
 
 
-def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None):
+def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, beta_tau2=None):
     """
     Apply mutant-specific parameter modifications.
     
     Args:
         base_params (dict): Base wildtype parameters
-        mutant_type (str): Type of mutant ('wildtype', 'threshold', degrade', 'degradeAPC')
+        mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade')
         alpha (float): Multiplier for threshold counts (threshold mutant)
         beta_k (float): Multiplier for k_max (separase mutant)
         beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger
+        beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter
     
     Returns:
         tuple: (modified_params, modified_n0_list)
@@ -96,6 +98,16 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None):
             # Calculate current tau, apply multiplier, then recalculate k_1
             current_tau = params['k_max'] / params['k_1']
             new_tau = beta_tau * current_tau
+            params['k_1'] = params['k_max'] / new_tau
+    elif mutant_type == 'velcade':
+        # Velcade mutant: affects tau (similar to APC but separate parameter), which affects k_1
+        if 'tau' in params:
+            # Apply multiplier directly to tau
+            params['tau'] = beta_tau2 * params['tau']
+        elif 'k_1' in params and 'k_max' in params:
+            # Calculate current tau, apply multiplier, then recalculate k_1
+            current_tau = params['k_max'] / params['k_1']
+            new_tau = beta_tau2 * current_tau
             params['k_1'] = params['k_max'] / new_tau
     
     # Update the modified parameters
@@ -241,14 +253,14 @@ def get_parameter_bounds(mechanism):
     """
     # Base bounds for all mechanisms
     bounds = [
-        (1.0, 20.0),      # n2
-        (50.0, 500.0),    # N2
-        (0.001, 0.1),     # k_max
+        (1.0, 40.0),      # n2
+        (50.0, 1000.0),    # N2
+        (0.01, 0.1),     # k_max
         (2.0, 240.0),    # tau
-        (0.1, 5.0),       # r21
-        (0.1, 5.0),       # r23
-        (0.1, 5.0),       # R21
-        (0.1, 5.0),       # R23
+        (0.25, 4.0),       # r21
+        (0.25, 4.0),       # r23
+        (0.4, 2.5),       # R21
+        (0.5, 5.0),       # R23
     ]
     
     # Add mechanism-specific bounds
@@ -266,7 +278,8 @@ def get_parameter_bounds(mechanism):
     bounds.extend([
         (0.1, 1.0),       # alpha
         (0.1, 1.0),       # beta_k
-        (2, 3.0),       # beta_tau
+        (2, 4.0),         # beta_tau
+        (2, 4.0),         # beta_tau2
     ])
     
     return bounds

@@ -821,12 +821,12 @@ def main():
     data_wt32 = df['wildtype32'].dropna().values
     data_threshold12 = df['threshold12'].dropna().values
     data_threshold32 = df['threshold32'].dropna().values
-    data_degrate12 = df['degRate12'].dropna().values
-    data_degrate32 = df['degRate32'].dropna().values
+    data_degrate12 = df['degRade12'].dropna().values
+    data_degrate32 = df['degRade32'].dropna().values
     data_initial12 = df['initialProteins12'].dropna().values
     data_initial32 = df['initialProteins32'].dropna().values
-    data_degrateAPC12 = df['degRateAPC12'].dropna().values
-    data_degrateAPC32 = df['degRateAPC32'].dropna().values
+    data_degrateAPC12 = df['degRadeAPC12'].dropna().values
+    data_degrateAPC32 = df['degRadeAPC32'].dropna().values
 
     # c) Global optimization for wild-type to find top 5 solutions
     population_solutions = []
@@ -1245,12 +1245,12 @@ def main_with_bootstrapping():
     data_wt32 = df['wildtype32'].dropna().values
     data_threshold12 = df['threshold12'].dropna().values
     data_threshold32 = df['threshold32'].dropna().values
-    data_degrate12 = df['degRate12'].dropna().values
-    data_degrate32 = df['degRate32'].dropna().values
+    data_degrate12 = df['degRade12'].dropna().values
+    data_degrate32 = df['degRade32'].dropna().values
     data_initial12 = df['initialProteins12'].dropna().values
     data_initial32 = df['initialProteins32'].dropna().values
-    data_degrateAPC12 = df['degRateAPC12'].dropna().values
-    data_degrateAPC32 = df['degRateAPC32'].dropna().values
+    data_degrateAPC12 = df['degRadeAPC12'].dropna().values
+    data_degrateAPC32 = df['degRadeAPC32'].dropna().values
 
     # Analyze dataset sizes
     datasets = {

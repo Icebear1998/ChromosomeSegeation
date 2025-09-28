@@ -79,9 +79,9 @@ def load_dataset(df, dataset):
     elif dataset == "threshold":
         return df['threshold12'].dropna().values, df['threshold32'].dropna().values
     elif dataset == "degrate":
-        return df['degRate12'].dropna().values, df['degRate32'].dropna().values
+        return df['degRade12'].dropna().values, df['degRade32'].dropna().values
     elif dataset == "degrateAPC":
-        return df['degRateAPC12'].dropna().values, df['degRateAPC32'].dropna().values
+        return df['degRadeAPC12'].dropna().values, df['degRadeAPC32'].dropna().values
     elif dataset == "initial":
         return df['initialProteins12'].dropna().values, df['initialProteins32'].dropna().values
     else:
@@ -530,7 +530,7 @@ if __name__ == "__main__":
     # For independent optimization: "optimized_parameters_independent_{mechanism}.txt"
 
     # Change this to your parameter file
-    params_file = "optimized_parameters_fixed_burst_feedback_onion_independent.txt"
+    params_file = "optimized_parameters_fixed_burst_feedback_onion_join.txt"
     # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback_onion', 'fixed_burst_feedback_onion'
     mechanism = 'fixed_burst_feedback_onion'  # Set to None to use mechanism from file
     dataset = "degrateAPC"  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial'
