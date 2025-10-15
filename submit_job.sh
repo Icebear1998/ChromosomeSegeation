@@ -8,9 +8,6 @@
 #SBATCH --output=%j.out
 #SBATCH --error=%j.err
 
-# Reset modules.
-module reset
-
 # Load Python environment
 module load Miniforge3
 source activate $HOME/.conda/envs/simulationOptimizationEnv

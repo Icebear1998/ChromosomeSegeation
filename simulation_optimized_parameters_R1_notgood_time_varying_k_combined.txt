@@ -1,0 +1,28 @@
+Simulation-based Optimization Results
+Mechanism: time_varying_k_combined
+Selected Strains: all datasets
+Negative Log-Likelihood: 1500.103053
+Converged: True
+Status: Converged successfully
+Available Datasets: wildtype, threshold, degrate, degrateAPC
+
+Optimized Parameters (ratio-based):
+n2 = 9.879309
+N2 = 172.310012
+k_max = 0.014000
+tau = 55.072196
+r21 = 1.529652
+r23 = 2.080875
+R21 = 0.785865
+R23 = 2.309121
+burst_size = 13.840857
+n_inner = 52.175705
+alpha = 0.503694
+beta_k = 0.986750
+beta_tau = 2.240955
+
+Derived Parameters:
+n1 = 15.111902
+n3 = 20.557603
+N1 = 135.412415
+N3 = 397.884614

@@ -641,7 +641,7 @@ def main():
         return
     
     # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
     mechanism = mechanisms[3]  # Test the burst_onion mechanism
     
     print(f"\nOptimizing {mechanism} for ALL strains")
@@ -724,4 +724,4 @@ if __name__ == "__main__":
     
     # Option 2: Run main_simple() - simple bootstrapping test
     # Uncomment the line below for simple bootstrapping:
-    # main_simple() 
+    #main_simple() 

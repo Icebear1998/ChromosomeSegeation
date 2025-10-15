@@ -92,7 +92,7 @@ def load_optimized_parameters(mechanism, filename=None):
         return {}
 
 
-def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, num_simulations=500):
+def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, beta_tau2=None, num_simulations=500):
     """
     Run simulations with given parameters for a specific mutant type.
     
@@ -101,6 +101,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         params (dict): Base parameters
         mutant_type (str): Mutant type
         alpha, beta_k, beta_tau (float): Mutant parameters
+        beta_tau2 (float): Velcade mutant parameter (optional)
         num_simulations (int): Number of simulations
     
     Returns:
@@ -134,7 +135,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             base_params['burst_size'] = params['burst_size']
         
         # Apply mutant modifications
-        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau)
+        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau, beta_tau2)
         
         # Extract rate parameters
         initial_state = [mutant_params['N1'], mutant_params['N2'], mutant_params['N3']]
@@ -208,15 +209,16 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         experimental_data (dict): Experimental datasets
         num_simulations (int): Number of simulations per dataset
     """
-    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    fig, axes = plt.subplots(2, 5, figsize=(20, 8))
     fig.suptitle(f'Simulation vs Experimental Data: {mechanism.upper()}', fontsize=16, y=0.98)
     
-    dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC']
-    dataset_titles = ['Wildtype', 'Threshold', 'Separase', 'APC']
+    dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']
+    dataset_titles = ['Wildtype', 'Threshold', 'Separase', 'APC', 'Velcade']
     
     alpha = params['alpha']
     beta_k = params['beta_k']
     beta_tau = params['beta_tau']
+    beta_tau2 = params.get('beta_tau2', None)  # Default to None if not present
     
     for i, (dataset_name, title) in enumerate(zip(dataset_names, dataset_titles)):
         if dataset_name not in experimental_data:
@@ -229,7 +231,7 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         # Run simulations
         print(f"Running simulations for {dataset_name}...")
         sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-            mechanism, params, dataset_name, alpha, beta_k, beta_tau, num_simulations
+            mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, num_simulations
         )
         
         if not sim_delta_t12 or not sim_delta_t32:
@@ -313,11 +315,12 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     alpha = params['alpha']
     beta_k = params['beta_k']
     beta_tau = params['beta_tau']
+    beta_tau2 = params.get('beta_tau2', None)  # Default to None if not present
     
     # Run simulations
     print(f"Running {num_simulations} simulations for {dataset_name}...")
     sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-        mechanism, params, dataset_name, alpha, beta_k, beta_tau, num_simulations
+        mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, num_simulations
     )
     
     if not sim_delta_t12 or not sim_delta_t32:
@@ -412,8 +415,10 @@ def print_parameter_summary(mechanism, params):
     print(f"\nMutant Modifiers:")
     print(f"  Threshold mutant (alpha): {params['alpha']:.3f}")
     print(f"  Separase mutant (beta_k): {params['beta_k']:.3f}")
-    
     print(f"  APC mutant (beta_tau): {params['beta_tau']:.3f}")
+    if 'beta_tau2' in params:
+        print(f"  Velcade mutant (beta_tau2): {params['beta_tau2']:.3f}")
+    
     beta_tau_value = params['beta_tau']
     
     # Show effective parameters for each mutant
@@ -431,6 +436,19 @@ def print_parameter_summary(mechanism, params):
         print(f"  APC: k_1={effective_k1:.6f}")
     else:
         print(f"  APC: modifier={beta_tau_value:.3f}")
+    
+    # Calculate effective k_1 or tau for Velcade mutant if beta_tau2 exists
+    if 'beta_tau2' in params:
+        beta_tau2_value = params['beta_tau2']
+        if 'tau' in params:
+            effective_tau_vel = beta_tau2_value * params['tau']
+            effective_k1_vel = params['k_max'] / effective_tau_vel
+            print(f"  Velcade: tau={effective_tau_vel:.4f} (k_1={effective_k1_vel:.6f})")
+        elif 'k_1' in params:
+            effective_k1_vel = beta_tau2_value * params['k_1']
+            print(f"  Velcade: k_1={effective_k1_vel:.6f}")
+        else:
+            print(f"  Velcade: modifier={beta_tau2_value:.3f}")
 
 
 def main():
@@ -481,7 +499,7 @@ if __name__ == "__main__":
     # Single dataset configuration (only used if run_single_dataset = True)
     mechanism = 'time_varying_k_combined'  # Choose mechanism to test
     filename = 'simulation_optimized_parameters_R1_time_varying_k_combined.txt'
-    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC'
+    dataset = 'degradeAPC'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
     
     if run_all_mechanisms:
         main()

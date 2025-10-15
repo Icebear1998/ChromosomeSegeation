@@ -48,7 +48,8 @@ def unpack_parameters(params, mechanism_info):
 
 
 def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
-                    data_degrate12, data_degrate32, data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32):
+                    data_degrate12, data_degrate32, data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32,
+                    data_velcade12, data_velcade32):
     """
     Joint objective function for all mechanisms.
 
@@ -61,6 +62,7 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         data_degrate12, data_degrate32: Degradation rate mutant data (separase)
         data_initial12, data_initial32: Initial proteins mutant data
         data_degrateAPC12, data_degrateAPC32: Degradation rate mutant data (APC)
+        data_velcade12, data_velcade32: Velcade mutant data
     """
     # Unpack parameters
     param_dict = unpack_parameters(params, mechanism_info)
@@ -175,6 +177,23 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
         return np.inf
     total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
 
+    # Velcade Mutant
+    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.001)
+    if param_dict['beta3_k'] * param_dict['k'] < 0.001:
+        print("Warning: beta3_k * k is less than 0.001, setting k_velcade to 0.001")
+
+    pdf_velcade12 = compute_pdf_for_mechanism(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
+                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
+    if np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12)):
+        return np.inf
+    total_nll -= np.sum(np.log(pdf_velcade12)) / len(data_velcade12)
+
+    pdf_velcade32 = compute_pdf_for_mechanism(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
+                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
+    if np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32)):
+        return np.inf
+    total_nll -= np.sum(np.log(pdf_velcade32)) / len(data_velcade32)
+
     # Initial Proteins Mutant - TEMPORARILY EXCLUDED FROM FITTING
     # PDF calculations and NLL contribution removed as initial strain is not being fitted
 
@@ -184,7 +203,7 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
 def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
                                        data_wt12, data_wt32, data_threshold12, data_threshold32,
                                        data_degrate12, data_degrate32, data_initial12, data_initial32,
-                                       data_degrateAPC12, data_degrateAPC32,
+                                       data_degrateAPC12, data_degrateAPC32, data_velcade12, data_velcade32,
                                        bootstrap_method='bootstrap', target_sample_size=50,
                                        num_bootstrap_samples=100, random_seed=None):
     """
@@ -444,6 +463,51 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
         except:
             return np.inf
 
+    # Velcade Mutant
+    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.001)
+    if param_dict['beta3_k'] * param_dict['k'] < 0.001:
+        print("Warning: beta3_k * k is less than 0.001, setting k_velcade to 0.001")
+
+    pdf_velcade12 = compute_pdf_for_mechanism(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
+                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
+
+    if bootstrap_method == 'standard':
+        if np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_velcade12)) / len(data_velcade12)
+    else:
+        try:
+            pdf_normalized = pdf_velcade12 / np.sum(pdf_velcade12)
+            simulated_velcade12 = np.random.choice(data_velcade12, size=len(
+                data_velcade12)*3, p=pdf_normalized, replace=True)
+            nll_velcade12 = calculate_dataset_likelihood(
+                data_velcade12, simulated_velcade12)
+            if nll_velcade12 >= 1e6:
+                return np.inf
+            total_nll += nll_velcade12
+        except:
+            return np.inf
+
+    pdf_velcade32 = compute_pdf_for_mechanism(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
+                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
+
+    if bootstrap_method == 'standard':
+        if np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32)):
+            return np.inf
+        total_nll -= np.sum(np.log(pdf_velcade32)) / len(data_velcade32)
+    else:
+        try:
+            pdf_normalized = pdf_velcade32 / np.sum(pdf_velcade32)
+            simulated_velcade32 = np.random.choice(data_velcade32, size=len(
+                data_velcade32)*3, p=pdf_normalized, replace=True)
+            nll_velcade32 = calculate_dataset_likelihood(
+                data_velcade32, simulated_velcade32)
+            if nll_velcade32 >= 1e6:
+                return np.inf
+            total_nll += nll_velcade32
+        except:
+            return np.inf
+
     # Initial Proteins Mutant - TEMPORARILY EXCLUDED FROM FITTING
     # PDF calculations and NLL contribution removed as initial strain is not being fitted
 
@@ -496,12 +560,13 @@ def get_mechanism_info(mechanism, gamma_mode):
     ]
 
     # Mutant parameters - INITIAL STRAIN TEMPORARILY EXCLUDED
-    # Only including alpha, beta_k, beta2_k (gamma parameters excluded)
-    mutant_params = ['alpha', 'beta_k', 'beta2_k']
+    # Including alpha, beta_k, beta2_k, beta3_k (gamma parameters excluded)
+    mutant_params = ['alpha', 'beta_k', 'beta2_k', 'beta3_k']
     mutant_bounds = [
         (0.1, 0.9),   # alpha
         (0.1, 0.9),   # beta_k
         (0.1, 0.9),   # beta2_k
+        (0.1, 0.9),   # beta3_k (Velcade)
     ]
 
     if mechanism == 'simple':
@@ -597,6 +662,8 @@ def main():
     data_initial32 = df['initialProteins32'].dropna().values
     data_degrateAPC12 = df['degRadeAPC12'].dropna().values
     data_degrateAPC32 = df['degRadeAPC32'].dropna().values
+    data_velcade12 = df['degRadeVel12'].dropna().values
+    data_velcade32 = df['degRadeVel32'].dropna().values
 
     # c) Global optimization to find top 5 solutions
     population_solutions = []
@@ -606,14 +673,15 @@ def main():
                                                      data_threshold12, data_threshold32,
                                                      data_degrate12, data_degrate32,
                                                      data_initial12, data_initial32,
-                                                     data_degrateAPC12, data_degrateAPC32), xk.copy()))
+                                                     data_degrateAPC12, data_degrateAPC32,
+                                                     data_velcade12, data_velcade32), xk.copy()))
 
     result = differential_evolution(
         joint_objective,
         bounds=bounds,
         args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
               data_degrate12, data_degrate32, data_initial12, data_initial32,
-              data_degrateAPC12, data_degrateAPC32),
+              data_degrateAPC12, data_degrateAPC32, data_velcade12, data_velcade32),
         strategy='best1bin',
         maxiter=400,        # Increased from 300 to allow more iterations for complex mechanism
         popsize=30,         # Increased from 15 to maintain better population diversity
@@ -781,6 +849,18 @@ def main():
     if not (np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32))):
         degrateAPC_nll -= np.sum(np.log(pdf_degAPC32))
 
+    # Velcade Mutant
+    velcade_nll = 0
+    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.001)
+    pdf_velcade12 = compute_pdf_for_mechanism(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
+                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
+    if not (np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12))):
+        velcade_nll -= np.sum(np.log(pdf_velcade12))
+    pdf_velcade32 = compute_pdf_for_mechanism(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
+                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
+    if not (np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32))):
+        velcade_nll -= np.sum(np.log(pdf_velcade32))
+
     # Initial proteins mutant - TEMPORARILY EXCLUDED FROM FITTING
     initial_nll = 0.0  # Set to 0 to exclude from total NLL
 
@@ -794,6 +874,7 @@ def main():
         f"Degradation Rate Mutant Negative Log-Likelihood: {degrate_nll:.4f}")
     print(
         f"Degradation Rate APC Mutant Negative Log-Likelihood: {degrateAPC_nll:.4f}")
+    print(f"Velcade Mutant Negative Log-Likelihood: {velcade_nll:.4f}")
     print("Initial Proteins Mutant: EXCLUDED FROM FITTING (temporarily)")
 
     # Print parameters
@@ -830,6 +911,7 @@ def main():
     print(f"Degradation Rate Mutant: beta_k = {param_dict['beta_k']:.2f}")
     print(
         f"Degradation Rate APC Mutant: beta2_k = {param_dict['beta2_k']:.2f}")
+    print(f"Velcade Mutant: beta3_k = {param_dict['beta3_k']:.2f}")
     print("Initial Proteins Mutant: EXCLUDED FROM FITTING (temporarily)")
 
     # g) Save optimized parameters to a text file
@@ -878,6 +960,7 @@ def main():
         f.write(f"alpha: {param_dict['alpha']:.6f}\n")
         f.write(f"beta_k: {param_dict['beta_k']:.6f}\n")
         f.write(f"beta2_k: {param_dict['beta2_k']:.6f}\n")
+        f.write(f"beta3_k: {param_dict['beta3_k']:.6f}\n")
         f.write("# Initial proteins mutant parameters - EXCLUDED FROM FITTING\n")
         f.write("# gamma: not_fitted\n")
         f.write("# gamma1: not_fitted\n")
@@ -886,8 +969,9 @@ def main():
         f.write(f"threshold_nll: {threshold_nll:.6f}\n")
         f.write(f"degrate_nll: {degrate_nll:.6f}\n")
         f.write(f"degrateAPC_nll: {degrateAPC_nll:.6f}\n")
+        f.write(f"velcade_nll: {velcade_nll:.6f}\n")
         f.write(f"initial_nll: {initial_nll:.6f}  # EXCLUDED (set to 0.0)\n")
-        f.write(f"total_nll: {best_nll:.6f}  # Excludes initial strain\n")
+        f.write(f"total_nll: {best_nll:.6f}  # Includes all 5 datasets\n")
 
     print(f"Optimized parameters saved to {filename}")
 
@@ -924,13 +1008,16 @@ def main_with_bootstrapping():
     data_initial32 = df['initialProteins32'].dropna().values
     data_degrateAPC12 = df['degRadeAPC12'].dropna().values
     data_degrateAPC32 = df['degRadeAPC32'].dropna().values
+    data_velcade12 = df['degRadeVel12'].dropna().values
+    data_velcade32 = df['degRadeVel32'].dropna().values
 
     # Analyze dataset sizes
     datasets = {
         'wildtype': {'delta_t12': data_wt12, 'delta_t32': data_wt32},
         'threshold': {'delta_t12': data_threshold12, 'delta_t32': data_threshold32},
         'degrate': {'delta_t12': data_degrate12, 'delta_t32': data_degrate32},
-        'degrateAPC': {'delta_t12': data_degrateAPC12, 'delta_t32': data_degrateAPC32}
+        'degrateAPC': {'delta_t12': data_degrateAPC12, 'delta_t32': data_degrateAPC32},
+        'velcade': {'delta_t12': data_velcade12, 'delta_t32': data_velcade32}
     }
 
     print("\n" + "="*60)
@@ -962,12 +1049,14 @@ def main_with_bootstrapping():
                 objective_func = joint_objective
                 args = (mechanism, mechanism_info, data_wt12, data_wt32,
                         data_threshold12, data_threshold32, data_degrate12, data_degrate32,
-                        data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32)
+                        data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32,
+                        data_velcade12, data_velcade32)
             else:
                 objective_func = joint_objective_with_bootstrapping
                 args = (mechanism, mechanism_info, data_wt12, data_wt32,
                         data_threshold12, data_threshold32, data_degrate12, data_degrate32,
                         data_initial12, data_initial32, data_degrateAPC12, data_degrateAPC32,
+                        data_velcade12, data_velcade32,
                         method, target_sample_size, 50, 42)  # Reduced bootstrap samples for testing
 
             # Run optimization
@@ -1022,7 +1111,7 @@ def main_with_bootstrapping():
 
                     # Mutant parameters
                     f.write("\n# Mutant Parameters\n")
-                    for key in ['alpha', 'beta_k', 'beta2_k']:
+                    for key in ['alpha', 'beta_k', 'beta2_k', 'beta3_k']:
                         f.write(f"{key}: {param_dict[key]:.6f}\n")
 
                 print(f"  Results saved to: {filename}")

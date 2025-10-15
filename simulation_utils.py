@@ -228,9 +228,9 @@ def calculate_likelihood(experimental_data, simulated_data):
             # Sum negative log-likelihoods
             nll = -np.sum(log_densities)
             
-            # Add small penalty for extreme outliers
-            if np.any(log_densities < -20):
-                nll += 100 * np.sum(log_densities < -20)
+            # # Add small penalty for extreme outliers
+            # if np.any(log_densities < -20):
+            #     nll += 100 * np.sum(log_densities < -20)
             
             nll_total += nll
         
@@ -253,10 +253,10 @@ def get_parameter_bounds(mechanism):
     """
     # Base bounds for all mechanisms
     bounds = [
-        (1.0, 40.0),      # n2
+        (1.0, 50.0),      # n2
         (50.0, 1000.0),    # N2
         (0.01, 0.1),     # k_max
-        (2.0, 240.0),    # tau
+        (2.0, 400.0),    # tau
         (0.25, 4.0),       # r21
         (0.25, 4.0),       # r23
         (0.4, 2.5),       # R21
@@ -276,10 +276,10 @@ def get_parameter_bounds(mechanism):
     
     # Add mutant parameter bounds
     bounds.extend([
-        (0.1, 1.0),       # alpha
+        (0.1, 0.7),       # alpha
         (0.1, 1.0),       # beta_k
-        (2, 4.0),         # beta_tau
-        (2, 4.0),         # beta_tau2
+        (2, 10.0),         # beta_tau
+        (2, 20.0),         # beta_tau2
     ])
     
     return bounds
