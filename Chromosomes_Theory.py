@@ -247,8 +247,8 @@ class BootstrappingFitnessCalculator:
                 # Handle numerical issues
                 log_likelihoods = np.clip(log_likelihoods, -50, 50)
                 
-                # Calculate negative log-likelihood
-                nll = -np.sum(log_likelihoods)
+                # Calculate negative log-likelihood (NORMALIZATION REMOVED)
+                nll = -np.sum(log_likelihoods)  # REMOVED: / len(bootstrap_data)
                 bootstrap_nlls.append(nll)
             
             if not bootstrap_nlls:
@@ -293,12 +293,10 @@ class BootstrappingFitnessCalculator:
             # Handle numerical issues
             log_likelihoods = np.clip(log_likelihoods, -50, 50)
             
-            # Calculate weighted negative log-likelihood
-            # Weight by inverse of sample size to give equal weight to each dataset
-            sample_size = len(experimental_data)
-            weight = 1.0 / sample_size
+            # Calculate negative log-likelihood (NORMALIZATION REMOVED)
+            # sample_size = len(experimental_data)  # REMOVED
             
-            return -weight * np.sum(log_likelihoods)
+            return -np.sum(log_likelihoods)  # REMOVED: / sample_size
             
         except Exception as e:
             warnings.warn(f"Weighted likelihood calculation error: {e}")

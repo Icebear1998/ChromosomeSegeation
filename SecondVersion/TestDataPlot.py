@@ -82,11 +82,13 @@ def load_dataset(df, dataset):
         return df['degRade12'].dropna().values, df['degRade32'].dropna().values
     elif dataset == "degrateAPC":
         return df['degRadeAPC12'].dropna().values, df['degRadeAPC32'].dropna().values
+    elif dataset == "velcade":
+        return df['degRadeVel12'].dropna().values, df['degRadeVel32'].dropna().values
     elif dataset == "initial":
         return df['initialProteins12'].dropna().values, df['initialProteins32'].dropna().values
     else:
         raise ValueError(
-            "Invalid dataset. Choose 'wildtype', 'threshold', 'degrate', 'degrateAPC', or 'initial'.")
+            "Invalid dataset. Choose 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'velcade', or 'initial'.")
 
 
 def apply_mutant_params(params, dataset):
@@ -106,6 +108,9 @@ def apply_mutant_params(params, dataset):
     elif dataset == "degrateAPC":
         beta2_k = params['beta2_k']
         k = max(beta2_k * params['k'], 0.001)
+    elif dataset == "velcade":
+        beta3_k = params['beta3_k']
+        k = max(beta3_k * params['k'], 0.001)
     elif dataset == "initial":
         if 'gamma' in params:  # unified mode
             gamma = params['gamma']
@@ -241,6 +246,10 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
 
     # Set up x_grid for PDF plotting
     x_min, x_max = -140, 140  # Default range for all mechanisms
+    if dataset == "velcade":
+        x_min, x_max = -350, 350
+    if dataset in ["wildtype", "threshold"]:
+        x_min, x_max = -100, 100    
     x_grid = np.linspace(x_min, x_max, 401)
 
     # Compute MoM PDFs
@@ -259,9 +268,9 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
 
     # Plot Chrom1 - Chrom2
     ax1.hist(data12, bins=15, density=True,
-             alpha=0.4, label='Experimental data')
+             alpha=0.6, label='Experimental data', color='lightblue')
     ax1.hist(delta_t12, bins=15, density=True,
-             alpha=0.4, label='Simulated data')
+             alpha=0.6, label='Simulated data', color='orange')
     ax1.plot(x_grid, pdf12, 'r-', linewidth=2, label='MoM PDF')
     ax1.set_xlim(x_min - 20, x_max + 20)
     ax1.set_xlabel('Time Difference')
@@ -277,10 +286,10 @@ def plot_results(params, dataset="wildtype", mechanism=None, data_file="Data/All
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     # Plot Chrom3 - Chrom2
-    ax2.hist(data32, bins=14, density=True,
-             alpha=0.4, label='Experimental data')
-    ax2.hist(delta_t32, bins=14, density=True,
-             alpha=0.4, label='Simulated data')
+    ax2.hist(data32, bins=15, density=True,
+             alpha=0.6, label='Experimental data', color='lightblue')
+    ax2.hist(delta_t32, bins=15, density=True,
+             alpha=0.6, label='Simulated data', color='orange')
     ax2.plot(x_grid, pdf32, 'r-', linewidth=2, label='MoM PDF')
     ax2.set_xlim(x_min - 20, x_max + 20)
     ax2.set_xlabel('Time Difference')
@@ -423,7 +432,7 @@ def plot_all_datasets(params_file, mechanism=None, num_sim=1000):
 
 def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SCStimes.xlsx", num_sim=1500):
     """
-    Plot all five datasets in a 2x5 layout: wildtype, threshold, degrate, degrateAPC, initial.
+    Plot all six datasets in a 2x6 layout: wildtype, threshold, degrate, degrateAPC, velcade, initial.
     Top row: Chrom1-Chrom2, Bottom row: Chrom3-Chrom2
     
     Args:
@@ -442,15 +451,15 @@ def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SC
     df = pd.read_excel(data_file)
     
     # Dataset configuration
-    datasets = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']
-    dataset_titles = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial']
+    datasets = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'velcade', 'initial']
+    dataset_titles = ['wildtype', 'threshold', 'degrate', 'degrateAPC', 'velcade', 'initial']
     
-    # Create 2x5 subplot layout (2 rows, 5 columns)
-    fig, axes = plt.subplots(2, 5, figsize=(25, 10))
+    # Create 2x6 subplot layout (2 rows, 6 columns)
+    fig, axes = plt.subplots(2, 6, figsize=(30, 10))
     fig.suptitle(f'Chromosome Segregation Times - {mechanism.replace("_", " ").title()} Mechanism', fontsize=16, y=0.95)
     
     # Set up x_grid for PDF plotting
-    x_min, x_max = -150, 150
+    x_min, x_max = -350, 350
     x_grid = np.linspace(x_min, x_max, 401)
     
     for i, dataset in enumerate(datasets):
@@ -479,7 +488,7 @@ def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SC
             ax1.hist(data12, bins=15, density=True, alpha=0.6, label='Experimental data', color='lightblue')
             ax1.hist(delta_t12, bins=15, density=True, alpha=0.6, label='Simulated data', color='orange')
             ax1.plot(x_grid, pdf12, 'r-', linewidth=2, label='MoM PDF')
-            ax1.set_xlim(-150, 150)
+            ax1.set_xlim(-350, 350)
             ax1.set_xlabel('Time Difference')
             ax1.set_ylabel('Density')
             ax1.set_title(f'Chrom1 - Chrom2 ({dataset_titles[i]})')
@@ -496,7 +505,7 @@ def plot_all_datasets_2x2(params, mechanism=None, data_file="Data/All_strains_SC
             ax2.hist(data32, bins=15, density=True, alpha=0.6, label='Experimental data', color='lightblue')
             ax2.hist(delta_t32, bins=15, density=True, alpha=0.6, label='Simulated data', color='orange')
             ax2.plot(x_grid, pdf32, 'r-', linewidth=2, label='MoM PDF')
-            ax2.set_xlim(-150, 150)
+            ax2.set_xlim(-350, 350)
             ax2.set_xlabel('Time Difference')
             ax2.set_ylabel('Density')
             ax2.set_title(f'Chrom3 - Chrom2 ({dataset_titles[i]})')
@@ -530,10 +539,12 @@ if __name__ == "__main__":
     # For independent optimization: "optimized_parameters_independent_{mechanism}.txt"
 
     # Change this to your parameter file
-    params_file = "optimized_parameters_fixed_burst_feedback_onion_join.txt"
+    params_file = "optimized_parameters_simple_join.txt"
+    #params_file = "optimized_parameters_simple_join_test1.txt"
     # Set to None to use mechanism from file, or specify: 'simple', 'fixed_burst', 'time_varying_k', 'feedback_onion', 'fixed_burst_feedback_onion'
-    mechanism = 'fixed_burst_feedback_onion'  # Set to None to use mechanism from file
-    dataset = "degrateAPC"  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'initial'
+    mechanism = None  # Set to None to use mechanism from file
+    
+    dataset = "velcade"  # Choose: 'wildtype', 'threshold', 'degrate', 'degrateAPC', 'velcade', 'initial'
 
     # ========== SINGLE PLOT ==========
     # Plot single dataset
@@ -553,8 +564,8 @@ if __name__ == "__main__":
     # Uncomment to plot all datasets in 2x4 layout (each strain's Chrom1-2 and Chrom3-2 side by side)
     # plot_all_datasets(params_file, mechanism=mechanism, num_sim=1000)
 
-    # ========== ALL DATASETS 2x5 ==========
-    # Plot all five datasets in a 2x5 layout (original layout with degrateAPC)
+    # ========== ALL DATASETS 2x6 ==========
+    # Plot all six datasets in a 2x6 layout (includes velcade dataset)
     # try:
     #     params = load_parameters(params_file)
     #     plot_all_datasets_2x2(params, mechanism=mechanism, data_file="Data/All_strains_SCStimes.xlsx", num_sim=1500)

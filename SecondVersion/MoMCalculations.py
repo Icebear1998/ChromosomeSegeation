@@ -96,7 +96,7 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
 
     elif mechanism == 'fixed_burst':
         if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
-            print("Invalid burst size 123")
+            print(f"Invalid burst size: {burst_size} (None: {burst_size is None}, <=0: {burst_size <= 0 if burst_size is not None else 'N/A'}, NaN: {math.isnan(burst_size) if burst_size is not None else 'N/A'})")
             return np.inf, np.inf
         if N_i is None or N_j is None or math.isnan(N_i) or math.isnan(N_j):
             print("Invalid N_i or N_j")
@@ -261,7 +261,7 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
 
     elif mechanism == 'fixed_burst_feedback_linear':
         if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
-            print("Invalid burst size")
+            print(f"Invalid burst size: {burst_size}")
             return np.inf, np.inf
         if w1 is None or w2 is None:
             print(w1, w2)
@@ -311,7 +311,7 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
 
     elif mechanism == 'fixed_burst_feedback_onion':
         if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
-            print("Invalid burst size")
+            print(f"Invalid burst size: {burst_size}")
             return np.inf, np.inf
         if n_inner is None:
             raise ValueError(

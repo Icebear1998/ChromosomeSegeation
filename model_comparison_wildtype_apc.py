@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
 Model Comparison using AIC and BIC for Chromosome Segregation Mechanisms.
+WILDTYPE AND APC DATA ONLY VERSION
 
 This script compares 8 different mechanisms using Akaike Information Criterion (AIC) 
 and Bayesian Information Criterion (BIC) by running multiple optimization runs 
 for each mechanism and averaging the results.
+
+This version uses only wildtype and degradeAPC datasets for faster comparison
+and focused analysis on the core mechanisms.
 
 Mechanisms compared:
 1. Constant rate mechanisms (MultiMechanismSimulation):
@@ -74,6 +78,31 @@ def get_parameter_count(mechanism):
     return param_counts.get(mechanism, 0)
 
 
+def filter_datasets_wildtype_apc(datasets):
+    """
+    Filter datasets to include only wildtype and degradeAPC.
+    
+    Args:
+        datasets (dict): All experimental datasets
+    
+    Returns:
+        dict: Filtered datasets containing only wildtype and degradeAPC
+    """
+    filtered_datasets = {}
+    
+    # Include only wildtype and degradeAPC
+    target_datasets = ['wildtype', 'degradeAPC']
+    
+    for dataset_name in target_datasets:
+        if dataset_name in datasets:
+            filtered_datasets[dataset_name] = datasets[dataset_name]
+            print(f"✅ Included {dataset_name}: {len(datasets[dataset_name]['delta_t12']) + len(datasets[dataset_name]['delta_t32'])} data points")
+        else:
+            print(f"⚠️  Warning: {dataset_name} not found in datasets")
+    
+    return filtered_datasets
+
+
 def get_total_data_points(datasets):
     """
     Calculate total number of data points across all datasets.
@@ -93,10 +122,9 @@ def get_total_data_points(datasets):
 
 def get_mom_data_points(datasets):
     """
-    Calculate total data points for MoM optimization (now includes Velcade).
-    MoM mechanisms now use all 5 datasets.
+    Calculate total data points for MoM optimization (wildtype and degradeAPC only).
     """
-    mom_datasets = ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']
+    mom_datasets = ['wildtype', 'degradeAPC']
     total_points = 0
     for dataset_name in mom_datasets:
         if dataset_name in datasets:
@@ -109,10 +137,11 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
     """
     Wrapper function for MoM optimization that calls the reusable function from MoMOptimization_join.py.
     Uses the already loaded datasets to avoid redundant data loading.
+    Modified for wildtype and degradeAPC only.
     
     Args:
         mechanism (str): Mechanism name
-        datasets (dict): Experimental datasets (already loaded)
+        datasets (dict): Experimental datasets (already loaded, wildtype and degradeAPC only)
         max_iterations (int): Maximum iterations for optimization
         selected_strains (list): List of strain names (not used, kept for interface compatibility)
         seed (int): Random seed for reproducible results
@@ -125,17 +154,18 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
         from MoMOptimization_join import run_mom_optimization_single
         
         # Convert datasets dict to the format expected by MoM optimization
+        # Only include wildtype and degradeAPC, set others to empty arrays
         data_arrays = {
-            'data_wt12': datasets['wildtype']['delta_t12'],
-            'data_wt32': datasets['wildtype']['delta_t32'],
-            'data_threshold12': datasets['threshold']['delta_t12'],
-            'data_threshold32': datasets['threshold']['delta_t32'],
-            'data_degrate12': datasets['degrade']['delta_t12'],
-            'data_degrate32': datasets['degrade']['delta_t32'],
-            'data_degrateAPC12': datasets['degradeAPC']['delta_t12'],
-            'data_degrateAPC32': datasets['degradeAPC']['delta_t32'],
-            'data_velcade12': datasets['velcade']['delta_t12'],
-            'data_velcade32': datasets['velcade']['delta_t32'],
+            'data_wt12': datasets.get('wildtype', {}).get('delta_t12', np.array([])),
+            'data_wt32': datasets.get('wildtype', {}).get('delta_t32', np.array([])),
+            'data_threshold12': np.array([]),  # Empty for wildtype+APC only analysis
+            'data_threshold32': np.array([]),
+            'data_degrate12': np.array([]),    # Empty for wildtype+APC only analysis
+            'data_degrate32': np.array([]),
+            'data_degrateAPC12': datasets.get('degradeAPC', {}).get('delta_t12', np.array([])),
+            'data_degrateAPC32': datasets.get('degradeAPC', {}).get('delta_t32', np.array([])),
+            'data_velcade12': np.array([]),    # Empty for wildtype+APC only analysis
+            'data_velcade32': np.array([]),
             # Initial proteins data is not available in the datasets dict, will use empty arrays
             'data_initial12': np.array([]),
             'data_initial32': np.array([])
@@ -166,6 +196,10 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
 def calculate_aic_bic(nll, n_params, n_data):
     """
     Calculate AIC and BIC from negative log-likelihood.
+    
+    Correct formulas:
+    - AIC = 2k - 2ln(L) = 2k + 2*NLL
+    - BIC = k*ln(n) - 2ln(L) = k*ln(n) + 2*NLL
     
     Args:
         nll (float): Negative log-likelihood
@@ -204,7 +238,7 @@ def run_single_optimization(args):
             print(f"  📊 Run {run_number}: Using simulation-based optimization...")
             result = run_optimization(
                 mechanism, datasets, 
-                max_iterations=200,  # Reduced from 200 to prevent hanging
+                max_iterations=200,
                 num_simulations=num_simulations,
                 selected_strains=None,
                 use_parallel=True  # Enable parallel computation within each run
@@ -214,7 +248,7 @@ def run_single_optimization(args):
             print(f"  📊 Run {run_number}: Using MoM-based optimization...")
             result = run_mom_optimization(
                 mechanism, datasets,
-                max_iterations=300,  # Reduced from 200 to prevent hanging
+                max_iterations=300,
                 selected_strains=None,
                 seed=seed + run_number  # Use unique seed for each run
             )
@@ -249,7 +283,7 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
     
     Args:
         mechanism (str): Mechanism name
-        datasets (dict): Experimental datasets
+        datasets (dict): Experimental datasets (wildtype and degradeAPC only)
         num_runs (int): Number of optimization runs
         num_simulations (int): Number of simulations per evaluation
         n_processes (int): Number of parallel processes (None for auto-detect)
@@ -264,9 +298,9 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
     n_params = get_parameter_count(mechanism)
     # Use appropriate data point calculation based on mechanism type
     if mechanism.startswith('time_varying_k'):
-        n_data = get_total_data_points(datasets)  # All 5 datasets
+        n_data = get_total_data_points(datasets)  # Wildtype + degradeAPC
     else:
-        n_data = get_mom_data_points(datasets)    # All 5 datasets now
+        n_data = get_mom_data_points(datasets)    # Wildtype + degradeAPC
     
     print(f"Parameters: {n_params}, Data points: {n_data}")
     
@@ -417,7 +451,7 @@ def create_comparison_plots(all_results, save_plots=True):
     
     # Create comparison plots
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle('Model Comparison: AIC and BIC Analysis', fontsize=16, y=0.98)
+    fig.suptitle('Model Comparison: AIC and BIC Analysis (Wildtype + APC Only)', fontsize=16, y=0.98)
     
     # 1. Mean AIC comparison
     mean_data = pd.DataFrame(successful_results)
@@ -489,7 +523,7 @@ def create_comparison_plots(all_results, save_plots=True):
     
     if save_plots:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f'model_comparison_aic_bic_{timestamp}.png'
+        filename = f'model_comparison_wildtype_apc_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         print(f"\nPlot saved as: {filename}")
     
@@ -534,7 +568,7 @@ def create_summary_table(all_results, save_table=True):
         df_summary = pd.concat([df_successful, df_failed], ignore_index=True)
     
     print(f"\n{'='*100}")
-    print("MODEL COMPARISON SUMMARY TABLE")
+    print("MODEL COMPARISON SUMMARY TABLE (WILDTYPE + APC ONLY)")
     print(f"{'='*100}")
     print(df_summary.to_string(index=False))
     
@@ -556,7 +590,7 @@ def create_summary_table(all_results, save_table=True):
     
     if save_table:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f'model_comparison_summary_{timestamp}.csv'
+        filename = f'model_comparison_wildtype_apc_{timestamp}.csv'
         df_summary.to_csv(filename, index=False)
         print(f"\nSummary table saved as: {filename}")
     
@@ -570,6 +604,7 @@ def main():
     print("="*80)
     print("CHROMOSOME SEGREGATION MODEL COMPARISON")
     print("AIC and BIC Analysis Across 8 Mechanisms")
+    print("WILDTYPE + APC DATA ONLY")
     print("="*80)
     
     # Display system information
@@ -580,12 +615,20 @@ def main():
     
     # Load experimental data
     print("\n📊 Loading experimental data...")
-    datasets = load_experimental_data()
-    if not datasets:
+    all_datasets = load_experimental_data()
+    if not all_datasets:
         print("❌ Error: Could not load experimental data!")
         return
     
-    print(f"✅ Loaded {len(datasets)} datasets: {list(datasets.keys())}")
+    # Filter to wildtype and degradeAPC only
+    print(f"\n🔍 Filtering to wildtype and degradeAPC datasets only...")
+    datasets = filter_datasets_wildtype_apc(all_datasets)
+    
+    if not datasets:
+        print("❌ Error: No valid datasets after filtering!")
+        return
+    
+    print(f"✅ Using {len(datasets)} datasets: {list(datasets.keys())}")
     total_points = get_total_data_points(datasets)
     print(f"✅ Total data points: {total_points}")
     
@@ -619,13 +662,14 @@ def main():
         print(f"  {i}. {mech} ({param_count} parameters, {mech_type})")
     
     # Configuration for sequential runs with internal parallelization
-    num_runs = 1  # Number of optimization runs per mechanism
+    num_runs = 5  # Number of optimization runs per mechanism
     
     print(f"\n⚙️  Parallel processing configuration:")
     print(f"   Strategy: Sequential runs with parallel computation within each run")
     print(f"   Available CPUs for internal parallelization: {n_cpus}")
     print(f"   Runs per mechanism: {num_runs}")
-    print(f"   Simulations per evaluation: 500")
+    print(f"   Simulations per evaluation: 400")
+    print(f"   Dataset focus: Wildtype + APC only (faster analysis)")
     
     # Run comparison for each mechanism
     all_results = []
@@ -639,7 +683,7 @@ def main():
         try:
             result = run_mechanism_comparison(
                 mechanism, datasets, 
-                num_runs=5, 
+                num_runs=num_runs, 
                 num_simulations=400,
                 n_processes=1  # Always 1 since we run sequentially with internal parallelization
             )
@@ -667,7 +711,7 @@ def main():
                 'n_params': get_parameter_count(mechanism),
                 'n_data': total_points,
                 'converged_runs': 0,
-                'failed_runs': 10,
+                'failed_runs': num_runs,
                 'convergence_rate': 0.0,
                 'mean_nll': np.nan,
                 'std_nll': np.nan,
@@ -689,7 +733,7 @@ def main():
     print(f"💻 Used {n_cpus} CPUs with parallel processing")
     
     # Calculate total optimization runs
-    total_runs = len(mechanisms) * 10
+    total_runs = len(mechanisms) * num_runs
     successful_runs = sum(r['converged_runs'] for r in all_results)
     overall_success_rate = (successful_runs / total_runs) * 100
     
@@ -697,6 +741,7 @@ def main():
     print(f"   Total optimization runs: {total_runs}")
     print(f"   Successful runs: {successful_runs}")
     print(f"   Overall success rate: {overall_success_rate:.1f}%")
+    print(f"   Dataset focus: Wildtype + APC only ({total_points} data points)")
     
     # Create summary table and plots
     print(f"\n📊 Creating summary and visualizations...")
@@ -706,6 +751,7 @@ def main():
     print(f"\n🎉 Model comparison analysis complete!")
     print(f"📁 Results saved with timestamp: {datetime.now().strftime('%Y%m%d_%H%M%S')}")
     print(f"🚀 Used sequential runs with parallel computation within each optimization")
+    print(f"🎯 Analysis focused on wildtype + APC data for faster comparison")
 
 
 if __name__ == "__main__":

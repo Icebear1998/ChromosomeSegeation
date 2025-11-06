@@ -122,77 +122,77 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
                                          param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_wt12)) / len(data_wt12)
+    total_nll -= np.sum(np.log(pdf_wt12))  # REMOVED: / len(data_wt12)
 
     pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
                                          param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_wt32)) / len(data_wt32)
+    total_nll -= np.sum(np.log(pdf_wt32))  # REMOVED: / len(data_wt32)
 
     # Threshold Mutant
     pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
                                          n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
     if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_th12)) / len(data_threshold12)
+    total_nll -= np.sum(np.log(pdf_th12))  # REMOVED: / len(data_threshold12)
 
     pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
                                          n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
     if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_th32)) / len(data_threshold32)
+    total_nll -= np.sum(np.log(pdf_th32))  # REMOVED: / len(data_threshold32)
 
     # Degradation Rate Mutant
-    k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.001)
-    if param_dict['beta_k'] * param_dict['k'] < 0.0001:
-        print("Warning: beta_k * k is less than 0.0001, setting k_deg to 0.0001")
+    k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.0005)
+    if param_dict['beta_k'] * param_dict['k'] < 0.00005:
+        print("Warning: beta_k * k is less than 0.00005, setting k_deg to 0.00005")
 
     pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
                                           param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
     if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_deg12)) / len(data_degrate12)
+    total_nll -= np.sum(np.log(pdf_deg12))  # REMOVED: / len(data_degrate12)
 
     pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
                                           param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
     if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_deg32)) / len(data_degrate32)
+    total_nll -= np.sum(np.log(pdf_deg32))  # REMOVED: / len(data_degrate32)
 
     # Degradation Rate APC Mutant
-    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
-    if param_dict['beta2_k'] * param_dict['k'] < 0.001:
-        print("Warning: beta2_k * k is less than 0.001, setting k_degAPC to 0.001")
+    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.0005)
+    if param_dict['beta2_k'] * param_dict['k'] < 0.0005:
+        print("Warning: beta2_k * k is less than 0.0005, setting k_degAPC to 0.0005")
 
     pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
                                              param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
     if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_degAPC12)) / len(data_degrateAPC12)
+    total_nll -= np.sum(np.log(pdf_degAPC12))  # REMOVED: / len(data_degrateAPC12)
 
     pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
                                              param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
     if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
+    total_nll -= np.sum(np.log(pdf_degAPC32))  # REMOVED: / len(data_degrateAPC32)
 
     # Velcade Mutant
-    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.001)
-    if param_dict['beta3_k'] * param_dict['k'] < 0.001:
-        print("Warning: beta3_k * k is less than 0.001, setting k_velcade to 0.001")
+    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.0005)
+    if param_dict['beta3_k'] * param_dict['k'] < 0.0005:
+        print("Warning: beta3_k * k is less than 0.0005, setting k_velcade to 0.0005")
 
     pdf_velcade12 = compute_pdf_for_mechanism(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
                                               param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
     if np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_velcade12)) / len(data_velcade12)
+    total_nll -= np.sum(np.log(pdf_velcade12))  # REMOVED: / len(data_velcade12)
 
     pdf_velcade32 = compute_pdf_for_mechanism(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
                                               param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
     if np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32)):
         return np.inf
-    total_nll -= np.sum(np.log(pdf_velcade32)) / len(data_velcade32)
+    total_nll -= np.sum(np.log(pdf_velcade32))  # REMOVED: / len(data_velcade32)
 
     # Initial Proteins Mutant - TEMPORARILY EXCLUDED FROM FITTING
     # PDF calculations and NLL contribution removed as initial strain is not being fitted
@@ -297,7 +297,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_wt12)) / len(data_wt12)
+        total_nll -= np.sum(np.log(pdf_wt12))  # REMOVED: / len(data_wt12)
     else:
         # For bootstrapping, we need to create "simulated" data from the theoretical PDF
         # Sample from the theoretical distribution represented by the PDF
@@ -319,7 +319,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_wt32)) / len(data_wt32)
+        total_nll -= np.sum(np.log(pdf_wt32))  # REMOVED: / len(data_wt32)
     else:
         try:
             pdf_normalized = pdf_wt32 / np.sum(pdf_wt32)
@@ -339,7 +339,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_th12)) / len(data_threshold12)
+        total_nll -= np.sum(np.log(pdf_th12))  # REMOVED: / len(data_threshold12)
     else:
         try:
             pdf_normalized = pdf_th12 / np.sum(pdf_th12)
@@ -359,7 +359,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_th32)) / len(data_threshold32)
+        total_nll -= np.sum(np.log(pdf_th32))  # REMOVED: / len(data_threshold32)
     else:
         try:
             pdf_normalized = pdf_th32 / np.sum(pdf_th32)
@@ -384,7 +384,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_deg12)) / len(data_degrate12)
+        total_nll -= np.sum(np.log(pdf_deg12))  # REMOVED: / len(data_degrate12)
     else:
         try:
             pdf_normalized = pdf_deg12 / np.sum(pdf_deg12)
@@ -404,7 +404,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_deg32)) / len(data_degrate32)
+        total_nll -= np.sum(np.log(pdf_deg32))  # REMOVED: / len(data_degrate32)
     else:
         try:
             pdf_normalized = pdf_deg32 / np.sum(pdf_deg32)
@@ -429,7 +429,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_degAPC12)) / len(data_degrateAPC12)
+        total_nll -= np.sum(np.log(pdf_degAPC12))  # REMOVED: / len(data_degrateAPC12)
     else:
         try:
             pdf_normalized = pdf_degAPC12 / np.sum(pdf_degAPC12)
@@ -449,7 +449,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_degAPC32)) / len(data_degrateAPC32)
+        total_nll -= np.sum(np.log(pdf_degAPC32))  # REMOVED: / len(data_degrateAPC32)
     else:
         try:
             pdf_normalized = pdf_degAPC32 / np.sum(pdf_degAPC32)
@@ -474,7 +474,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_velcade12)) / len(data_velcade12)
+        total_nll -= np.sum(np.log(pdf_velcade12))  # REMOVED: / len(data_velcade12)
     else:
         try:
             pdf_normalized = pdf_velcade12 / np.sum(pdf_velcade12)
@@ -494,7 +494,7 @@ def joint_objective_with_bootstrapping(params, mechanism, mechanism_info,
     if bootstrap_method == 'standard':
         if np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32)):
             return np.inf
-        total_nll -= np.sum(np.log(pdf_velcade32)) / len(data_velcade32)
+        total_nll -= np.sum(np.log(pdf_velcade32))  # REMOVED: / len(data_velcade32)
     else:
         try:
             pdf_normalized = pdf_velcade32 / np.sum(pdf_velcade32)
@@ -547,26 +547,26 @@ def get_mechanism_info(mechanism, gamma_mode):
     Returns:
         dict: Contains parameter names, bounds, and default indices
     """
-    # Common parameters for all mechanisms
+    # Common parameters for all mechanisms - Updated to match simulation_utils.py bounds
     common_params = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23']
     common_bounds = [
-        (3, 50),      # n2
-        (100, 500),   # N2
-        (0.005, 0.4),  # k
-        (0.5, 3.0),   # r21
-        (0.5, 3.0),   # r23
-        (0.1, 1.0),   # R21
-        (0.5, 5.0),   # R23
+        (1.0, 50.0),      # n2 - Updated to match simulation bounds
+        (50.0, 1000.0),   # N2 - Updated to match simulation bounds  
+        (0.01, 0.1),      # k - Updated to match simulation k_max bounds
+        (0.25, 4.0),      # r21 - Updated to match simulation bounds
+        (0.25, 4.0),      # r23 - Updated to match simulation bounds
+        (0.4, 2),       # R21 - Updated to match simulation bounds
+        (0.5, 5.0),       # R23 - Kept same as both use (0.5, 5.0)
     ]
 
-    # Mutant parameters - INITIAL STRAIN TEMPORARILY EXCLUDED
+    # Mutant parameters - Updated to match simulation_utils.py bounds
     # Including alpha, beta_k, beta2_k, beta3_k (gamma parameters excluded)
     mutant_params = ['alpha', 'beta_k', 'beta2_k', 'beta3_k']
     mutant_bounds = [
-        (0.1, 0.9),   # alpha
-        (0.1, 0.9),   # beta_k
-        (0.1, 0.9),   # beta2_k
-        (0.1, 0.9),   # beta3_k (Velcade)
+        (0.1, 0.7),       # alpha - Updated to match simulation bounds
+        (0.1, 1.0),       # beta_k - Updated to match simulation bounds
+        (0.1, 1.0),        # beta2_k - Updated to match simulation beta_tau bounds
+        (0.1, 1.0),        # beta3_k (Velcade) - Updated to match simulation beta_tau2 bounds
     ]
 
     if mechanism == 'simple':
@@ -574,7 +574,7 @@ def get_mechanism_info(mechanism, gamma_mode):
         mechanism_bounds = []
     elif mechanism == 'fixed_burst':
         mechanism_params = ['burst_size']
-        mechanism_bounds = [(1, 15)]
+        mechanism_bounds = [(1.0, 50.0)]  # Updated to match simulation bounds
     elif mechanism == 'time_varying_k':
         mechanism_params = ['k_1']
         mechanism_bounds = [(0.00001, 0.02)]
@@ -591,7 +591,7 @@ def get_mechanism_info(mechanism, gamma_mode):
     elif mechanism == 'feedback_onion':
         mechanism_params = ['n_inner']
         mechanism_bounds = [
-            (5, 50),   # n_inner
+            (1.0, 100.0),   # n_inner - Updated to match simulation bounds
         ]
     elif mechanism == 'feedback_zipper':
         mechanism_params = ['z1', 'z2', 'z3']
@@ -603,7 +603,7 @@ def get_mechanism_info(mechanism, gamma_mode):
     elif mechanism == 'fixed_burst_feedback_linear':
         mechanism_params = ['burst_size', 'w1', 'w2', 'w3']
         mechanism_bounds = [
-            (1, 20),         # burst_size
+            (1.0, 50.0),     # burst_size - Updated to match simulation bounds
             (0.0001, 0.02),  # w1
             (0.0001, 0.02),  # w2
             (0.0001, 0.02),  # w3
@@ -611,8 +611,8 @@ def get_mechanism_info(mechanism, gamma_mode):
     elif mechanism == 'fixed_burst_feedback_onion':
         mechanism_params = ['burst_size', 'n_inner']
         mechanism_bounds = [
-            (1, 20),   # burst_size
-            (5, 50),   # n_inner
+            (1.0, 50.0),     # burst_size - Updated to match simulation bounds
+            (1.0, 100.0),    # n_inner - Updated to match simulation bounds
         ]
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
@@ -629,14 +629,108 @@ def get_mechanism_info(mechanism, gamma_mode):
     }
 
 
+def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=200, seed=None, gamma_mode='separate'):
+    """
+    Run a single MoM optimization for a given mechanism.
+    This function can be reused by other scripts for model comparison.
+    
+    Args:
+        mechanism (str): Mechanism name
+        data_arrays (dict): Dictionary containing data arrays, if None will load from file
+        max_iterations (int): Maximum iterations for optimization
+        seed (int): Random seed for reproducible results
+        gamma_mode (str): 'unified' or 'separate' gamma mode
+    
+    Returns:
+        dict: Results dictionary with success, nll, params, etc.
+    """
+    try:
+        # Get mechanism-specific information
+        mechanism_info = get_mechanism_info(mechanism, gamma_mode)
+        bounds = mechanism_info['bounds']
+        
+        # Use provided data arrays or load from file
+        if data_arrays is not None:
+            # Use pre-loaded data arrays
+            data_wt12 = data_arrays['data_wt12']
+            data_wt32 = data_arrays['data_wt32']
+            data_threshold12 = data_arrays['data_threshold12']
+            data_threshold32 = data_arrays['data_threshold32']
+            data_degrate12 = data_arrays['data_degrate12']
+            data_degrate32 = data_arrays['data_degrate32']
+            data_initial12 = data_arrays.get('data_initial12', np.array([]))
+            data_initial32 = data_arrays.get('data_initial32', np.array([]))
+            data_degrateAPC12 = data_arrays['data_degrateAPC12']
+            data_degrateAPC32 = data_arrays['data_degrateAPC32']
+            data_velcade12 = data_arrays['data_velcade12']
+            data_velcade32 = data_arrays['data_velcade32']
+        else:
+            # Load data from file (for standalone use)
+            df = pd.read_excel("Data/All_strains_SCStimes.xlsx")
+            data_wt12 = df['wildtype12'].dropna().values
+            data_wt32 = df['wildtype32'].dropna().values
+            data_threshold12 = df['threshold12'].dropna().values
+            data_threshold32 = df['threshold32'].dropna().values
+            data_degrate12 = df['degRade12'].dropna().values
+            data_degrate32 = df['degRade32'].dropna().values
+            # Handle missing initialProteins columns
+            data_initial12 = df['initialProteins12'].dropna().values if 'initialProteins12' in df.columns else np.array([])
+            data_initial32 = df['initialProteins32'].dropna().values if 'initialProteins32' in df.columns else np.array([])
+            data_degrateAPC12 = df['degRadeAPC12'].dropna().values
+            data_degrateAPC32 = df['degRadeAPC32'].dropna().values
+            data_velcade12 = df['degRadeVel12'].dropna().values
+            data_velcade32 = df['degRadeVel32'].dropna().values
+        
+        # Use provided seed or default to 42
+        optimization_seed = seed if seed is not None else 42
+        
+        # Run optimization using differential evolution
+        result = differential_evolution(
+            joint_objective,
+            bounds=bounds,
+            args=(mechanism, mechanism_info, data_wt12, data_wt32,
+                  data_threshold12, data_threshold32,
+                  data_degrate12, data_degrate32,
+                  data_initial12, data_initial32,
+                  data_degrateAPC12, data_degrateAPC32,
+                  data_velcade12, data_velcade32),
+            maxiter=max_iterations,
+            popsize=15,
+            seed=optimization_seed,
+            disp=False
+        )
+        
+        # Convert to standard format
+        return {
+            'success': True,
+            'converged': result.success,
+            'nll': result.fun,
+            'params': dict(zip(mechanism_info['params'], result.x)),
+            'result': result,
+            'message': result.message if not result.success else "Converged successfully",
+            'mechanism_info': mechanism_info
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'converged': False,
+            'nll': np.inf,
+            'params': {},
+            'result': None,
+            'message': f"MoM optimization failed: {e}",
+            'mechanism_info': None
+        }
+
+
 def main():
     # ========== MECHANISM CONFIGURATION ==========
-    # Choose mechanism: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'
+    # Choose mechanism: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
     mechanism = 'fixed_burst_feedback_onion'  # Auto-set by RunAllMechanisms.py
 
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
-    gamma_mode = 'separate'  # Change this to 'separate' for individual gamma per chromosome
+    gamma_mode = 'unified'  # Change this to 'separate' for individual gamma per chromosome
 
     print(f"Optimizing for mechanism: {mechanism}")
     print(f"Gamma mode: {gamma_mode}")
@@ -658,8 +752,9 @@ def main():
     data_threshold32 = df['threshold32'].dropna().values
     data_degrate12 = df['degRade12'].dropna().values
     data_degrate32 = df['degRade32'].dropna().values
-    data_initial12 = df['initialProteins12'].dropna().values
-    data_initial32 = df['initialProteins32'].dropna().values
+    # Handle missing initialProteins columns
+    data_initial12 = df['initialProteins12'].dropna().values if 'initialProteins12' in df.columns else np.array([])
+    data_initial32 = df['initialProteins32'].dropna().values if 'initialProteins32' in df.columns else np.array([])
     data_degrateAPC12 = df['degRadeAPC12'].dropna().values
     data_degrateAPC32 = df['degRadeAPC32'].dropna().values
     data_velcade12 = df['degRadeVel12'].dropna().values
@@ -756,7 +851,7 @@ def main():
             x0=params,
             args=(mechanism, mechanism_info, data_wt12, data_wt32, data_threshold12, data_threshold32,
                   data_degrate12, data_degrate32, data_initial12, data_initial32,
-                  data_degrateAPC12, data_degrateAPC32),
+                  data_degrateAPC12, data_degrateAPC32, data_velcade12, data_velcade32),
             method='L-BFGS-B',
             bounds=bounds,
             options={'disp': False}

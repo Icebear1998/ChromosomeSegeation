@@ -431,7 +431,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         return 1e6
 
 
-def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500, selected_strains=None, use_parallel=False):
+def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500, selected_strains=None, use_parallel=False, initial_guess=None):
     """
     Run joint optimization for selected datasets.
     
@@ -441,6 +441,9 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         max_iterations (int): Maximum iterations for optimization
         num_simulations (int): Number of simulations per evaluation
         selected_strains (list): List of strain names to include in fitting
+        use_parallel (bool): Whether to use parallel processing
+        initial_guess (list, optional): Initial guess parameter vector. If None, uses random initialization.
+                                       Example: [n2, N2, k_max, tau, r21, r23, R21, R23, alpha, beta_k, beta_tau, beta_tau2]
     
     Returns:
         dict: Optimization results
@@ -470,26 +473,59 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         for i, (name, bound) in enumerate(zip(param_names, bounds)):
             print(f"  {name}: {bound}")
     
-    # Quick test to ensure optimization will work
-    print("\nTesting parameter bounds with a quick simulation...")
-    import random
-    test_params = []
-    for bound in bounds:
-        test_params.append(random.uniform(bound[0], bound[1]))
+    # Handle initial guess
+    if initial_guess is not None:
+        print(f"\n🎯 Using provided initial guess with {len(initial_guess)} parameters")
+        print(f"   Initial guess: {initial_guess}")
+        
+        # Validate initial guess is within bounds
+        if len(initial_guess) != len(bounds):
+            print(f"❌ Error: Initial guess has {len(initial_guess)} parameters, but mechanism needs {len(bounds)}")
+            print("   Falling back to random initialization")
+            initial_guess = None
+        else:
+            valid_guess = True
+            for i, (guess_val, bound) in enumerate(zip(initial_guess, bounds)):
+                if not (bound[0] <= guess_val <= bound[1]):
+                    print(f"⚠️  Initial guess parameter {i} ({guess_val:.4f}) is outside bounds {bound}")
+                    valid_guess = False
+            
+            if not valid_guess:
+                print("❌ Initial guess contains out-of-bounds values, falling back to random initialization")
+                initial_guess = None
+            else:
+                print("✅ Initial guess validated")
+                # Test initial guess
+                test_nll = joint_objective(initial_guess, mechanism, datasets, num_simulations=10, selected_strains=selected_strains)
+                print(f"   Initial guess NLL: {test_nll:.2f}")
     
-    test_nll = joint_objective(test_params, mechanism, datasets, num_simulations=10, selected_strains=selected_strains)
-    if test_nll < 1e6:
-        print(f"✓ Parameter bounds are valid (test NLL = {test_nll:.1f})")
-        print(f"🚀 Starting optimization with {num_simulations} simulations per evaluation...")
+    # Quick test to ensure optimization will work (if no initial guess provided)
+    if initial_guess is None:
+        print("\nTesting parameter bounds with a quick simulation...")
+        import random
+        test_params = []
+        for bound in bounds:
+            test_params.append(random.uniform(bound[0], bound[1]))
+        
+        test_nll = joint_objective(test_params, mechanism, datasets, num_simulations=10, selected_strains=selected_strains)
+        if test_nll < 1e6:
+            print(f"✓ Parameter bounds are valid (test NLL = {test_nll:.1f})")
+        else:
+            print(f"⚠ Warning: Test failed with NLL = {test_nll:.1f}")
+            print("  Continuing with optimization anyway...")
+    
+    print(f"🚀 Starting optimization with {num_simulations} simulations per evaluation...")
+    if initial_guess is not None:
+        print("   Using provided initial guess")
     else:
-        print(f"⚠ Warning: Test failed with NLL = {test_nll:.1f}")
-        print("  Continuing with optimization anyway...")
+        print("   Using random initialization")
     
     # Global optimization
     result = differential_evolution(
         joint_objective,
         bounds,
         args=(mechanism, datasets, num_simulations, selected_strains),
+        x0=initial_guess,  # Add initial guess parameter
         maxiter=max_iterations,
         popsize=15,
         seed=42,
@@ -642,18 +678,24 @@ def main():
     
     # Test mechanisms
     mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
-    mechanism = mechanisms[3]  # Test the burst_onion mechanism
+    mechanism = mechanisms[1]  # Test the burst_onion mechanism
     
     print(f"\nOptimizing {mechanism} for ALL strains")
     
     try:
+        # Example: Manually specify initial guess (uncomment to use)
+        # For time_varying_k_fixed_burst: [n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau, beta_tau2]
+        # initial_guess = [2.33, 50.33, 0.051, 30.0, 0.46, 2.48, 0.51, 4.55, 5.0, 0.54, 0.45, 1.0, 1.0]
+        initial_guess = None  # Set to None for random initialization
+        
         # Run optimization for all strains
         results = run_optimization(
             mechanism, datasets, 
             max_iterations=max_iterations, 
             num_simulations=num_simulations,
             selected_strains=None,  # Use all strains
-            use_parallel=True  # Enable parallel processing now that it's working
+            use_parallel=True,  # Enable parallel processing now that it's working
+            initial_guess=initial_guess  # Add initial guess parameter
         )
         
         # Save results

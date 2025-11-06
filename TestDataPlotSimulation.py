@@ -237,11 +237,25 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         if not sim_delta_t12 or not sim_delta_t32:
             continue
         
+        # Set up x_grid for PDF plotting
+        x_min, x_max = -140, 140  # Default range for all mechanisms
+        if dataset == "velcade":
+            x_min, x_max = -350, 350
+        if dataset in ["wildtype", "threshold"]:
+            x_min, x_max = -100, 100    
+        x_grid = np.linspace(x_min, x_max, 401)
         # Plot T1-T2 (top row) - matching TestDataPlot.py style
+        # Calculate bins for 3.5 second intervals
+        bin_width = 3.5
+        all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
+        bins_12 = np.arange(np.floor(all_data_12.min() / bin_width) * bin_width, 
+                            np.ceil(all_data_12.max() / bin_width) * bin_width + bin_width, 
+                            bin_width)
+        
         ax_12 = axes[0, i]
-        ax_12.hist(exp_delta_t12, bins=15, alpha=0.6, label='Experimental data', color='lightblue', density=True)
-        ax_12.hist(sim_delta_t12, bins=15, alpha=0.6, label='Simulated data', color='orange', density=True)
-        ax_12.set_xlim(-150, 150)
+        ax_12.hist(exp_delta_t12, bins=bins_12, alpha=0.6, label='Experimental data', color='lightblue', density=True)
+        ax_12.hist(sim_delta_t12, bins=bins_12, alpha=0.6, label='Simulated data', color='orange', density=True)
+        ax_12.set_xlim(x_min - 20, x_max + 20)
         ax_12.set_title(f'{title}\nChrom1-Chrom2')
         ax_12.set_xlabel('Time Difference')
         ax_12.set_ylabel('Density')
@@ -259,10 +273,16 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
         # Plot T3-T2 (bottom row) - matching TestDataPlot.py style
+        # Calculate bins for 3.5 second intervals
+        all_data_32 = np.concatenate([exp_delta_t32, sim_delta_t32])
+        bins_32 = np.arange(np.floor(all_data_32.min() / bin_width) * bin_width, 
+                            np.ceil(all_data_32.max() / bin_width) * bin_width + bin_width, 
+                            bin_width)
+        
         ax_32 = axes[1, i]
-        ax_32.hist(exp_delta_t32, bins=15, alpha=0.6, label='Experimental data', color='lightblue', density=True)
-        ax_32.hist(sim_delta_t32, bins=15, alpha=0.6, label='Simulated data', color='orange', density=True)
-        ax_32.set_xlim(-150, 150)
+        ax_32.hist(exp_delta_t32, bins=bins_32, alpha=0.6, label='Experimental data', color='lightblue', density=True)
+        ax_32.hist(sim_delta_t32, bins=bins_32, alpha=0.6, label='Simulated data', color='orange', density=True)
+        ax_32.set_xlim(x_min- 20, x_max + 20)
         ax_32.set_title(f'Chrom3-Chrom2')
         ax_32.set_xlabel('Time Difference')
         ax_32.set_ylabel('Density')
@@ -327,10 +347,25 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
         print(f"Failed to generate simulation data for {dataset_name}")
         return
     
+    # Set up x_grid for PDF plotting
+    x_min, x_max = -140, 140  # Default range for all mechanisms
+    if dataset == "velcade":
+        x_min, x_max = -350, 350
+    if dataset in ["wildtype", "threshold"]:
+        x_min, x_max = -100, 100    
+    x_grid = np.linspace(x_min, x_max, 401)
+    
+    # Calculate bins for 3.5 second intervals
+    bin_width = 3.5
+    all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
+    bins_12 = np.arange(np.floor(all_data_12.min() / bin_width) * bin_width, 
+                        np.ceil(all_data_12.max() / bin_width) * bin_width + bin_width, 
+                        bin_width)
+    
     # Plot Chrom1 - Chrom2
-    ax1.hist(exp_delta_t12, bins=15, density=True, alpha=0.6, label='Experimental data', color='lightblue')
-    ax1.hist(sim_delta_t12, bins=15, density=True, alpha=0.6, label='Simulated data', color='orange')
-    ax1.set_xlim(-150, 150)
+    ax1.hist(exp_delta_t12, bins=bins_12, density=True, alpha=0.6, label='Experimental data', color='lightblue')
+    ax1.hist(sim_delta_t12, bins=bins_12, density=True, alpha=0.6, label='Simulated data', color='orange')
+    ax1.set_xlim(x_min - 20, x_max + 20)
     ax1.set_xlabel('Time Difference')
     ax1.set_ylabel('Density')
     ax1.set_title(f"Chrom1 - Chrom2 ({dataset_name}, {mechanism.replace('_', ' ').title()})")
@@ -342,10 +377,16 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
+    # Calculate bins for 3.5 second intervals for Chrom3 - Chrom2
+    all_data_32 = np.concatenate([exp_delta_t32, sim_delta_t32])
+    bins_32 = np.arange(np.floor(all_data_32.min() / bin_width) * bin_width, 
+                        np.ceil(all_data_32.max() / bin_width) * bin_width + bin_width, 
+                        bin_width)
+    
     # Plot Chrom3 - Chrom2
-    ax2.hist(exp_delta_t32, bins=14, density=True, alpha=0.6, label='Experimental data', color='lightblue')
-    ax2.hist(sim_delta_t32, bins=14, density=True, alpha=0.6, label='Simulated data', color='orange')
-    ax2.set_xlim(-150, 150)
+    ax2.hist(exp_delta_t32, bins=bins_32, density=True, alpha=0.6, label='Experimental data', color='lightblue')
+    ax2.hist(sim_delta_t32, bins=bins_32, density=True, alpha=0.6, label='Simulated data', color='orange')
+    ax2.set_xlim(x_min - 20, x_max + 20)
     ax2.set_xlabel('Time Difference')
     ax2.set_ylabel('Density')
     ax2.set_title(f"Chrom3 - Chrom2 ({dataset_name}, {mechanism.replace('_', ' ').title()})")
@@ -499,7 +540,7 @@ if __name__ == "__main__":
     # Single dataset configuration (only used if run_single_dataset = True)
     mechanism = 'time_varying_k_combined'  # Choose mechanism to test
     filename = 'simulation_optimized_parameters_R1_time_varying_k_combined.txt'
-    dataset = 'degradeAPC'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
+    dataset = 'velcade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
     
     if run_all_mechanisms:
         main()
