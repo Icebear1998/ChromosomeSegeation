@@ -574,45 +574,17 @@ def get_mechanism_info(mechanism, gamma_mode):
         mechanism_bounds = []
     elif mechanism == 'fixed_burst':
         mechanism_params = ['burst_size']
-        mechanism_bounds = [(1.0, 50.0)]  # Updated to match simulation bounds
-    elif mechanism == 'time_varying_k':
-        mechanism_params = ['k_1']
-        mechanism_bounds = [(0.00001, 0.02)]
-    elif mechanism == 'feedback':
-        mechanism_params = ['feedbackSteepness', 'feedbackThreshold']
-        mechanism_bounds = [(0.01, 0.1), (50, 150)]
-    elif mechanism == 'feedback_linear':
-        mechanism_params = ['w1', 'w2', 'w3']
-        mechanism_bounds = [
-            (0.0001, 0.02),  # w1
-            (0.0001, 0.02),  # w2
-            (0.0001, 0.02),  # w3
-        ]
+        mechanism_bounds = [(1.0, 20.0)]  # Updated to match simulation bounds
     elif mechanism == 'feedback_onion':
         mechanism_params = ['n_inner']
         mechanism_bounds = [
-            (1.0, 100.0),   # n_inner - Updated to match simulation bounds
-        ]
-    elif mechanism == 'feedback_zipper':
-        mechanism_params = ['z1', 'z2', 'z3']
-        mechanism_bounds = [
-            (10, 100),  # z1
-            (10, 100),  # z2
-            (10, 100),  # z3
-        ]
-    elif mechanism == 'fixed_burst_feedback_linear':
-        mechanism_params = ['burst_size', 'w1', 'w2', 'w3']
-        mechanism_bounds = [
-            (1.0, 50.0),     # burst_size - Updated to match simulation bounds
-            (0.0001, 0.02),  # w1
-            (0.0001, 0.02),  # w2
-            (0.0001, 0.02),  # w3
+            (1.0, 4000.0),   # n_inner - Updated to match simulation bounds
         ]
     elif mechanism == 'fixed_burst_feedback_onion':
         mechanism_params = ['burst_size', 'n_inner']
         mechanism_bounds = [
-            (1.0, 50.0),     # burst_size - Updated to match simulation bounds
-            (1.0, 100.0),    # n_inner - Updated to match simulation bounds
+            (1.0, 20.0),     # burst_size - Updated to match simulation bounds
+            (1.0, 4000.0),    # n_inner - Updated to match simulation bounds
         ]
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
@@ -726,7 +698,7 @@ def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=200,
 def main():
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
-    mechanism = 'fixed_burst_feedback_onion'  # Auto-set by RunAllMechanisms.py
+    mechanism = 'simple'  # Auto-set by RunAllMechanisms.py
 
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3

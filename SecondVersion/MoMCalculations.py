@@ -104,90 +104,31 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
         if n_i is None or n_j is None or math.isnan(n_i) or math.isnan(n_j):
             print("Invalid n_i or n_j")
             return np.inf, np.inf
-        # print("N_i, N_j, n_i, n_j, burst_size", N_i, N_j, n_i, n_j, burst_size)
-        # Ensure number of bursts is non-negative and valid
-        num_bursts_i = max(0, int(np.ceil((N_i - n_i) / burst_size)))
-        num_bursts_j = max(0, int(np.ceil((N_j - n_j) / burst_size)))
+        
+        # FIXED: Use consistent rounding with simple model
+        # Sum over cohesin counts m (same as simple), with burst-size weighting
+        final_state_i = max(1, int(round(n_i)))
+        final_state_j = max(1, int(round(n_j)))
+        
+        mean_Ti = 0.0
+        mean_Tj = 0.0
+        var_Ti = 0.0
+        var_Tj = 0.0
+        
+        # Sum over cohesin counts m from n_i to N_i (same range as simple model)
+        for m in range(final_state_i + 1, int(N_i) + 1):
+            # At cohesin count m, rate is k*m, but removal happens in bursts
+            # Expected time for burst: burst_size / (k*m)
+            # When burst_size=1: this becomes 1/(k*m), identical to simple
+            E_tau_m = burst_size / (k * m)
+            mean_Ti += E_tau_m / burst_size
+            var_Ti += (E_tau_m / burst_size) ** 2
+        
+        for m in range(final_state_j + 1, int(N_j) + 1):
+            E_tau_m = burst_size / (k * m)
+            mean_Tj += E_tau_m / burst_size
+            var_Tj += (E_tau_m / burst_size) ** 2
 
-        if num_bursts_i == 0 or num_bursts_j == 0:
-            return 0.0, 0.0
-
-        # Compute moments with safe division
-        mean_Ti = sum(1 / (k * max(1e-10, (N_i - m * burst_size)))
-                      for m in range(num_bursts_i))
-        mean_Tj = sum(1 / (k * max(1e-10, (N_j - m * burst_size)))
-                      for m in range(num_bursts_j))
-        var_Ti = sum(1 / (k * max(1e-10, (N_i - m * burst_size)))
-                     ** 2 for m in range(num_bursts_i))
-        var_Tj = sum(1 / (k * max(1e-10, (N_j - m * burst_size)))
-                     ** 2 for m in range(num_bursts_j))
-
-    elif mechanism == 'time_varying_k':
-        if k_1 is None:
-            raise ValueError(
-                "k_1 must be provided for time_varying mechanism.")
-
-        def mom_time_varying_k_approx(N, n, k1):
-            """
-            Computes moments for k(t) = k1*t using an effective rate approximation.
-            1. Estimate total time T_est using a deterministic ODE model.
-            2. Calculate the average rate k_avg over T_est.
-            3. Use k_avg as an effective constant rate in the standard MoM formulas.
-            """
-            if N <= n or k1 <= 0:
-                return 0.0, 0.0
-
-            # Step 1: Estimate total time T_est = sqrt(2*ln(N/n)/k1)
-            # This comes from solving dM/dt = -k1*t*M
-            log_ratio = np.log(N / n)
-            t_est = np.sqrt(2 * log_ratio / k1)
-
-            # Step 2: Calculate the average rate over that time, k_avg = k1 * T_est / 2
-            k_eff = (k1 * t_est) / 2
-            
-            # If k_eff is zero or negligible, no degradation occurs.
-            if k_eff < 1e-10:
-                return 0.0, 0.0
-
-            # Step 3: Use k_eff in the standard MoM harmonic sum formulas
-            final_state = max(1, int(round(n)))
-            initial_state = int(N)
-            
-            m_range = range(final_state + 1, initial_state + 1)
-            
-            sum1 = sum(1/m for m in m_range)
-            sum2 = sum(1/(m**2) for m in m_range)
-            
-            mean_T = sum1 / k_eff
-            var_T = sum2 / (k_eff**2)
-            
-            return mean_T, var_T
-
-        mean_Ti, var_Ti = mom_time_varying_k_approx(N_i, n_i, k_1)
-        mean_Tj, var_Tj = mom_time_varying_k_approx(N_j, n_j, k_1)
-
-    elif mechanism == 'feedback_linear':
-        if w1 is None or w2 is None:
-            print(w1, w2)
-            raise ValueError(
-                "Parameters 'w1' and 'w2' must be provided for the feedback linear mechanism.")
-
-        def mom_feedback_linear(N, n, k, w=100):
-            mean_T = 0.0
-            var_T = 0.0
-            for m in range(int(n) + 1, int(N) + 1):
-                W_m = 1 - w*m
-                E_tau_m = 1/(W_m*m)
-                mean_T += E_tau_m
-                var_T += E_tau_m**2
-            mean_T /= k
-            var_T /= k**2
-            return mean_T, var_T
-
-        mean_Ti, var_Ti = mom_feedback_linear(
-            N_i, n_i, k, w1)
-        mean_Tj, var_Tj = mom_feedback_linear(
-            N_j, n_j, k, w2)
 
     elif mechanism == 'feedback_onion':
         if n_inner is None:
@@ -195,18 +136,26 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
                 "Parameter 'n_inner' must be provided for the feedback onion mechanism.")
 
         def mom_feedback_onion(N, n, k, n_inner):
+            """
+            FIXED: W_m now depends on current cohesin count m, not initial N.
+            When m > n_inner: degradation is slower (W_m < 1)
+            When m <= n_inner: normal degradation (W_m = 1)
+            This creates true state-dependent feedback.
+            """
+            # FIXED: Use same rounding as simple model for consistency
+            final_state = max(1, int(round(n)))
+            
             mean_T = 0.0
             var_T = 0.0
-            for m in range(int(n) + 1, int(N) + 1):
-                if N > n_inner:
-                    W_m = (N / n_inner) ** (-1/3)
+            for m in range(final_state + 1, int(N) + 1):
+                # Feedback depends on CURRENT cohesin count m, not initial N
+                if m > n_inner:
+                    W_m = (m / n_inner) ** (-1/3)  # Slower degradation when m > n_inner
                 else:
-                    W_m = 1.0
-                E_tau_m = 1/(W_m*m)
+                    W_m = 1.0  # Normal degradation when m <= n_inner
+                E_tau_m = 1/(W_m * k * m)  # Include k here for correct units
                 mean_T += E_tau_m
                 var_T += E_tau_m**2
-            mean_T /= k
-            var_T /= k**2
             return mean_T, var_T
 
         mean_Ti, var_Ti = mom_feedback_onion(
@@ -214,100 +163,6 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
         mean_Tj, var_Tj = mom_feedback_onion(
             N_j, n_j, k, n_inner)
 
-    elif mechanism == 'feedback_zipper':
-        if z1 is None or z2 is None:
-            raise ValueError(
-                "Parameters 'z1' and 'z2' must be provided for the feedback zipper mechanism.")
-
-        def mom_feedback_zipper(N, n, k, z):
-            mean_T = 0.0
-            var_T = 0.0
-            for m in range(int(n) + 1, int(N) + 1):
-                W_m = z / N
-                E_tau_m = 1/(W_m*m)
-                mean_T += E_tau_m
-                var_T += E_tau_m**2
-            mean_T /= k
-            var_T /= k**2
-            return mean_T, var_T
-
-        mean_Ti, var_Ti = mom_feedback_zipper(
-            N_i, n_i, k, z1)
-        mean_Tj, var_Tj = mom_feedback_zipper(
-            N_j, n_j, k, z2)
-
-    elif mechanism == 'feedback':
-        if feedbackSteepness is None or feedbackThreshold is None:
-            raise ValueError(
-                "Parameters 'a' and 'm_threshold' must be provided for the feedback mechanism.")
-
-        def mom_feedback(N, n, k, feedbackSteepness, feedbackThreshold):
-            mean_T = 0.0
-            var_T = 0.0
-            for m in range(int(n) + 1, int(N) + 1):
-                W_m = 1 / (1 + np.exp(feedbackSteepness *
-                           (m - feedbackThreshold)))
-                E_tau_m = 1/(W_m*m)
-                mean_T += E_tau_m
-                var_T += E_tau_m**2
-            mean_T /= k
-            var_T /= k**2
-            return mean_T, var_T
-
-        mean_Ti, var_Ti = mom_feedback(
-            N_i, n_i, k, feedbackSteepness, feedbackThreshold)
-        mean_Tj, var_Tj = mom_feedback(
-            N_j, n_j, k, feedbackSteepness, feedbackThreshold)
-
-    elif mechanism == 'fixed_burst_feedback_linear':
-        if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
-            print(f"Invalid burst size: {burst_size}")
-            return np.inf, np.inf
-        if w1 is None or w2 is None:
-            print(w1, w2)
-            raise ValueError(
-                "Parameters 'w1' and 'w2' must be provided for the feedback linear mechanism.")
-
-        # Ensure number of bursts is non-negative and valid
-        if N_i is None or N_j is None or math.isnan(N_i) or math.isnan(N_j) or burst_size is None:
-            print("N_i, N_j, n_i, n_j, burst_size", N_i, N_j, n_i, n_j, burst_size)
-        num_bursts_i = max(0, int(np.ceil((N_i - n_i) / burst_size)))
-        num_bursts_j = max(0, int(np.ceil((N_j - n_j) / burst_size)))
-
-        if num_bursts_i == 0 or num_bursts_j == 0:
-            return 0.0, 0.0
-
-        # Compute moments with both burst size and feedback effects
-        mean_Ti = 0.0
-        mean_Tj = 0.0
-        var_Ti = 0.0
-        var_Tj = 0.0
-
-        # For chromosome i
-        for m in range(num_bursts_i):
-            current_N = N_i - m * burst_size
-            W_m = 1 - w1 * current_N
-            if W_m <= 0:  # Ensure positive rate
-                return np.inf, np.inf
-            E_tau_m = 1 / (W_m * current_N)
-            mean_Ti += E_tau_m
-            var_Ti += E_tau_m**2
-
-        # For chromosome j
-        for m in range(num_bursts_j):
-            current_N = N_j - m * burst_size
-            W_m = 1 - w2 * current_N
-            if W_m <= 0:  # Ensure positive rate
-                return np.inf, np.inf
-            E_tau_m = 1 / (W_m * current_N)
-            mean_Tj += E_tau_m
-            var_Tj += E_tau_m**2
-
-        # Scale by degradation rate
-        mean_Ti /= k
-        mean_Tj /= k
-        var_Ti /= k**2
-        var_Tj /= k**2
 
     elif mechanism == 'fixed_burst_feedback_onion':
         if burst_size is None or burst_size <= 0 or math.isnan(burst_size):
@@ -317,50 +172,36 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
             raise ValueError(
                 "Parameter 'n_inner' must be provided for the fixed burst feedback onion mechanism.")
 
-        # Ensure number of bursts is non-negative and valid
-        if N_i is None or N_j is None or math.isnan(N_i) or math.isnan(N_j) or burst_size is None:
-            print("N_i, N_j, n_i, n_j, burst_size", N_i, N_j, n_i, n_j, burst_size)
-        num_bursts_i = max(0, int(np.ceil((N_i - n_i) / burst_size)))
-        num_bursts_j = max(0, int(np.ceil((N_j - n_j) / burst_size)))
-
-        if num_bursts_i == 0 or num_bursts_j == 0:
-            return 0.0, 0.0
-
-        # Compute moments with both burst size and onion feedback effects
+        # FIXED: Use consistent approach - sum over cohesin counts with state-dependent feedback
+        final_state_i = max(1, int(round(n_i)))
+        final_state_j = max(1, int(round(n_j)))
+        
         mean_Ti = 0.0
         mean_Tj = 0.0
         var_Ti = 0.0
         var_Tj = 0.0
-
-        # For chromosome i
-        for m in range(num_bursts_i):
-            current_N = N_i - m * burst_size
-            # Onion feedback: W_m = (N_i/n_inner)^(-1/3) for N_i > n_inner, else 1
-            if N_i > n_inner:
-                W_m = (N_i / n_inner) ** (-1/3)
+        
+        # Sum over cohesin counts m (same range as simple/feedback_onion)
+        for m in range(final_state_i + 1, int(N_i) + 1):
+            # Feedback depends on CURRENT cohesin count m
+            if m > n_inner:
+                W_m = (m / n_inner) ** (-1/3)  # Slower degradation when m > n_inner
+            else:
+                W_m = 1.0  # Normal degradation when m <= n_inner
+            # Time for burst at count m with feedback: burst_size / (W_m * k * m)
+            # When burst_size=1: becomes 1/(W_m*k*m), identical to feedback_onion
+            E_tau_m = burst_size / (W_m * k * m)
+            mean_Ti += E_tau_m / burst_size
+            var_Ti += (E_tau_m / burst_size) ** 2
+        
+        for m in range(final_state_j + 1, int(N_j) + 1):
+            if m > n_inner:
+                W_m = (m / n_inner) ** (-1/3)
             else:
                 W_m = 1.0
-            E_tau_m = 1 / (W_m * current_N)
-            mean_Ti += E_tau_m
-            var_Ti += E_tau_m**2
-
-        # For chromosome j
-        for m in range(num_bursts_j):
-            current_N = N_j - m * burst_size
-            # Onion feedback: W_m = (N_j/n_inner)^(-1/3) for N_j > n_inner, else 1
-            if N_j > n_inner:
-                W_m = (N_j / n_inner) ** (-1/3)
-            else:
-                W_m = 1.0
-            E_tau_m = 1 / (W_m * current_N)
-            mean_Tj += E_tau_m
-            var_Tj += E_tau_m**2
-
-        # Scale by degradation rate
-        mean_Ti /= k
-        mean_Tj /= k
-        var_Ti /= k**2
-        var_Tj /= k**2
+            E_tau_m = burst_size / (W_m * k * m)
+            mean_Tj += E_tau_m / burst_size
+            var_Tj += (E_tau_m / burst_size) ** 2
 
     else:
         raise ValueError(
