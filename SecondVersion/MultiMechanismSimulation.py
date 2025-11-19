@@ -96,12 +96,12 @@ class MultiMechanismSimulation:
             def feedback_onion_propensities(states):
                 propensities = []
                 for i, state in enumerate(states):
-                    N_i = self.initial_state_list[i]
                     n_inner = self.rate_params['n_inner']
                     
-                    # Calculate feedback weight
-                    if N_i > n_inner:
-                        W_m = (N_i / n_inner) ** (-1/3)
+                    # Calculate feedback weight based on CURRENT state (not initial)
+                    # This matches the MoM calculation where W_m depends on current m
+                    if state > n_inner:
+                        W_m = (state / n_inner) ** (-1/3)
                     else:
                         W_m = 1.0
                     
@@ -114,12 +114,12 @@ class MultiMechanismSimulation:
             def fixed_burst_feedback_onion_propensities(states):
                 propensities = []
                 for i, state in enumerate(states):
-                    N_i = self.initial_state_list[i]
                     n_inner = self.rate_params['n_inner']
                     
-                    # Calculate feedback weight
-                    if N_i > n_inner:
-                        W_m = (N_i / n_inner) ** (-1/3)
+                    # Calculate feedback weight based on CURRENT state (not initial)
+                    # This matches the MoM calculation where W_m depends on current m
+                    if state > n_inner:
+                        W_m = (state / n_inner) ** (-1/3)
                     else:
                         W_m = 1.0
                     
@@ -203,7 +203,7 @@ class MultiMechanismSimulation:
             
             # Check for chromosome separation
             for i in range(3):
-                if separate_times[i] is None and current_state[i] <= round(self.n0_list[i]):
+                if separate_times[i] is None and current_state[i] <= self.n0_list[i]:
                     separate_times[i] = current_time
         
         # Finalize simulation

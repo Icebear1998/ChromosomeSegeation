@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from MultiMechanismSimulation import MultiMechanismSimulation
 from scipy.stats import norm
 from MoMCalculations import compute_pdf_mom, compute_moments_mom
+from simulation_kde import build_kde_from_simulations, evaluate_kde_pdf, calculate_kde_likelihood
 
 
 def run_simulation(mechanism, N1, N2, N3, n1, n2, n3, rate_params, max_time=500, num_sim=1000):
@@ -99,48 +100,12 @@ def compute_mom_parameters(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_param
         mom_mean32, mom_var32 = compute_moments_mom(
             'time_varying_k', n3, N3, n2, N2, k, k_1=mechanism_params['k_1']
         )
-    elif mechanism == 'feedback_linear':
-        mom_mean12, mom_var12 = compute_moments_mom(
-            'feedback_linear', n1, N1, n2, N2, k, w1=mechanism_params['w1'], w2=mechanism_params['w2']
-        )
-        mom_mean32, mom_var32 = compute_moments_mom(
-            'feedback_linear', n3, N3, n2, N2, k, w1=mechanism_params['w3'], w2=mechanism_params['w2']
-        )
     elif mechanism == 'feedback_onion':
         mom_mean12, mom_var12 = compute_moments_mom(
             'feedback_onion', n1, N1, n2, N2, k, n_inner=mechanism_params['n_inner']
         )
         mom_mean32, mom_var32 = compute_moments_mom(
             'feedback_onion', n3, N3, n2, N2, k, n_inner=mechanism_params['n_inner']
-        )
-    elif mechanism == 'feedback_zipper':
-        mom_mean12, mom_var12 = compute_moments_mom(
-            'feedback_zipper', n1, N1, n2, N2, k, z1=mechanism_params['z1'], z2=mechanism_params['z2']
-        )
-        mom_mean32, mom_var32 = compute_moments_mom(
-            'feedback_zipper', n3, N3, n2, N2, k, z1=mechanism_params['z3'], z2=mechanism_params['z2']
-        )
-    elif mechanism == 'feedback':
-        mom_mean12, mom_var12 = compute_moments_mom(
-            'feedback', n1, N1, n2, N2, k,
-            feedbackSteepness=mechanism_params['feedbackSteepness'],
-            feedbackThreshold=mechanism_params['feedbackThreshold']
-        )
-        mom_mean32, mom_var32 = compute_moments_mom(
-            'feedback', n3, N3, n2, N2, k,
-            feedbackSteepness=mechanism_params['feedbackSteepness'],
-            feedbackThreshold=mechanism_params['feedbackThreshold']
-        )
-    elif mechanism == 'fixed_burst_feedback_linear':
-        mom_mean12, mom_var12 = compute_moments_mom(
-            'fixed_burst_feedback_linear', n1, N1, n2, N2, k, 
-            burst_size=mechanism_params['burst_size'],
-            w1=mechanism_params['w1'], w2=mechanism_params['w2']
-        )
-        mom_mean32, mom_var32 = compute_moments_mom(
-            'fixed_burst_feedback_linear', n3, N3, n2, N2, k,
-            burst_size=mechanism_params['burst_size'],
-            w1=mechanism_params['w3'], w2=mechanism_params['w2']
         )
     elif mechanism == 'fixed_burst_feedback_onion':
         mom_mean12, mom_var12 = compute_moments_mom(
@@ -203,35 +168,6 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
         pdf32 = compute_pdf_mom(
             'feedback_onion', x_grid, n3, N3, n2, N2, k, n_inner=mechanism_params['n_inner']
         )
-    elif mechanism == 'feedback_zipper':
-        pdf12 = compute_pdf_mom(
-            'feedback_zipper', x_grid, n1, N1, n2, N2, k, z1=mechanism_params['z1'], z2=mechanism_params['z2']
-        )
-        pdf32 = compute_pdf_mom(
-            'feedback_zipper', x_grid, n3, N3, n2, N2, k, z1=mechanism_params['z3'], z2=mechanism_params['z2']
-        )
-    elif mechanism == 'feedback':
-        pdf12 = compute_pdf_mom(
-            'feedback', x_grid, n1, N1, n2, N2, k,
-            feedbackSteepness=mechanism_params['feedbackSteepness'],
-            feedbackThreshold=mechanism_params['feedbackThreshold']
-        )
-        pdf32 = compute_pdf_mom(
-            'feedback', x_grid, n3, N3, n2, N2, k,
-            feedbackSteepness=mechanism_params['feedbackSteepness'],
-            feedbackThreshold=mechanism_params['feedbackThreshold']
-        )
-    elif mechanism == 'fixed_burst_feedback_linear':
-        pdf12 = compute_pdf_mom(
-            'fixed_burst_feedback_linear', x_grid, n1, N1, n2, N2, k,
-            burst_size=mechanism_params['burst_size'],
-            w1=mechanism_params['w1'], w2=mechanism_params['w2']
-        )
-        pdf32 = compute_pdf_mom(
-            'fixed_burst_feedback_linear', x_grid, n3, N3, n2, N2, k,
-            burst_size=mechanism_params['burst_size'],
-            w1=mechanism_params['w3'], w2=mechanism_params['w2']
-        )
     elif mechanism == 'fixed_burst_feedback_onion':
         pdf12 = compute_pdf_mom(
             'fixed_burst_feedback_onion', x_grid, n1, N1, n2, N2, k,
@@ -247,7 +183,7 @@ def compute_pdf_parameters(mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechani
     return pdf12, pdf32
 
 
-def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=None, max_time=500, num_sim=2000):
+def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=None, max_time=500, num_sim=2000, kde_bandwidth=None):
     print(f"\n=== Testing {mechanism.upper()} Mechanism ===")
 
     # Build rate_params for simulation
@@ -274,38 +210,74 @@ def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=Non
         mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params
     )
 
+    # Build KDE from simulations
+    kde12 = build_kde_from_simulations(delta_t12, bandwidth=kde_bandwidth)
+    kde32 = build_kde_from_simulations(delta_t32, bandwidth=kde_bandwidth)
+
     # Print comparison
     print("T1 - T2:")
-    print(f"Empirical Mean: {emp_mean12:.4f}, MoM Mean: {mom_mean12:.4f}")
-    print(
-        f"Empirical Variance: {emp_var12:.4f}, MoM Variance: {mom_var12:.4f}")
+    print(f"  Empirical Mean: {emp_mean12:.4f}, MoM Mean: {mom_mean12:.4f}")
+    print(f"  Empirical Variance: {emp_var12:.4f}, MoM Variance: {mom_var12:.4f}")
     print("T3 - T2:")
-    print(f"Empirical Mean: {emp_mean32:.4f}, MoM Mean: {mom_mean32:.4f}")
-    print(
-        f"Empirical Variance: {emp_var32:.4f}, MoM Variance: {mom_var32:.4f}")
+    print(f"  Empirical Mean: {emp_mean32:.4f}, MoM Mean: {mom_mean32:.4f}")
+    print(f"  Empirical Variance: {emp_var32:.4f}, MoM Variance: {mom_var32:.4f}")
 
-    # Plot histograms with MoM PDF
-    x_min, x_max = (-50, 50)
-    x_grid = np.linspace(x_min, x_max, 401)
-    pdf12, pdf32 = compute_pdf_parameters(
+    # Calculate KDE likelihoods (self-consistency check)
+    nll_kde12 = calculate_kde_likelihood(kde12, delta_t12)
+    nll_kde32 = calculate_kde_likelihood(kde32, delta_t32)
+    print(f"\nKDE NLL (self-consistency):")
+    print(f"  T1-T2: {nll_kde12:.2f}")
+    print(f"  T3-T2: {nll_kde32:.2f}")
+
+    # Plot histograms with both KDE and MoM PDF
+    x_min = min(np.min(delta_t12), np.min(delta_t32)) - 10
+    x_max = max(np.max(delta_t12), np.max(delta_t32)) + 10
+    x_grid = np.linspace(x_min, x_max, 500)
+    
+    # Get MoM PDFs
+    pdf12_mom, pdf32_mom = compute_pdf_parameters(
         mechanism, x_grid, n1, n2, n3, N1, N2, N3, k, mechanism_params
     )
+    
+    # Get KDE PDFs
+    pdf12_kde = evaluate_kde_pdf(kde12, x_grid)
+    pdf32_kde = evaluate_kde_pdf(kde32, x_grid)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-    ax1.hist(delta_t12, bins=20, density=True,
-             alpha=0.4, label='Simulated T1 - T2')
-    ax1.plot(x_grid, pdf12, 'r-', label='MoM PDF')
+    # T1 - T2 plot
+    ax1.hist(delta_t12, bins=30, density=True, alpha=0.3, 
+             color='blue', label='Simulation Histogram')
+    ax1.plot(x_grid, pdf12_kde, 'b-', linewidth=2, 
+             label=f'Simulation KDE (bw={kde_bandwidth})')
+    ax1.plot(x_grid, pdf12_mom, 'r--', linewidth=2, 
+             label='MoM PDF (Normal Approx)')
+    ax1.axvline(emp_mean12, color='blue', linestyle=':', alpha=0.7, 
+                label=f'Sim Mean: {emp_mean12:.2f}')
+    ax1.axvline(mom_mean12, color='red', linestyle=':', alpha=0.7, 
+                label=f'MoM Mean: {mom_mean12:.2f}')
     ax1.set_title(f'T1 - T2 ({mechanism.replace("_", " ").title()})')
-    ax1.set_xlabel('Time Difference')
-    ax1.legend()
+    ax1.set_xlabel('Time Difference (min)')
+    ax1.set_ylabel('Probability Density')
+    ax1.legend(fontsize=8)
+    ax1.grid(alpha=0.3)
 
-    ax2.hist(delta_t32, bins=20, density=True,
-             alpha=0.4, label='Simulated T3 - T2')
-    ax2.plot(x_grid, pdf32, 'r-', label='MoM PDF')
+    # T3 - T2 plot
+    ax2.hist(delta_t32, bins=30, density=True, alpha=0.3, 
+             color='blue', label='Simulation Histogram')
+    ax2.plot(x_grid, pdf32_kde, 'b-', linewidth=2, 
+             label=f'Simulation KDE (bw={kde_bandwidth})')
+    ax2.plot(x_grid, pdf32_mom, 'r--', linewidth=2, 
+             label='MoM PDF (Normal Approx)')
+    ax2.axvline(emp_mean32, color='blue', linestyle=':', alpha=0.7, 
+                label=f'Sim Mean: {emp_mean32:.2f}')
+    ax2.axvline(mom_mean32, color='red', linestyle=':', alpha=0.7, 
+                label=f'MoM Mean: {mom_mean32:.2f}')
     ax2.set_title(f'T3 - T2 ({mechanism.replace("_", " ").title()})')
-    ax2.set_xlabel('Time Difference')
-    ax2.legend()
+    ax2.set_xlabel('Time Difference (min)')
+    ax2.set_ylabel('Probability Density')
+    ax2.legend(fontsize=8)
+    ax2.grid(alpha=0.3)
 
     plt.tight_layout()
     plt.show()
@@ -315,24 +287,15 @@ if __name__ == "__main__":
     # ========== PARAMETER SPECIFICATION ==========
     # Common parameters for all mechanisms
     N1, N2, N3 = 100, 150, 200  # Initial protein counts
-    n1, n2, n3 = 3, 5, 8      # Threshold protein counts
+    n1, n2, n3 = 2, 4, 8      # Threshold protein counts
     k = 0.05                     # Base degradation rate
 
     # Mechanism-specific parameters (optional - will use defaults if not specified)
     mechanism_params = {
         'simple': {},  # No additional parameters
-        'fixed_burst': {'burst_size': 8},
+        'fixed_burst': {'burst_size': 4},
         'time_varying_k': {'k_1': 0.005, 'k_max': 0.05},
-        'feedback_linear': {'w1': 0.005591, 'w2': 0.004757, 'w3': 0.005733},
-        'feedback_onion': {'n_inner': 10},
-        'feedback': {'feedbackSteepness': 0.02, 'feedbackThreshold': 120},
-        'fixed_burst_feedback_linear': {
-            'burst_size': 3,
-            'w1': 0.005,
-            'w2': 0.01,
-            'w3': 0.015
-        },
-        'feedback_zipper': {'z1': 40, 'z2': 50, 'z3': 60},
+        'feedback_onion': {'n_inner': 20},
         'fixed_burst_feedback_onion': {
             'burst_size': 5,
             'n_inner': 50
@@ -341,11 +304,18 @@ if __name__ == "__main__":
 
     # ========== TEST CONFIGURATION ==========
     # Specify which mechanism(s) to test:
-    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion', or 'all'
-    mechanism = 'time_varying_k'  # Change this to test specific mechanisms
+    # Options: 'simple', 'fixed_burst', 'time_varying_k', 'feedback_onion', 'fixed_burst_feedback_onion'
+    mechanism = 'fixed_burst'  # Change this to test specific mechanisms
+    
+    # # KDE bandwidth (tune for best fit to your data)
+    # # Typical values: 5-15 for chromosome timing data
+    # # Lower = captures more detail, Higher = smoother
+    # kde_bandwidth = 1.0
 
     # ========== RUN TESTS ==========
     test_mom_matching(
         mechanism, n1, n2, n3, N1, N2, N3, k,
-        mechanism_params.get(mechanism), max_time=800, num_sim=2000
+        mechanism_params.get(mechanism), 
+        max_time=1000, 
+        num_sim=5000,
     )

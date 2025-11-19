@@ -97,16 +97,16 @@ class MultiMechanismSimulationTimevary:
             return standard_propensities
         
         elif self.mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
-            # Onion feedback propensities: k(t) * W(N_i) * state[i]
+            # Onion feedback propensities: k(t) * W(state) * state[i]
+            # FIXED: W_m now depends on CURRENT state, not initial N_i
             def feedback_onion_propensities(k_t, states):
                 propensities = []
                 for i, state in enumerate(states):
-                    N_i = self.initial_state_list[i]
                     n_inner = self.rate_params['n_inner']
                     
-                    # Calculate feedback weight
-                    if N_i > n_inner:
-                        W_m = (N_i / n_inner) ** (-1/3)
+                    # Calculate feedback weight based on CURRENT state
+                    if state > n_inner:
+                        W_m = (state / n_inner) ** (-1/3)
                     else:
                         W_m = 1.0
                     
@@ -122,12 +122,13 @@ class MultiMechanismSimulationTimevary:
         """Calculate the effective total state for time calculations."""
         if self.mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
             # Use weighted sum for feedback mechanisms
+            # FIXED: W_i now depends on CURRENT state, not initial N_i
             total_effective_state = 0
             for i, state in enumerate(states):
-                N_i = self.initial_state_list[i]
                 n_inner = self.rate_params['n_inner']
-                if N_i > n_inner:
-                    W_i = (N_i / n_inner) ** (-1/3)
+                # Feedback weight based on CURRENT state
+                if state > n_inner:
+                    W_i = (state / n_inner) ** (-1/3)
                 else:
                     W_i = 1.0
                 total_effective_state += W_i * state

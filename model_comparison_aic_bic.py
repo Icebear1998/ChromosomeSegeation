@@ -28,6 +28,8 @@ import warnings
 warnings.filterwarnings('ignore')
 from multiprocessing import Pool, cpu_count
 import functools
+import json
+import os
 
 # Optional seaborn import
 try:
@@ -37,13 +39,21 @@ except ImportError:
     HAS_SEABORN = False
 
 # Import optimization functions
-from SimulationOptimization_join import run_optimization
+from SimulationOptimization_join import run_optimization, run_optimization_simple_mechanisms
 from simulation_utils import load_experimental_data, get_parameter_bounds
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'SecondVersion'))
-from MoMOptimization_join import joint_objective, get_mechanism_info
+from MoMOptimization_join import joint_objective, get_mechanism_info, run_mom_optimization_single
 from scipy.optimize import differential_evolution
+
+# Try to import Bayesian optimization (optional)
+try:
+    from MoMOptimization_bayesian import run_bayesian_optimization
+    HAS_BAYESIAN_OPT = True
+except ImportError:
+    HAS_BAYESIAN_OPT = False
+    print("⚠️  Bayesian optimization not available (install scikit-optimize)")
 
 
 def get_parameter_count(mechanism):
@@ -63,6 +73,12 @@ def get_parameter_count(mechanism):
         'fixed_burst': 12,  # adds burst_size
         'feedback_onion': 12,  # adds n_inner
         'fixed_burst_feedback_onion': 13,  # adds burst_size, n_inner
+        
+        # Constant rate mechanisms (Simulation-based with KDE)
+        'simple_simulation': 9,  # n2, N2, k, r21, r23, R21, R23, alpha, beta_k (no beta2_k, beta3_k)
+        'fixed_burst_simulation': 10,  # adds burst_size
+        'feedback_onion_simulation': 10,  # adds n_inner
+        'fixed_burst_feedback_onion_simulation': 11,  # adds burst_size, n_inner
         
         # Time-varying rate mechanisms (simulation-based)
         'time_varying_k': 12,  # n2, N2, k_max, tau, r21, r23, R21, R23, alpha, beta_k, beta_tau, beta_tau2
@@ -105,7 +121,7 @@ def get_mom_data_points(datasets):
     return total_points
 
 
-def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strains=None, seed=None):
+def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strains=None, seed=None, use_bayesian=False):
     """
     Wrapper function for MoM optimization that calls the reusable function from MoMOptimization_join.py.
     Uses the already loaded datasets to avoid redundant data loading.
@@ -116,14 +132,12 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
         max_iterations (int): Maximum iterations for optimization
         selected_strains (list): List of strain names (not used, kept for interface compatibility)
         seed (int): Random seed for reproducible results
+        use_bayesian (bool): If True, use Bayesian optimization instead of differential evolution
     
     Returns:
         dict: Results dictionary matching the simulation optimization interface
     """
     try:
-        # Import the reusable MoM optimization function
-        from MoMOptimization_join import run_mom_optimization_single
-        
         # Convert datasets dict to the format expected by MoM optimization
         data_arrays = {
             'data_wt12': datasets['wildtype']['delta_t12'],
@@ -141,14 +155,32 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
             'data_initial32': np.array([])
         }
         
-        # Call the reusable function with pre-loaded data
-        result = run_mom_optimization_single(
-            mechanism=mechanism,
-            data_arrays=data_arrays,
-            max_iterations=max_iterations,
-            seed=seed,
-            gamma_mode='separate'  # Use separate gamma for each chromosome
-        )
+        if use_bayesian and HAS_BAYESIAN_OPT:
+            # Use Bayesian optimization
+            print(f"  Using Bayesian optimization (GP-based)...")
+            # Use more calls to match DE's evaluation budget (maxiter * popsize)
+            # DE: max_iterations=200, popsize=15 → ~3000 evaluations
+            # BO: Use 500 calls for better convergence
+            n_calls = max(500, max_iterations * 2)  # More evaluations for better convergence
+            n_random_starts = min(100, n_calls // 5)  # 20% random exploration
+            
+            result = run_bayesian_optimization(
+                mechanism=mechanism,
+                data_arrays=data_arrays,
+                n_calls=n_calls,
+                n_random_starts=n_random_starts,
+                seed=seed,
+                gamma_mode='separate'
+            )
+        else:
+            # Use differential evolution (default)
+            result = run_mom_optimization_single(
+                mechanism=mechanism,
+                data_arrays=data_arrays,
+                max_iterations=max_iterations,
+                seed=seed,
+                gamma_mode='separate'  # Use separate gamma for each chromosome
+            )
         
         return result
         
@@ -185,41 +217,57 @@ def run_single_optimization(args):
     Run a single optimization for parallel processing.
     
     Args:
-        args (tuple): (mechanism, datasets, num_simulations, run_number, seed)
+        args (tuple): (mechanism, datasets, num_simulations, run_number, seed, use_bayesian)
     
     Returns:
         dict: Single optimization result
     """
-    mechanism, datasets, num_simulations, run_number, seed = args
+    mechanism, datasets, num_simulations, max_interation, run_number, seed, use_bayesian = args
     
     try:
         print(f"  🔄 Starting run {run_number} for {mechanism}...")
+        sys.stdout.flush()
         
         # Set unique seed for each run
         np.random.seed(seed + run_number)
         
         # Choose optimization method based on mechanism type
-        if mechanism.startswith('time_varying_k'):
+        if mechanism.endswith('_simulation'):
+            # Use simulation-based optimization for simple mechanisms with KDE
+            base_mechanism = mechanism.replace('_simulation', '')
+            print(f"  📊 Run {run_number}: Using simulation-based optimization with KDE for {base_mechanism}...")
+            sys.stdout.flush()
+            result = run_optimization_simple_mechanisms(
+                base_mechanism, datasets,
+                max_iterations=max_interation,
+                num_simulations=num_simulations
+            )
+        elif mechanism.startswith('time_varying_k'):
             # Use simulation-based optimization for time-varying mechanisms
             print(f"  📊 Run {run_number}: Using simulation-based optimization...")
+            sys.stdout.flush()
             result = run_optimization(
                 mechanism, datasets, 
-                max_iterations=200,  # Reduced from 200 to prevent hanging
+                max_iterations=max_interation,  # Reduced from 200 to prevent hanging
                 num_simulations=num_simulations,
                 selected_strains=None,
                 use_parallel=True  # Enable parallel computation within each run
             )
         else:
             # Use MoM-based optimization for constant rate mechanisms
-            print(f"  📊 Run {run_number}: Using MoM-based optimization...")
+            opt_method = "Bayesian (GP)" if use_bayesian else "Differential Evolution"
+            print(f"  📊 Run {run_number}: Using MoM-based optimization ({opt_method})...")
+            sys.stdout.flush()
             result = run_mom_optimization(
                 mechanism, datasets,
-                max_iterations=300,  # Reduced from 200 to prevent hanging
+                max_iterations=max_interation, 
                 selected_strains=None,
-                seed=seed + run_number  # Use unique seed for each run
+                seed=seed + run_number,  # Use unique seed for each run
+                use_bayesian=use_bayesian
             )
         
         print(f"  ✅ Run {run_number} completed: Success={result['success']}, NLL={result.get('nll', 'N/A')}")
+        sys.stdout.flush()
         
         return {
             'run_number': run_number,
@@ -232,6 +280,7 @@ def run_single_optimization(args):
         
     except Exception as e:
         print(f"  ❌ Run {run_number} failed: {e}")
+        sys.stdout.flush()
         return {
             'run_number': run_number,
             'success': False,
@@ -242,7 +291,68 @@ def run_single_optimization(args):
         }
 
 
-def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=500, n_processes=None):
+# Fixed set of parameter columns covering all mechanisms
+PARAM_COLUMNS = [
+    # Shared/base shape parameters
+    'n2', 'N2',
+    # Constant-rate MoM parameter
+    'k',
+    # Time-varying rate parameters
+    'k_max', 'tau',
+    # Ratio parameters
+    'r21', 'r23', 'R21', 'R23',
+    # Mechanism-specific extras
+    'burst_size', 'n_inner',
+    # Mutant/scaling parameters
+    'alpha', 'beta_k',
+    # Time-varying mutant parameters
+    'beta_tau', 'beta_tau2',
+    # MoM-specific mutant parameters
+    'beta2_k', 'beta3_k',
+]
+
+
+def _append_run_to_csv(csv_path, row, write_header_if_new=True):
+    """
+    Append a single run record to the CSV. Uses a stable schema and stores parameters as JSON.
+    """
+    # Stable schema
+    ordered_keys = [
+        'timestamp', 'mechanism', 'run_number',
+        'n_params', 'n_data',
+        'success', 'converged',
+        'nll', 'aic', 'bic',
+        'message',
+        # Parameter columns (fixed-width, blank if not present)
+    ] + PARAM_COLUMNS + [
+        # Keep JSON as a backup/trace of full parameters
+        'params_json'
+    ]
+    # Ensure directory exists
+    try:
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True) if os.path.dirname(csv_path) else None
+    except Exception:
+        pass
+    # Detect if file exists
+    file_exists = os.path.exists(csv_path)
+    # Build row respecting schema
+    out = {k: row.get(k, '') for k in ordered_keys}
+    # Populate param columns from params dict if provided
+    params_dict = row.get('params_dict') or {}
+    if isinstance(params_dict, dict):
+        for p in PARAM_COLUMNS:
+            if p in params_dict and out.get(p, '') == '':
+                out[p] = params_dict.get(p, '')
+    # Write with header if needed
+    import csv
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=ordered_keys)
+        if write_header_if_new and not file_exists:
+            writer.writeheader()
+        writer.writerow(out)
+
+
+def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=500, max_iterations = 200, n_processes=None, optimized_params_csv=None, use_bayesian=False):
     """
     Run multiple optimization runs for a single mechanism and collect AIC/BIC statistics.
     Uses parallel processing for faster execution.
@@ -253,6 +363,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
         num_runs (int): Number of optimization runs
         num_simulations (int): Number of simulations per evaluation
         n_processes (int): Number of parallel processes (None for auto-detect)
+        optimized_params_csv (str): Path to CSV for storing parameters
+        use_bayesian (bool): If True, use Bayesian optimization for MoM mechanisms
     
     Returns:
         dict: Results including AIC/BIC statistics
@@ -260,24 +372,27 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
     print(f"\n{'='*60}")
     print(f"Running comparison for: {mechanism.upper()}")
     print(f"{'='*60}")
+    sys.stdout.flush()
     
     n_params = get_parameter_count(mechanism)
     # Use appropriate data point calculation based on mechanism type
-    if mechanism.startswith('time_varying_k'):
+    if mechanism.startswith('time_varying_k') or mechanism.endswith('_simulation'):
         n_data = get_total_data_points(datasets)  # All 5 datasets
     else:
         n_data = get_mom_data_points(datasets)    # All 5 datasets now
     
     print(f"Parameters: {n_params}, Data points: {n_data}")
+    sys.stdout.flush()
     
     # Always run sequentially since we're using parallel computation within each run
     n_processes = 1
     print(f"Running {num_runs} optimization run(s) sequentially with parallel computation within each run...")
+    sys.stdout.flush()
     
     # Prepare arguments for parallel processing
-    base_seed = 42
+    base_seed = 1
     args_list = [
-        (mechanism, datasets, num_simulations, run_num, base_seed)
+        (mechanism, datasets, num_simulations, max_iterations, run_num, base_seed, use_bayesian)
         for run_num in range(1, num_runs + 1)
     ]
     
@@ -307,9 +422,60 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
                 converged_runs += 1
                 
                 print(f"✅ Run {run_num} converged: NLL={nll:.2f}, AIC={aic:.2f}, BIC={bic:.2f}")
+                # Print optimized parameters
+                params = result.get('params', {}) or {}
+                if isinstance(params, dict) and params:
+                    # Compact single-line parameters printout
+                    def _fmt_val(v):
+                        try:
+                            return f"{float(v):.6g}"
+                        except Exception:
+                            return str(v)
+                    params_str = ", ".join(f"{k}={_fmt_val(v)}" for k, v in params.items())
+                    print(f"   Parameters: {params_str}")
+                sys.stdout.flush()
+                # Append to single CSV immediately
+                if optimized_params_csv:
+                    _append_run_to_csv(
+                        optimized_params_csv,
+                        {
+                            'timestamp': datetime.now().isoformat(timespec='seconds'),
+                            'mechanism': mechanism,
+                            'run_number': run_num,
+                            'n_params': n_params,
+                            'n_data': n_data,
+                            'success': True,
+                            'converged': True,
+                            'nll': nll,
+                            'aic': aic,
+                            'bic': bic,
+                            'message': result.get('message', ''),
+                            'params_json': json.dumps(params),
+                            'params_dict': params
+                        }
+                    )
             else:
                 failed_runs += 1
                 print(f"❌ Run {run_num} failed: {result['message']}")
+                if optimized_params_csv:
+                    _append_run_to_csv(
+                        optimized_params_csv,
+                        {
+                            'timestamp': datetime.now().isoformat(timespec='seconds'),
+                            'mechanism': mechanism,
+                            'run_number': run_num,
+                            'n_params': n_params,
+                            'n_data': n_data,
+                            'success': bool(result.get('success', False)),
+                            'converged': bool(result.get('converged', False)),
+                            'nll': result.get('nll', np.inf),
+                            'aic': '',
+                            'bic': '',
+                            'message': result.get('message', ''),
+                            'params_json': json.dumps(result.get('params', {})),
+                            'params_dict': result.get('params', {})
+                        }
+                    )
                 
     except Exception as e:
         print(f"❌ Parallel processing error: {e}")
@@ -330,9 +496,57 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
                 converged_runs += 1
                 
                 print(f"✅ Run {run_num} converged: NLL={nll:.2f}, AIC={aic:.2f}, BIC={bic:.2f}")
+                # Print optimized parameters
+                params = result.get('params', {}) or {}
+                if isinstance(params, dict) and params:
+                    def _fmt_val(v):
+                        try:
+                            return f"{float(v):.6g}"
+                        except Exception:
+                            return str(v)
+                    params_str = ", ".join(f"{k}={_fmt_val(v)}" for k, v in params.items())
+                    print(f"   Parameters: {params_str}")
+                if optimized_params_csv:
+                    _append_run_to_csv(
+                        optimized_params_csv,
+                        {
+                            'timestamp': datetime.now().isoformat(timespec='seconds'),
+                            'mechanism': mechanism,
+                            'run_number': run_num,
+                            'n_params': n_params,
+                            'n_data': n_data,
+                            'success': True,
+                            'converged': True,
+                            'nll': nll,
+                            'aic': aic,
+                            'bic': bic,
+                            'message': result.get('message', ''),
+                            'params_json': json.dumps(params),
+                            'params_dict': params
+                        }
+                    )
             else:
                 failed_runs += 1
                 print(f"❌ Run {run_num} failed: {result['message']}")
+                if optimized_params_csv:
+                    _append_run_to_csv(
+                        optimized_params_csv,
+                        {
+                            'timestamp': datetime.now().isoformat(timespec='seconds'),
+                            'mechanism': mechanism,
+                            'run_number': run_num,
+                            'n_params': n_params,
+                            'n_data': n_data,
+                            'success': bool(result.get('success', False)),
+                            'converged': bool(result.get('converged', False)),
+                            'nll': result.get('nll', np.inf),
+                            'aic': '',
+                            'bic': '',
+                            'message': result.get('message', ''),
+                            'params_json': json.dumps(result.get('params', {})),
+                            'params_dict': result.get('params', {})
+                        }
+                    )
     
     # Calculate statistics
     if aic_values:
@@ -361,6 +575,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
         print(f"  Mean AIC: {results['mean_aic']:.2f} ± {results['std_aic']:.2f}")
         print(f"  Mean BIC: {results['mean_bic']:.2f} ± {results['std_bic']:.2f}")
         print(f"  Mean NLL: {results['mean_nll']:.2f} ± {results['std_nll']:.2f}")
+        if optimized_params_csv:
+            print(f"  Appended per-run parameters to: {optimized_params_csv}")
         
     else:
         print(f"❌ No successful runs for {mechanism}")
@@ -571,23 +787,28 @@ def main():
     print("CHROMOSOME SEGREGATION MODEL COMPARISON")
     print("AIC and BIC Analysis Across 8 Mechanisms")
     print("="*80)
+    sys.stdout.flush()
     
     # Display system information
     n_cpus = cpu_count()
     print(f"\n💻 System Information:")
     print(f"   Available CPUs: {n_cpus}")
     print(f"   Parallel processing: ENABLED")
+    sys.stdout.flush()
     
     # Load experimental data
     print("\n📊 Loading experimental data...")
+    sys.stdout.flush()
     datasets = load_experimental_data()
     if not datasets:
         print("❌ Error: Could not load experimental data!")
+        sys.stdout.flush()
         return
     
     print(f"✅ Loaded {len(datasets)} datasets: {list(datasets.keys())}")
     total_points = get_total_data_points(datasets)
     print(f"✅ Total data points: {total_points}")
+    sys.stdout.flush()
     
     # Display dataset breakdown
     print(f"\n📈 Dataset breakdown:")
@@ -596,40 +817,71 @@ def main():
         t32_points = len(data['delta_t32'])
         total = t12_points + t32_points
         print(f"   {name}: {total} points (T1-T2: {t12_points}, T3-T2: {t32_points})")
+    sys.stdout.flush()
     
     # Define mechanisms to compare
     mechanisms = [
-        # Constant rate mechanisms (MoM-based)
-        'simple',
-        'fixed_burst',
-        'feedback_onion',
-        'fixed_burst_feedback_onion',
+        # Constant rate mechanisms (MoM-based - uses normal approximation)
+        'simple',                          # 11 params
+        'fixed_burst',                     # 12 params
+        'feedback_onion',                  # 12 params
+        'fixed_burst_feedback_onion',      # 13 params
         
-        # Time-varying rate mechanisms (simulation-based)
-        'time_varying_k',
-        'time_varying_k_fixed_burst',
-        'time_varying_k_feedback_onion', 
-        'time_varying_k_combined'
+        # Constant rate mechanisms (Simulation-based with KDE - no normal approximation)
+        #'simple_simulation',                 # 9 params (no beta2_k, beta3_k)
+        #'fixed_burst_simulation',            # 10 params
+        # 'feedback_onion_simulation',       # 10 params
+        # 'fixed_burst_feedback_onion_simulation',  # 11 params
+        
+        # Time-varying rate mechanisms (Simulation-based)
+        # 'time_varying_k',                  # 12 params
+        # 'time_varying_k_fixed_burst',      # 13 params
+        # 'time_varying_k_feedback_onion',   # 13 params
+        # 'time_varying_k_combined',         # 14 params
     ]
     
     print(f"\n🔬 Comparing {len(mechanisms)} mechanisms:")
     for i, mech in enumerate(mechanisms, 1):
         param_count = get_parameter_count(mech)
-        mech_type = "Simulation-based" if mech.startswith('time_varying_k') else "MoM-based"
+        if mech.endswith('_simulation') or mech.startswith('time_varying_k'):
+            mech_type = "Simulation-based (KDE)"
+        else:
+            mech_type = "MoM-based (Normal approx)"
         print(f"  {i}. {mech} ({param_count} parameters, {mech_type})")
+    sys.stdout.flush()
     
     # Configuration for sequential runs with internal parallelization
-    num_runs = 1  # Number of optimization runs per mechanism
+    num_runs = 5  # Number of optimization runs per mechanism
+    num_simulations = 200  # Simulations per evaluation for simulation-based mechanisms
+    max_iterations = 20000  # Max iterations for DE
+    use_bayesian_opt = False  # Set to True to use Bayesian optimization instead of DE
     
-    print(f"\n⚙️  Parallel processing configuration:")
+    print(f"\n⚙️  Optimization configuration:")
     print(f"   Strategy: Sequential runs with parallel computation within each run")
     print(f"   Available CPUs for internal parallelization: {n_cpus}")
     print(f"   Runs per mechanism: {num_runs}")
     print(f"   Simulations per evaluation: 500")
+    sys.stdout.flush()
+    
+    if use_bayesian_opt:
+        if HAS_BAYESIAN_OPT:
+            print(f"   MoM Optimizer: Bayesian Optimization (Gaussian Process)")
+        else:
+            print(f"   ⚠️  Bayesian optimization requested but not available!")
+            print(f"   Install with: pip install scikit-optimize")
+            print(f"   Falling back to Differential Evolution")
+            use_bayesian_opt = False
+    else:
+        print(f"   MoM Optimizer: Differential Evolution")
+    sys.stdout.flush()
     
     # Run comparison for each mechanism
     all_results = []
     start_time = datetime.now()
+    
+    # Initialize a single CSV for all runs across all mechanisms
+    runs_csv = f"optimized_params_runs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    print(f"\n📝 Will record per-run optimized parameters to: {runs_csv}")
     
     for i, mechanism in enumerate(mechanisms, 1):
         mechanism_start = datetime.now()
@@ -639,9 +891,12 @@ def main():
         try:
             result = run_mechanism_comparison(
                 mechanism, datasets, 
-                num_runs=5, 
-                num_simulations=400,
-                n_processes=1  # Always 1 since we run sequentially with internal parallelization
+                num_runs=num_runs, 
+                num_simulations=num_simulations,
+                max_iterations=max_iterations,
+                n_processes=1,  # Always 1 since we run sequentially with internal parallelization
+                optimized_params_csv=runs_csv,
+                use_bayesian=use_bayesian_opt
             )
             all_results.append(result)
             
@@ -702,6 +957,24 @@ def main():
     print(f"\n📊 Creating summary and visualizations...")
     summary_df = create_summary_table(all_results, save_table=True)
     create_comparison_plots(all_results, save_plots=True)
+    
+    # Aggregate all per-run parameter rows across mechanisms into a single CSV
+    try:
+        combined_rows = []
+        for r in all_results:
+            rows = r.get('param_rows', [])
+            if rows:
+                combined_rows.extend(rows)
+        if combined_rows:
+            combined_df = pd.DataFrame(combined_rows)
+            meta_cols = ['mechanism', 'run_number', 'n_params', 'n_data', 'nll', 'aic', 'bic']
+            param_cols = sorted([c for c in combined_df.columns if c not in meta_cols])
+            combined_df = combined_df[meta_cols + param_cols]
+            combined_filename = f"optimized_params_all_mechanisms_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            combined_df.to_csv(combined_filename, index=False)
+            print(f"\n📝 Saved combined per-run optimized parameters to: {combined_filename}")
+    except Exception as e:
+        print(f"\n❌ Failed to save combined parameters CSV: {e}")
     
     print(f"\n🎉 Model comparison analysis complete!")
     print(f"📁 Results saved with timestamp: {datetime.now().strftime('%Y%m%d_%H%M%S')}")

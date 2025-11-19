@@ -2,6 +2,7 @@
 """
 Simulation-based optimization for chromosome segregation timing models.
 Uses MultiMechanismSimulationTimevary for time-varying mechanisms.
+Uses MultiMechanismSimulation (SecondVersion) for simple and fixed_burst mechanisms.
 Joint optimization strategy: optimizes all parameters simultaneously across all datasets.
 
 Key differences from MoM-based optimization:
@@ -13,314 +14,235 @@ Key differences from MoM-based optimization:
 
 import numpy as np
 import pandas as pd
+import sys
+import os
 from scipy.optimize import differential_evolution, minimize
 from simulation_utils import *
 from Chromosomes_Theory import *
+
+# Add SecondVersion to path for simple/fixed_burst mechanisms
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'SecondVersion'))
+from MultiMechanismSimulation import MultiMechanismSimulation
+from simulation_kde import build_kde_from_simulations, calculate_kde_likelihood
+
 import warnings
 warnings.filterwarnings('ignore')
 
 
-def joint_objective_with_bootstrapping(params_vector, mechanism, datasets, 
-                                      num_simulations=500, 
-                                      bootstrap_method='bootstrap',
-                                      target_sample_size=50, 
-                                      num_bootstrap_samples=100,
-                                      random_seed=None,
-                                      selected_strains=None):
+def run_simple_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     """
-    Joint objective function with bootstrapping to handle unequal data points.
+    Run simulations for simple/fixed_burst mechanisms using SecondVersion simulator.
     
     Args:
-        params_vector (array): Parameter vector to optimize
-        mechanism (str): Mechanism name
-        datasets (dict): Experimental datasets
-        num_simulations (int): Number of simulations per evaluation
-        bootstrap_method (str): 'bootstrap', 'weighted', or 'standard'
-        target_sample_size (int): Target sample size for bootstrapping
-        num_bootstrap_samples (int): Number of bootstrap samples
-        random_seed (int, optional): Random seed for reproducibility
+        mechanism: 'simple' or 'fixed_burst' or 'feedback_onion' or 'fixed_burst_feedback_onion'
+        params: Dictionary with n1, n2, n3, N1, N2, N3, k, and optional burst_size/n_inner
+        n0_list: List of threshold values [n01, n02, n03]
+        num_simulations: Number of simulations to run
     
     Returns:
-        float: Total negative log-likelihood across all datasets
+        tuple: (delta_t12_list, delta_t32_list) as numpy arrays
     """
-    # Add debugging to see parameter values being tried
-    if hasattr(joint_objective_with_bootstrapping, 'call_count'):
-        joint_objective_with_bootstrapping.call_count += 1
-    else:
-        joint_objective_with_bootstrapping.call_count = 1
-    
-    if joint_objective_with_bootstrapping.call_count <= 5:  # Print first 5 calls for debugging
-        print(f"Bootstrap Call {joint_objective_with_bootstrapping.call_count}: Testing parameters {params_vector[:6]}")  # Show first 6 params
-    
     try:
-        # Initialize bootstrapping calculator if needed
-        if bootstrap_method in ['bootstrap', 'weighted']:
-            bootstrap_calc = BootstrappingFitnessCalculator(
-                target_sample_size=target_sample_size,
-                num_bootstrap_samples=num_bootstrap_samples,
-                random_seed=random_seed
-            )
+        # Prepare rate parameters based on mechanism
+        if mechanism == 'simple':
+            rate_params = {'k': params['k']}
+        elif mechanism == 'fixed_burst':
+            rate_params = {'k': params['k'], 'burst_size': params['burst_size']}
+        elif mechanism == 'feedback_onion':
+            rate_params = {'k': params['k'], 'n_inner': params['n_inner']}
+        elif mechanism == 'fixed_burst_feedback_onion':
+            rate_params = {'k': params['k'], 'burst_size': params['burst_size'], 'n_inner': params['n_inner']}
+        else:
+            print(f"Unknown mechanism: {mechanism}")
+            return None, None
         
-        # Unpack parameters based on mechanism - using ratio-based approach
-        if mechanism == 'time_varying_k':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, alpha, beta_k, beta_tau, beta_tau2 = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
+        # Initial states
+        initial_state = [params['N1'], params['N2'], params['N3']]
+        
+        # Run simulations
+        delta_t12_list = []
+        delta_t32_list = []
+        
+        for _ in range(num_simulations):
+            sim = MultiMechanismSimulation(
+                mechanism=mechanism,
+                initial_state_list=initial_state,
+                rate_params=rate_params,
+                n0_list=n0_list,
+                max_time=1000.0
+            )
             
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
+            _, _, sep_times = sim.simulate()
+            
+            delta_t12 = sep_times[0] - sep_times[1]  # T1 - T2
+            delta_t32 = sep_times[2] - sep_times[1]  # T3 - T2
+            
+            delta_t12_list.append(delta_t12)
+            delta_t32_list.append(delta_t32)
+        
+        return np.array(delta_t12_list), np.array(delta_t32_list)
+    
+    except Exception as e:
+        print(f"Simulation error in {mechanism}: {e}")
+        return None, None
+
+
+def calculate_likelihood_kde(exp_data, sim_data):
+    """
+    Calculate negative log-likelihood using KDE (no bandwidth specification).
+    
+    Args:
+        exp_data: Dictionary or array of experimental data
+        sim_data: Dictionary or array of simulation data
+        
+    Returns:
+        float: Negative log-likelihood
+    """
+    try:
+        # Handle dictionary input
+        if isinstance(exp_data, dict) and isinstance(sim_data, dict):
+            nll_total = 0
+            
+            for key in ['delta_t12', 'delta_t32']:
+                if key in exp_data and key in sim_data:
+                    exp_values = np.asarray(exp_data[key]).flatten()
+                    sim_values = np.asarray(sim_data[key]).flatten()
+                    
+                    # Remove non-finite values
+                    exp_values = exp_values[np.isfinite(exp_values)]
+                    sim_values = sim_values[np.isfinite(sim_values)]
+                    
+                    if len(exp_values) == 0 or len(sim_values) < 10:
+                        return 1e6
+                    
+                    # Build KDE using Scott's rule (no manual bandwidth)
+                    kde = build_kde_from_simulations(sim_values, bandwidth=None)
+                    
+                    # Calculate likelihood
+                    nll = calculate_kde_likelihood(kde, exp_values)
+                    nll_total += nll
+            
+            return nll_total
+        
+        # Handle array input
+        else:
+            exp_values = np.asarray(exp_data).flatten()
+            sim_values = np.asarray(sim_data).flatten()
+            
+            exp_values = exp_values[np.isfinite(exp_values)]
+            sim_values = sim_values[np.isfinite(sim_values)]
+            
+            if len(exp_values) == 0 or len(sim_values) < 10:
                 return 1e6
             
+            kde = build_kde_from_simulations(sim_values, bandwidth=None)
+            return calculate_kde_likelihood(kde, exp_values)
+    
+    except Exception as e:
+        print(f"Likelihood calculation error: {e}")
+        return 1e6
+
+
+# Bootstrapping functions removed - now using direct KDE approach
+
+def joint_objective_simple_mechanisms(params_vector, mechanism, datasets, num_simulations=500):
+    """
+    Joint objective function for simple and fixed_burst mechanisms using KDE.
+    
+    Args:
+        params_vector: Parameter vector [n2, N2, k, r21, r23, R21, R23, burst_size (optional), alpha, beta_k]
+        mechanism: 'simple' or 'fixed_burst' or 'feedback_onion' or 'fixed_burst_feedback_onion'
+        datasets: Experimental data dictionary
+        num_simulations: Number of simulations per evaluation
+        
+    Returns:
+        float: Total negative log-likelihood
+    """
+    try:
+        # Unpack parameters based on mechanism
+        if mechanism == 'simple':
+            n2, N2, k, r21, r23, R21, R23, alpha, beta_k = params_vector
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k': k
             }
-        elif mechanism == 'time_varying_k_fixed_burst':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau, beta_tau2 = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
+        elif mechanism == 'fixed_burst':
+            n2, N2, k, r21, r23, R21, R23, burst_size, alpha, beta_k = params_vector
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k': k, 'burst_size': burst_size
             }
-        elif mechanism == 'time_varying_k_feedback_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, n_inner, alpha, beta_k, beta_tau, beta_tau2 = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
+        elif mechanism == 'feedback_onion':
+            n2, N2, k, r21, r23, R21, R23, n_inner, alpha, beta_k = params_vector
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k': k, 'n_inner': n_inner
             }
-        elif mechanism == 'time_varying_k_combined':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k, beta_tau, beta_tau2 = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
-                return 1e6
-            
+        elif mechanism == 'fixed_burst_feedback_onion':
+            n2, N2, k, r21, r23, R21, R23, burst_size, n_inner, alpha, beta_k = params_vector
             base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
-            }
-        elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau, beta_tau2 = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
-                return 1e6
-            
-            base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
+                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
+                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
+                'k': k, 'burst_size': burst_size, 'n_inner': n_inner
             }
         else:
+            return 1e6
+        
+        # Check constraints
+        if base_params['n1'] >= base_params['N1'] or \
+           base_params['n2'] >= base_params['N2'] or \
+           base_params['n3'] >= base_params['N3']:
             return 1e6
         
         total_nll = 0
         
-        # Filter datasets based on selected strains
-        if selected_strains is None:
-            # Use all datasets if no selection specified
-            datasets_to_use = datasets
-        else:
-            datasets_to_use = {name: data for name, data in datasets.items() if name in selected_strains}
-        
-        if not datasets_to_use:
-            print("Error: No datasets selected for fitting!")
-            return 1e6
-        
-        for dataset_name, data_dict in datasets_to_use.items():
-            # Apply mutant-specific modifications
-            params, n0_list = apply_mutant_params(
-                base_params, dataset_name, alpha, beta_k, beta_tau, beta_tau2
-            )
+        # Loop over all datasets
+        for dataset_name, data_dict in datasets.items():
+            # Apply mutant modifications (simple mechanisms use different mutant logic)
+            params = base_params.copy()
+            n0_list = [base_params['n1'], base_params['n2'], base_params['n3']]
+            
+            if dataset_name == 'wildtype':
+                pass  # No modifications
+            elif dataset_name == 'threshold':
+                # Reduce thresholds
+                n0_list = [alpha * base_params['n1'], alpha * base_params['n2'], alpha * base_params['n3']]
+            elif dataset_name == 'degrade':
+                # Reduce degradation rate
+                params['k'] = beta_k * base_params['k']
+            elif dataset_name in ['degradeAPC', 'velcade']:
+                # These mutants affect tau, not applicable to simple mechanisms
+                # For simple mechanisms, treat them like degrade mutant
+                params['k'] = beta_k * base_params['k']
             
             # Run simulations
-            sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
+            sim_delta_t12, sim_delta_t32 = run_simple_simulation_for_dataset(
                 mechanism, params, n0_list, num_simulations
             )
             
             if sim_delta_t12 is None or sim_delta_t32 is None:
-                print(f"Simulation failed for dataset {dataset_name}")
                 return 1e6
             
-            # Extract experimental data
-            exp_delta_t12 = data_dict['delta_t12']
-            exp_delta_t32 = data_dict['delta_t32']
+            # Calculate likelihood using KDE
+            exp_data = {'delta_t12': data_dict['delta_t12'], 'delta_t32': data_dict['delta_t32']}
+            sim_data = {'delta_t12': sim_delta_t12, 'delta_t32': sim_delta_t32}
             
-            # Calculate likelihoods using specified method
-            if bootstrap_method == 'bootstrap':
-                nll_12 = bootstrap_calc.calculate_bootstrap_likelihood(exp_delta_t12, sim_delta_t12)
-                nll_32 = bootstrap_calc.calculate_bootstrap_likelihood(exp_delta_t32, sim_delta_t32)
-            elif bootstrap_method == 'weighted':
-                nll_12 = bootstrap_calc.calculate_weighted_likelihood(exp_delta_t12, sim_delta_t12)
-                nll_32 = bootstrap_calc.calculate_weighted_likelihood(exp_delta_t32, sim_delta_t32)
-            else:  # standard method
-                nll_12 = calculate_likelihood(exp_delta_t12, sim_delta_t12)
-                nll_32 = calculate_likelihood(exp_delta_t32, sim_delta_t32)
+            nll = calculate_likelihood_kde(exp_data, sim_data)
             
-            # Check for penalty values in likelihood calculation
-            if nll_12 >= 1e6 or nll_32 >= 1e6:
-                print(f"High likelihood penalty for dataset {dataset_name}: nll_12={nll_12:.1f}, nll_32={nll_32:.1f}")
+            if nll >= 1e6:
                 return 1e6
             
-            # Add to total (no additional weighting needed since bootstrapping handles it)
-            total_nll += nll_12 + nll_32
+            total_nll += nll
         
         return total_nll
     
     except Exception as e:
-        print(f"Bootstrap objective function error: {e}")
+        print(f"Objective function error: {e}")
         return 1e6
 
-def run_optimization_with_bootstrapping(mechanism, datasets, 
-                                       max_iterations=300, 
-                                       num_simulations=500,
-                                       bootstrap_method='bootstrap',
-                                       target_sample_size=None,
-                                       num_bootstrap_samples=100,
-                                       random_seed=42,
-                                       selected_strains=None):
-    """
-    Run joint optimization with bootstrapping for all datasets.
-    
-    Args:
-        mechanism (str): Mechanism name
-        datasets (dict): Experimental datasets
-        max_iterations (int): Maximum iterations for optimization
-        num_simulations (int): Number of simulations per evaluation
-        bootstrap_method (str): 'bootstrap', 'weighted', or 'standard'
-        target_sample_size (int, optional): Target sample size for bootstrapping
-        num_bootstrap_samples (int): Number of bootstrap samples
-        random_seed (int): Random seed for reproducibility
-    
-    Returns:
-        dict: Optimization results
-    """
-    print(f"\n=== Bootstrapping Optimization for {mechanism.upper()} ===")
-    print(f"Bootstrap method: {bootstrap_method}")
-    if selected_strains is None:
-        print(f"Datasets: {list(datasets.keys())} (all datasets)")
-    else:
-        print(f"Selected datasets: {selected_strains}")
-        print(f"Available datasets: {list(datasets.keys())}")
-    print(f"Max iterations: {max_iterations}")
-    
-    # Analyze dataset sizes and determine target sample size
-    if selected_strains is None:
-        datasets_to_analyze = datasets
-    else:
-        datasets_to_analyze = {name: data for name, data in datasets.items() if name in selected_strains}
-    
-    size_analysis = analyze_dataset_sizes(datasets_to_analyze)
-    if target_sample_size is None:
-        target_sample_size = size_analysis['recommended_target_size']
-    
-    print(f"Target sample size for bootstrapping: {target_sample_size}")
-    print(f"Number of bootstrap samples: {num_bootstrap_samples}")
-    
-    # Get parameter bounds
-    bounds = get_parameter_bounds(mechanism)
-    
-    print(f"Optimizing {len(bounds)} parameters...")
-    print("Running differential evolution with bootstrapping...")
-    
-    # Global optimization with bootstrapping
-    result = differential_evolution(
-        joint_objective_with_bootstrapping,
-        bounds,
-        args=(mechanism, datasets, num_simulations, bootstrap_method, 
-              target_sample_size, num_bootstrap_samples, random_seed, selected_strains),
-        maxiter=max_iterations,
-        popsize=15,
-        seed=random_seed,
-        disp=True,
-        workers=-1  # Use single worker to avoid multiprocessing issues
-    )
-    
-    # Always extract and display the best solution found, even if not converged
-    convergence_status = "converged" if result.success else "did not converge"
-    print(f"🔍 Bootstrap optimization {convergence_status}!")
-    print(f"Best negative log-likelihood: {result.fun:.4f}")
-    
-    if not result.success:
-        print(f"Note: {result.message}")
-    
-    # Unpack and display results
-    params = result.x
-    if mechanism == 'time_varying_k':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2']
-    elif mechanism == 'time_varying_k_fixed_burst':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2']
-    elif mechanism == 'time_varying_k_feedback_onion':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2']
-    elif mechanism == 'time_varying_k_combined':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2']
-    elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2']
-    
-    param_dict = dict(zip(param_names, params))
-    
-    # Calculate derived parameters for display
-    n1_derived = max(param_dict['r21'] * param_dict['n2'], 1)
-    n3_derived = max(param_dict['r23'] * param_dict['n2'], 1)
-    N1_derived = max(param_dict['R21'] * param_dict['N2'], 1)
-    N3_derived = max(param_dict['R23'] * param_dict['N2'], 1)
-    
-    print("\nBest Parameters Found (with Bootstrapping):")
-    print(f"  Base: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}")
-    print(f"  Ratios: r21={param_dict['r21']:.2f}, r23={param_dict['r23']:.2f}, R21={param_dict['R21']:.2f}, R23={param_dict['R23']:.2f}")
-    print(f"  Derived: n1={n1_derived:.1f}, n3={n3_derived:.1f}, N1={N1_derived:.1f}, N3={N3_derived:.1f}")
-    print(f"  Rates: k_1={param_dict['k_1']:.6f}, k_max={param_dict['k_max']:.4f}")
-    
-    if 'burst_size' in param_dict:
-        print(f"           burst_size={param_dict['burst_size']:.1f}")
-    if 'n_inner' in param_dict:
-        print(f"           n_inner={param_dict['n_inner']:.1f}")
-    if 'burst_size' in param_dict and 'n_inner' in param_dict:
-        print(f"           Combined mechanism: burst_size={param_dict['burst_size']:.1f}, n_inner={param_dict['n_inner']:.1f}")
-    
-    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}, beta_tau={param_dict['beta_tau']:.3f}, beta_tau2={param_dict['beta_tau2']:.3f}")
-    
-    return {
-        'success': True,  # Always treat as success to save results
-        'converged': result.success,  # Track actual convergence status
-        'params': param_dict,
-        'nll': result.fun,
-        'result': result,
-        'message': result.message if not result.success else "Converged successfully",
-        'bootstrap_method': bootstrap_method,
-        'target_sample_size': target_sample_size,
-        'num_bootstrap_samples': num_bootstrap_samples
-    }
-# In SimulationOptimization_join.py
 
 def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None):
     """
@@ -431,7 +353,152 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         return 1e6
 
 
-def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=500, selected_strains=None, use_parallel=False, initial_guess=None):
+def get_parameter_bounds_simple_mechanisms(mechanism):
+    """
+    Get parameter bounds for simple/fixed_burst mechanisms.
+    
+    Args:
+        mechanism: 'simple', 'fixed_burst', 'feedback_onion', or 'fixed_burst_feedback_onion'
+        
+    Returns:
+        list: List of (min, max) tuples for each parameter
+    """
+    # Base bounds: [n2, N2, k, r21, r23, R21, R23]
+    bounds = [
+        (1.0, 50.0),       # n2
+        (50.0, 1000.0),    # N2
+        (0.01, 0.2),       # k (degradation rate)
+        (0.25, 4.0),       # r21
+        (0.25, 4.0),       # r23
+        (0.4, 2.5),        # R21
+        (0.5, 5.0),        # R23
+    ]
+    
+    # Add mechanism-specific bounds
+    if mechanism == 'fixed_burst':
+        bounds.append((1.0, 50.0))    # burst_size
+    elif mechanism == 'feedback_onion':
+        bounds.append((1.0, 100.0))   # n_inner
+    elif mechanism == 'fixed_burst_feedback_onion':
+        bounds.append((1.0, 50.0))    # burst_size
+        bounds.append((1.0, 100.0))   # n_inner
+    
+    # Add mutant parameter bounds (only alpha and beta_k for simple mechanisms)
+    bounds.extend([
+        (0.1, 0.7),        # alpha (threshold reduction)
+        (0.1, 1.0),        # beta_k (rate reduction)
+    ])
+    
+    return bounds
+
+
+def run_optimization_simple_mechanisms(mechanism, datasets, max_iterations=300, num_simulations=500):
+    """
+    Run optimization for simple/fixed_burst mechanisms using KDE.
+    
+    Args:
+        mechanism: 'simple', 'fixed_burst', 'feedback_onion', or 'fixed_burst_feedback_onion'
+        datasets: Experimental data dictionary
+        max_iterations: Maximum iterations for optimization
+        num_simulations: Number of simulations per evaluation
+        
+    Returns:
+        dict: Optimization results
+    """
+    print(f"\n=== Simulation-based Optimization for {mechanism.upper()} ===")
+    print(f"Using KDE with Scott's rule (automatic bandwidth)")
+    print(f"Datasets: {list(datasets.keys())}")
+    print(f"Max iterations: {max_iterations}")
+    print(f"Simulations per evaluation: {num_simulations}")
+    sys.stdout.flush()
+    
+    # Get parameter bounds
+    bounds = get_parameter_bounds_simple_mechanisms(mechanism)
+    
+    print(f"\nOptimizing {len(bounds)} parameters...")
+    sys.stdout.flush()
+    
+    if mechanism == 'simple':
+        param_names = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k']
+    elif mechanism == 'fixed_burst':
+        param_names = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k']
+    elif mechanism == 'feedback_onion':
+        param_names = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k']
+    elif mechanism == 'fixed_burst_feedback_onion':
+        param_names = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k']
+    
+    print("\nParameter bounds:")
+    for name, bound in zip(param_names, bounds):
+        print(f"  {name}: {bound}")
+    sys.stdout.flush()
+    
+    print("\n🚀 Starting differential evolution optimization...")
+    sys.stdout.flush()
+    
+    # Run optimization
+    result = differential_evolution(
+        joint_objective_simple_mechanisms,
+        bounds,
+        args=(mechanism, datasets, num_simulations),
+        maxiter=max_iterations,
+        popsize=15,           # Keep small: 15 * ~9 params = ~135 simulations per generation
+        strategy='rand1bin',  # Robust against simulation noise (prevents false convergence)
+        mutation=(0.5, 1.0),  # Dithering helps escape local minima
+        recombination=0.9,    # High recombination for correlated parameters (N and k)
+        seed=42,
+        disp=True,
+        workers=-1,           # CRITICAL: Use all CPU cores
+        polish=True,          # Use L-BFGS-B for final cleanup
+        tol=0.1,              # LOOSE TOLERANCE: You cannot get 1e-6 precision on noisy data
+        atol=1e-3             # Absolute tolerance should also be loose
+    )
+    sys.stdout.flush()
+    
+    # Display results
+    convergence_status = "converged" if result.success else "did not converge"
+    print(f"\n🔍 Optimization {convergence_status}!")
+    print(f"Best negative log-likelihood: {result.fun:.4f}")
+    sys.stdout.flush()
+    
+    if not result.success:
+        print(f"Note: {result.message}")
+        sys.stdout.flush()
+    
+    # Unpack parameters
+    params = result.x
+    param_dict = dict(zip(param_names, params))
+    
+    # Calculate derived parameters
+    n1_derived = max(param_dict['r21'] * param_dict['n2'], 1)
+    n3_derived = max(param_dict['r23'] * param_dict['n2'], 1)
+    N1_derived = max(param_dict['R21'] * param_dict['N2'], 1)
+    N3_derived = max(param_dict['R23'] * param_dict['N2'], 1)
+    
+    print("\nBest Parameters Found:")
+    print(f"  Base: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}")
+    print(f"  Ratios: r21={param_dict['r21']:.2f}, r23={param_dict['r23']:.2f}, R21={param_dict['R21']:.2f}, R23={param_dict['R23']:.2f}")
+    print(f"  Derived: n1={n1_derived:.1f}, n3={n3_derived:.1f}, N1={N1_derived:.1f}, N3={N3_derived:.1f}")
+    print(f"  Rate: k={param_dict['k']:.4f}")
+    
+    if 'burst_size' in param_dict:
+        print(f"  Burst size: {param_dict['burst_size']:.1f}")
+    if 'n_inner' in param_dict:
+        print(f"  Inner threshold: {param_dict['n_inner']:.1f}")
+    
+    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}")
+    sys.stdout.flush()
+    
+    return {
+        'success': True,
+        'converged': result.success,
+        'params': param_dict,
+        'nll': result.fun,
+        'result': result,
+        'message': result.message if not result.success else "Converged successfully"
+    }
+
+
+def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, use_parallel=False, initial_guess=None):
     """
     Run joint optimization for selected datasets.
     
@@ -527,12 +594,14 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         args=(mechanism, datasets, num_simulations, selected_strains),
         x0=initial_guess,  # Add initial guess parameter
         maxiter=max_iterations,
-        popsize=15,
-        seed=42,
+        popsize=12,           # DRASTIC REDUCTION from 200. 
         disp=True,
-        workers=-1 if use_parallel else 1,  # Use parallel if requested
-        atol=1e-6,
-        tol=0.01
+        workers=-1,           # Force parallel processing
+        strategy='rand1bin',  # Safer than best1bin for stochastic functions
+        mutation=(0.5, 1.0),  # High mutation to explore the landscape
+        recombination=0.9,    # Correlated parameters (k_max and tau) need this
+        tol=0.1,              # High tolerance for noisy objective
+        polish=True,
     )
     
     # Always extract and display the best solution found, even if not converged
@@ -606,21 +675,17 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
         print("Cannot save results - optimization failed")
         return
     
-    # Determine filename based on bootstrap method and selected strains
+    # Determine filename based on selected strains
     if filename is None:
         # Create strain suffix if specific strains were selected
         strain_suffix = ""
         if selected_strains is not None:
             strain_suffix = f"_{'_'.join(selected_strains)}"
         
-        if 'bootstrap_method' in results:
-            bootstrap_suffix = f"_{results['bootstrap_method']}"
-            filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}{bootstrap_suffix}.txt"
-        else:
-            filename = f"simulation_optimized_parameters_R1_{mechanism}{strain_suffix}.txt"
+        filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}.txt"
     
     with open(filename, 'w') as f:
-        f.write(f"Simulation-based Optimization Results\n")
+        f.write(f"Simulation-based Optimization Results (KDE)\n")
         f.write(f"Mechanism: {mechanism}\n")
         
         # Add strain selection information
@@ -629,16 +694,10 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
         else:
             f.write(f"Selected Strains: all datasets\n")
         
-        # Add bootstrap information if available
-        if 'bootstrap_method' in results:
-            f.write(f"Bootstrap Method: {results['bootstrap_method']}\n")
-            f.write(f"Target Sample Size: {results['target_sample_size']}\n")
-            f.write(f"Number of Bootstrap Samples: {results['num_bootstrap_samples']}\n")
-        
         f.write(f"Negative Log-Likelihood: {results['nll']:.6f}\n")
         f.write(f"Converged: {results.get('converged', 'Unknown')}\n")
         f.write(f"Status: {results.get('message', 'No message')}\n")
-        f.write(f"Available Datasets: wildtype, threshold, degrate, degrateAPC, velcade\n\n")
+        f.write(f"Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade\n\n")
         
         f.write("Optimized Parameters (ratio-based):\n")
         for param, value in results['params'].items():
@@ -662,108 +721,76 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
 
 def main():
     """
-    Main optimization routine for all strains.
+    Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 500  # number of iterations for testing
-    num_simulations = 500  # Number of simulations per evaluation
+    max_iterations = 1000  # number of iterations for testing
+    num_simulations = 300  # Number of simulations per evaluation
     
-    print("Simulation-based Optimization for Time-Varying Mechanisms")
+    print("Simulation-based Optimization with KDE")
     print("=" * 60)
+    sys.stdout.flush()
     
     # Load experimental data
     datasets = load_experimental_data()
     if not datasets:
         print("Error: No datasets loaded!")
+        sys.stdout.flush()
         return
     
-    # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
-    mechanism = mechanisms[1]  # Test the burst_onion mechanism
+    sys.stdout.flush()
     
-    print(f"\nOptimizing {mechanism} for ALL strains")
+    # Choose mechanism type - can be overridden by command line argument
+    # Simple mechanisms: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
+    # Time-varying mechanisms: 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined'
+    
+    mechanism = 'simple'  # default mechanism
+    
+    print(f"Optimizing {mechanism} for ALL strains")
+    sys.stdout.flush()
     
     try:
-        # Example: Manually specify initial guess (uncomment to use)
-        # For time_varying_k_fixed_burst: [n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau, beta_tau2]
-        # initial_guess = [2.33, 50.33, 0.051, 30.0, 0.46, 2.48, 0.51, 4.55, 5.0, 0.54, 0.45, 1.0, 1.0]
-        initial_guess = None  # Set to None for random initialization
-        
-        # Run optimization for all strains
+        # Determine which optimization function to use
+        if mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']:
+            # Use simple mechanism optimization with KDE
+            print(f"\n🔬 Using simple mechanism optimization path...")
+            sys.stdout.flush()
+            results = run_optimization_simple_mechanisms(
+                mechanism, datasets,
+                max_iterations=max_iterations,
+                num_simulations=num_simulations
+            )
+        else:
+            # Use time-varying mechanism optimization
+            print(f"\n🔬 Using time-varying mechanism optimization path...")
+            sys.stdout.flush()
         results = run_optimization(
             mechanism, datasets, 
             max_iterations=max_iterations, 
             num_simulations=num_simulations,
-            selected_strains=None,  # Use all strains
-            use_parallel=True,  # Enable parallel processing now that it's working
-            initial_guess=initial_guess  # Add initial guess parameter
+                selected_strains=None,
+                use_parallel=True,
+                initial_guess=None
         )
         
         # Save results
         save_results(mechanism, results, selected_strains=None)
         
         print(f"\n{'-' * 60}")
+        sys.stdout.flush()
         
     except Exception as e:
         print(f"Error during optimization: {e}")
+        sys.stdout.flush()
         import traceback
         traceback.print_exc()
+        sys.stdout.flush()
      
     print("Optimization complete!")
+    sys.stdout.flush()
 
 
 
-
-
-def main_simple():
-    """
-    Simple main function for testing just one method.
-    """
-    max_iterations = 200  # number of iterations for testing
-    num_simulations = 500  # Number of simulations per evaluation
-    
-    print("Simulation-based Optimization with Bootstrapping")
-    print("=" * 60)
-    
-    # Load experimental data
-    datasets = load_experimental_data()
-    if not datasets:
-        print("Error: No datasets loaded!")
-        return
-    
-    # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
-    mechanism = mechanisms[3]  # Test time_varying_k
-    
-    try:
-        # Bootstrap optimization
-        results = run_optimization_with_bootstrapping(
-            mechanism, datasets, 
-            max_iterations=max_iterations, 
-            num_simulations=num_simulations,
-            bootstrap_method='bootstrap',
-            num_bootstrap_samples=100,
-            random_seed=42
-        )
-        
-        # Save results
-        save_results(mechanism, results)
-        
-        print(f"\n{'-' * 60}")
-        
-    except Exception as e:
-        print(f"Error optimizing {mechanism}: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print("Optimization complete!")
 
 
 if __name__ == "__main__":
-    # Choose which function to run:
-    
-    # Option 1: Run main() - standard optimization for all strains
     main() 
-    
-    # Option 2: Run main_simple() - simple bootstrapping test
-    # Uncomment the line below for simple bootstrapping:
-    #main_simple() 

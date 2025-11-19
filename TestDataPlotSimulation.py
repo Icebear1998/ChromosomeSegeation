@@ -540,7 +540,7 @@ if __name__ == "__main__":
     # Single dataset configuration (only used if run_single_dataset = True)
     mechanism = 'time_varying_k_combined'  # Choose mechanism to test
     filename = 'simulation_optimized_parameters_R1_time_varying_k_combined.txt'
-    dataset = 'velcade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
+    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
     
     if run_all_mechanisms:
         main()
