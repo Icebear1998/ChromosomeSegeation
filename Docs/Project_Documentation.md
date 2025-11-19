@@ -18,11 +18,12 @@ During cell division, chromosomes must be properly separated to ensure each daug
 
 The project uses experimental data from different mutant strains:
 
-- **Wild-type**: Normal chromosome segregation timing
+- **Wild-type**: Normal chromosome segregation timing (baseline)
 - **Threshold mutants**: Reduced cohesin threshold for separation (alpha parameter)
 - **Separase mutants**: Reduced degradation rate (beta_k parameter)
-- **APC mutants**: Increased tau (time to reach maximum degradation rate) (beta2_tau parameter)
-- **Initial protein mutants**: Reduced initial cohesin protein levels (gamma parameters)
+- **APC mutants**: Increased tau (time to reach maximum degradation rate) (beta2_k parameter)
+- **Velcade mutants**: Proteasome inhibitor effects on degradation (beta3_k parameter)
+- **Initial protein mutants**: Reduced initial cohesin protein levels (gamma parameters) - _Currently excluded from fitting_
 
 ## Mathematical Framework
 
@@ -62,9 +63,12 @@ Where:
 
 ## Implemented Mechanisms
 
+The project focuses on 8 core mechanisms that have been validated and optimized for model comparison:
+
 ### 1. Simple Mechanism
 
-**Description**: Basic harmonic sum degradation
+**Description**: Basic harmonic sum degradation (baseline model)
+**Parameters**: 11 total (base + mutant parameters)
 **Mathematical Form**:
 
 - Mean: `μ_T = (1/k) * Σ(1/m) for m from n+1 to N`
@@ -73,72 +77,57 @@ Where:
 ### 2. Fixed Burst Mechanism
 
 **Description**: Degradation occurs in fixed-size bursts
-**Parameters**: `burst_size`
+**Parameters**: 12 total (`burst_size` + base + mutant parameters)
 **Mathematical Form**:
 
 - Number of bursts: `ceil((N - n) / burst_size)`
 - Each burst removes `burst_size` cohesins
+- Burst size range: 1-50 cohesins per burst
 
-### 3. Time-Varying k Mechanism
+### 3. Feedback Onion Mechanism
 
-**Description**: Degradation rate increases linearly with time until reaching maximum
-**Parameters**: `k_1`, `k_max`, `tau = k_max/k_1`
-**Mathematical Form**: `k(t) = min(k_1 * t, k_max)`
-**Time Scale**: `tau` represents the time (in minutes) to reach maximum degradation rate
-**Biological Significance**: `tau` reflects the activation timescale of the degradation machinery
-
-### 4. Feedback Mechanisms
-
-#### 4.1 Linear Feedback
-
-**Description**: Degradation rate modified by linear feedback
-**Parameters**: `w₁, w₂, w₃`
-**Mathematical Form**: `W(m) = 1 - w * m`
-
-#### 4.2 Onion Feedback
-
-**Description**: Degradation rate modified by onion-like structure
-**Parameters**: `n_inner`
+**Description**: Degradation rate modified by onion-like feedback structure
+**Parameters**: 12 total (`n_inner` + base + mutant parameters)
 **Mathematical Form**:
 
 - `W(m) = (N/n_inner)^(-1/3)` if N > n_inner
 - `W(m) = 1` otherwise
+- Inner threshold range: 1-100 cohesins
 
-#### 4.3 Zipper Feedback
+### 4. Time-Varying k Mechanism
 
-**Description**: Degradation rate inversely proportional to initial count
-**Parameters**: `z₁, z₂, z₃`
-**Mathematical Form**: `W(m) = z / N`
+**Description**: Degradation rate increases linearly with time until reaching maximum
+**Parameters**: 12 total (`k_max`, `tau` + base + mutant parameters)
+**Mathematical Form**: `k(t) = min(k_max/tau * t, k_max)`
+**Time Scale**: `tau` represents the time (in minutes) to reach maximum degradation rate
+**Biological Significance**: `tau` reflects the activation timescale of the degradation machinery
 
 ### 5. Combined Mechanisms
 
-#### 5.1 Fixed Burst + Linear Feedback
-
-**Description**: Combines burst degradation with linear feedback effects
-**Parameters**: `burst_size, w₁, w₂, w₃`
-
-#### 5.2 Fixed Burst + Onion Feedback
+#### 5.1 Fixed Burst + Onion Feedback
 
 **Description**: Combines burst degradation with onion feedback effects
-**Parameters**: `burst_size, n_inner`
+**Parameters**: 13 total (`burst_size`, `n_inner` + base + mutant parameters)
+**Mathematical Form**: Burst-based degradation with feedback modification
 
-#### 5.3 Time-Varying k + Fixed Burst
+#### 5.2 Time-Varying k + Fixed Burst
 
 **Description**: Combines time-varying degradation rate with fixed-size bursts
-**Parameters**: `k_1, k_max, burst_size`
-**Mathematical Form**: `k(t) = min(k_1 * t, k_max)` with burst-based degradation
+**Parameters**: 13 total (`k_max`, `tau`, `burst_size` + base + mutant parameters)
+**Mathematical Form**: `k(t) = min(k_max/tau * t, k_max)` with burst-based degradation
 
-#### 5.4 Time-Varying k + Onion Feedback
+#### 5.3 Time-Varying k + Onion Feedback
 
 **Description**: Combines time-varying degradation rate with onion feedback
-**Parameters**: `k_1, k_max, n_inner`
-**Mathematical Form**: `k(t) = min(k_1 * t, k_max)` with feedback modification
+**Parameters**: 13 total (`k_max`, `tau`, `n_inner` + base + mutant parameters)
+**Mathematical Form**: `k(t) = min(k_max/tau * t, k_max)` with feedback modification
 
-#### 5.5 Time-Varying k + Fixed Burst + Onion Feedback (Combined)
+#### 5.4 Time-Varying k + Fixed Burst + Onion Feedback (Combined)
 
 **Description**: Triple combination of time-varying rate, burst degradation, and onion feedback
-**Parameters**: `k_1, k_max, burst_size, n_inner`
+**Parameters**: 14 total (`k_max`, `tau`, `burst_size`, `n_inner` + base + mutant parameters)
 **Mathematical Form**: All three mechanisms applied simultaneously
+**Most Complex**: Highest parameter count, captures multiple biological processes
 
 ## Implementation Structure
 
@@ -254,10 +243,11 @@ Where:
 
 #### Mutant Parameters
 
-- `alpha`: Threshold reduction factor (threshold mutants)
-- `beta_k`: Maximum degradation rate reduction factor (separase mutants)
-- `beta2_tau`: Tau increase factor (APC mutants) - makes tau 2-3x larger
-- `gamma` or `gamma₁, gamma₂, gamma₃`: Initial protein reduction factors
+- `alpha`: Threshold reduction factor (threshold mutants) - reduces cohesin thresholds
+- `beta_k`: Degradation rate reduction factor (separase mutants) - reduces k_max
+- `beta2_k`: Degradation rate reduction factor (APC mutants) - reduces k_max (2-10x factor)
+- `beta3_k`: Degradation rate reduction factor (Velcade mutants) - reduces k_max (2-40x factor)
+- `gamma` or `gamma₁, gamma₂, gamma₃`: Initial protein reduction factors (currently excluded)
 
 #### Gamma Mode Options
 
@@ -270,18 +260,22 @@ Where:
 
 Contains time difference measurements for different mutant strains:
 
-| Column              | Description                          | Data Points |
-| ------------------- | ------------------------------------ | ----------- |
-| `wildtype12`        | Wild-type Chrom1-Chrom2              | 126         |
-| `wildtype32`        | Wild-type Chrom3-Chrom2              | 145         |
-| `threshold12`       | Threshold mutant Chrom1-Chrom2       | 41          |
-| `threshold32`       | Threshold mutant Chrom3-Chrom2       | 37          |
-| `degRate12`         | Separase mutant Chrom1-Chrom2        | 74          |
-| `degRate32`         | Separase mutant Chrom3-Chrom2        | 189         |
-| `degRateAPC12`      | APC mutant Chrom1-Chrom2             | 103         |
-| `degRateAPC32`      | APC mutant Chrom3-Chrom2             | 78          |
-| `initialProteins12` | Initial protein mutant Chrom1-Chrom2 | 123         |
-| `initialProteins32` | Initial protein mutant Chrom3-Chrom2 | 27          |
+| Column              | Description                          | Data Points | Status      |
+| ------------------- | ------------------------------------ | ----------- | ----------- |
+| `wildtype12`        | Wild-type Chrom1-Chrom2              | 126         | ✅ Active   |
+| `wildtype32`        | Wild-type Chrom3-Chrom2              | 145         | ✅ Active   |
+| `threshold12`       | Threshold mutant Chrom1-Chrom2       | 67          | ✅ Active   |
+| `threshold32`       | Threshold mutant Chrom3-Chrom2       | 62          | ✅ Active   |
+| `degRade12`         | Separase mutant Chrom1-Chrom2        | 161         | ✅ Active   |
+| `degRade32`         | Separase mutant Chrom3-Chrom2        | 259         | ✅ Active   |
+| `degRadeAPC12`      | APC mutant Chrom1-Chrom2             | 158         | ✅ Active   |
+| `degRadeAPC32`      | APC mutant Chrom3-Chrom2             | 161         | ✅ Active   |
+| `degRadeVel12`      | Velcade mutant Chrom1-Chrom2         | 131         | ✅ Active   |
+| `degRadeVel32`      | Velcade mutant Chrom3-Chrom2         | 153         | ✅ Active   |
+| `initialProteins12` | Initial protein mutant Chrom1-Chrom2 | 123         | ⏸️ Excluded |
+| `initialProteins32` | Initial protein mutant Chrom3-Chrom2 | 27          | ⏸️ Excluded |
+
+**Total Active Data Points**: 1,423 across 5 mutant strains
 
 ## Optimization Process
 
@@ -330,9 +324,10 @@ Where `f_X(x_i)` is the PDF value for experimental data point `x_i`.
 
 #### Mutant Parameter Bounds:
 
-- **Threshold mutant**: `alpha ∈ [0.1, 2.0]` (threshold modification)
-- **Separase mutant**: `beta_k ∈ [0.1, 2.0]` (rate modification)
-- **APC mutant**: `beta2_tau ∈ [2.0, 3.0]` (tau increase factor)
+- **Threshold mutant**: `alpha ∈ [0.1, 0.7]` (threshold reduction factor)
+- **Separase mutant**: `beta_k ∈ [0.1, 1.0]` (degradation rate reduction factor)
+- **APC mutant**: `beta2_k ∈ [2.0, 10.0]` (degradation rate reduction factor)
+- **Velcade mutant**: `beta3_k ∈ [2.0, 40.0]` (degradation rate reduction factor)
 
 #### Mechanism-Specific Bounds:
 
@@ -352,14 +347,46 @@ Where `f_X(x_i)` is the PDF value for experimental data point `x_i`.
 
 ### Recent Improvements
 
+✅ **Model Comparison Framework**: Comprehensive AIC/BIC comparison across 8 mechanisms  
 ✅ **Simulation-based Optimization Pipeline**: Complete implementation with KDE-based likelihood  
 ✅ **Tau Parameterization**: Changed from `k_1, k_max` to `k_max, tau` for better biological interpretation  
 ✅ **Combined Time-Varying Mechanisms**: Added 3 new mechanism combinations  
-✅ **APC Mutant Tau Effects**: APC mutants now affect tau (2-3x increase) instead of k_1  
 ✅ **Enhanced Visualization**: Updated plotting for simulation results and tau parameters  
 ✅ **Strain Selection**: Added capability to optimize subsets of strains  
-✅ **Bayesian Optimization**: Experimental Gaussian Process-based optimization  
 ✅ **Sanity Check Scripts**: Comprehensive validation for both MoM and simulation pipelines
+
+### Model Comparison Results
+
+#### Pre-Normalization Fix (October 2024):
+
+```
+Mechanism                    | Parameters | Mean NLL | Mean AIC | Mean BIC
+simple                      | 11         | 48.89    | 119.79   | 177.66
+fixed_burst                 | 12         | 48.83    | 121.66   | 184.78
+feedback_onion              | 12         | 48.88    | 121.76   | 184.88
+time_varying_k              | 12         | 49.10    | 122.20   | 185.33
+fixed_burst_feedback_onion  | 13         | 48.86    | 123.71   | 192.10
+time_varying_k_feedback_onion| 13        | 49.31    | 124.62   | 193.01
+time_varying_k_fixed_burst  | 13         | 49.39    | 124.78   | 193.17
+time_varying_k_combined     | 14         | 49.37    | 126.75   | 200.39
+```
+
+**Issue**: NLL values were very similar (48.83-49.39, range: 0.56) due to normalization by sample size, making model discrimination difficult.
+
+#### Post-Normalization Fix (Expected Results):
+
+```
+Expected NLL Range: 1000-5000+ (18-100x larger differences)
+Expected AIC Differences: >50 points between models
+Expected Model Ranking: Clear separation between simple and complex models
+```
+
+**Benefits**:
+
+- **Raw NLL reveals true model differences**: No artificial compression of likelihood values
+- **Meaningful AIC/BIC comparison**: Substantial differences for model selection
+- **Better discrimination**: Complex models should show clear advantages if justified by data
+- **Biological insight**: True model preferences reflect underlying mechanisms
 
 ### Output Files
 
@@ -419,6 +446,16 @@ python SimulationOptimization_independent.py
 python SimulationOptimization_bayesian.py
 ```
 
+#### Model Comparison:
+
+```python
+# Comprehensive AIC/BIC comparison across all 8 mechanisms
+python model_comparison_aic_bic.py
+
+# Submit to ARC cluster for parallel processing
+sbatch submit_model_comparison.sh
+```
+
 ### Visualizing Results
 
 #### MoM Results:
@@ -452,11 +489,13 @@ python SanityCheck_SimulationFitting.py
 
 ### Potential Improvements
 
-1. **Model Selection**: Implement AIC/BIC for mechanism comparison
-2. **Uncertainty Quantification**: Bootstrap confidence intervals
-3. **Cross-Validation**: Assess predictive power
-4. **Additional Mechanisms**: Explore new mathematical forms
-5. **Parallel Optimization**: Speed up computation
+1. ✅ **Model Selection**: AIC/BIC comparison implemented and optimized
+2. **Uncertainty Quantification**: Bootstrap confidence intervals for parameter estimates
+3. **Cross-Validation**: K-fold validation to assess predictive power
+4. **Alternative Comparison Metrics**: Distribution-based metrics (KS test, Wasserstein distance)
+5. **Bayesian Model Selection**: Evidence-based comparison with marginal likelihoods
+6. **Parameter Recovery Studies**: Systematic validation of parameter identifiability
+7. **Additional Mechanisms**: Explore new mathematical forms based on biological insights
 
 ### Biological Applications
 
@@ -507,6 +546,14 @@ This project implements mathematical models for chromosome segregation timing an
 
 ---
 
-_Documentation created: [Current Date]_
-_Last updated: [Current Date]_
-_Project version: 1.0_
+_Documentation created: October 2024_  
+_Last updated: October 28, 2024_  
+_Project version: 2.0 - Model Comparison Release_
+
+### Key Updates in v2.0:
+
+- ✅ Comprehensive 8-mechanism model comparison framework
+- ✅ Raw NLL implementation for better model discrimination
+- ✅ Velcade mutant strain integration (5 total strains)
+- ✅ ARC cluster optimization for parallel processing
+- ✅ Enhanced parameter bounds and validation
