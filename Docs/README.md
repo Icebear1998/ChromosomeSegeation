@@ -1,7 +1,7 @@
 # Chromosome Segregation Project - Code Reference
 
-**Last Updated**: November 15, 2024  
-**Version**: 2.1
+**Last Updated**: December 2024  
+**Version**: 2.2
 
 ---
 
@@ -238,6 +238,9 @@ def compute_pdf_for_mechanism(mechanism, params, x_grid, pair)
 - Optimizes all parameters simultaneously
 - Uses differential evolution (global) + L-BFGS-B (local refinement)
 - Fast: 5-30 minutes per mechanism
+- Refactored with helper functions to reduce code duplication
+- Simplified logging and output
+- Dictionary-based mechanism configuration for maintainability
 
 **Workflow**:
 
@@ -247,6 +250,16 @@ def compute_pdf_for_mechanism(mechanism, params, x_grid, pair)
 3. Run differential evolution (population-based search)
 4. Refine with L-BFGS-B
 5. Save results to optimized_parameters_*.txt
+```
+
+**Key Functions**:
+
+```python
+def _get_mech_params(mechanism, param_dict)
+    """Extract mechanism-specific parameters"""
+
+def _add_strain_nll(total_nll, mechanism, data_12, data_32, ...)
+    """Add NLL for a strain pair (12 and 32)"""
 ```
 
 **Output Files**: `SecondVersion/optimized_parameters_{mechanism}_join.txt`
@@ -352,18 +365,23 @@ def calculate_likelihood(experimental_data, simulated_data)
     """Calculate NLL using Kernel Density Estimation (KDE)"""
 
 def get_parameter_bounds(mechanism)
-    """Get optimization bounds for each mechanism"""
+    """Get optimization bounds for each mechanism (handles both simple and time-varying)"""
 ```
 
 **KDE Implementation**:
 
 ```python
-# Uses sklearn KernelDensity with bandwidth=10.0
-kde = KernelDensity(kernel='gaussian', bandwidth=10.0)
+# Uses sklearn KernelDensity with Scott's rule (automatic bandwidth)
+kde = KernelDensity(kernel='gaussian', bandwidth='scott')
 kde.fit(sim_data.reshape(-1, 1))
 log_densities = kde.score_samples(exp_data.reshape(-1, 1))
 nll = -np.sum(log_densities)
 ```
+
+**Key Features**:
+- Handles both simple and time-varying mechanisms
+- `get_parameter_bounds()` automatically detects mechanism type and returns appropriate bounds
+- Simplified code structure with reduced logging
 
 **Called by**: All `SimulationOptimization_*.py` scripts
 
@@ -375,11 +393,13 @@ nll = -np.sum(log_densities)
 
 **Key Features**:
 
-- Uses KDE instead of normal approximation
+- Uses KDE with Scott's rule (automatic bandwidth) instead of normal approximation
 - More accurate but computationally expensive (2-8 hours)
-- 500 simulations per parameter evaluation
+- 500 simulations per parameter evaluation (configurable)
 - Supports strain selection (can optimize on subset of strains)
 - Initial guess capability for warm starts
+- Clean, simplified code structure with minimal logging
+- Unified parameter unpacking via `MECHANISM_PARAM_NAMES` dictionary
 
 **Workflow**:
 
@@ -843,6 +863,7 @@ results = run_optimization(
 
 ## Version History
 
+- **v2.2** (Dec 2024): Code cleanup and refactoring - simplified logging, unified parameter handling, improved maintainability
 - **v2.1** (Nov 2024): Added KDE demonstration, 3.5s histogram bins
 - **v2.0** (Oct 2024): Model comparison framework, raw NLL implementation
 - **v1.5** (Sep 2024): Simulation-based optimization pipeline

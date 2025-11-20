@@ -13,10 +13,8 @@ Key differences from MoM-based optimization:
 """
 
 import numpy as np
-import pandas as pd
 import sys
-import os
-from scipy.optimize import differential_evolution, minimize
+from scipy.optimize import differential_evolution
 from simulation_utils import *
 from Chromosomes_Theory import *
 
@@ -127,15 +125,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         if base_params['n1'] >= base_params['N1'] or \
             base_params['n2'] >= base_params['N2'] or \
             base_params['n3'] >= base_params['N3']:
-            if hasattr(joint_objective, 'debug_count'):
-                joint_objective.debug_count += 1
-                if joint_objective.debug_count <= 5:
-                    print(f"Constraint violation: n >= N")
-                    print(f"  n1={base_params['n1']:.1f} >= N1={base_params['N1']:.1f}: {base_params['n1'] >= base_params['N1']}")
-                    print(f"  n2={base_params['n2']:.1f} >= N2={base_params['N2']:.1f}: {base_params['n2'] >= base_params['N2']}")
-                    print(f"  n3={base_params['n3']:.1f} >= N3={base_params['N3']:.1f}: {base_params['n3'] >= base_params['N3']}")
-            else:
-                joint_objective.debug_count = 1
             return 1e6
 
         total_nll = 0
@@ -168,8 +157,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         
         return total_nll
     
-    except Exception as e:
-        print(f"Objective function error: {e}")
+    except Exception:
         return 1e6
 
 
@@ -194,134 +182,38 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     Returns:
         dict: Optimization results
     """
-    # Determine if this is a simple or time-varying mechanism
-    is_simple = mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']
-    
-    print(f"\n=== Simulation-based Optimization for {mechanism.upper()} ===")
-    print(f"Using KDE with Scott's rule (automatic bandwidth)")
-    
-    if selected_strains is None:
-        print(f"Datasets: {list(datasets.keys())} (all datasets)")
-    else:
-        print(f"Selected datasets: {selected_strains}")
-        print(f"Available datasets: {list(datasets.keys())}")
-    
-    print(f"Max iterations: {max_iterations}")
-    print(f"Simulations per evaluation: {num_simulations}")
-    sys.stdout.flush()
-    
-    # Get parameter bounds
-    bounds = get_parameter_bounds(mechanism)
-    
-    print(f"\nOptimizing {len(bounds)} parameters...")
-    
     try:
         param_names = MECHANISM_PARAM_NAMES[mechanism]
     except KeyError:
-        print(f"Unknown mechanism: {mechanism}")
         return {'success': False, 'message': f'Unknown mechanism: {mechanism}'}
     
-    print("Parameter bounds:")
-    for name, bound in zip(param_names, bounds):
-        print(f"  {name}: {bound}")
+    bounds = get_parameter_bounds(mechanism)
+    
+    print(f"\nOptimizing {mechanism} ({len(bounds)} parameters, {num_simulations} sims/eval)")
     sys.stdout.flush()
-
-    print("\nTesting parameter bounds with a quick simulation...")
-    import random
-    test_params = []
-    for bound in bounds:
-        test_params.append(random.uniform(bound[0], bound[1]))
     
-    test_nll = joint_objective(test_params, mechanism, datasets, num_simulations=10, selected_strains=selected_strains)
-    if test_nll < 1e6:
-        print(f"✓ Parameter bounds are valid (test NLL = {test_nll:.1f})")
-    else:
-        print(f"⚠ Warning: Test failed with NLL = {test_nll:.1f}")
-        print("  Continuing with optimization anyway...")
-    
-    print(f"🚀 Starting optimization with {num_simulations} simulations per evaluation...")
-    if initial_guess is not None:
-        print("   Using provided initial guess")
-    else:
-        print("   Using random initialization")
-    
-    # Global optimization with mechanism-specific args
-    if is_simple:
-        # Simple mechanisms don't use selected_strains
-        opt_args = (mechanism, datasets, num_simulations)
-        de_params = {
-            'seed': 42,
-            'disp': True,
-            'tol': 1e-6,
-        }
-    else:
-        # Time-varying mechanisms can use selected_strains
-        opt_args = (mechanism, datasets, num_simulations, selected_strains)
-        de_params = {
-            'tol': 1e-8,
-            'disp': False,
-        }
-    
+    opt_args = (mechanism, datasets, num_simulations, selected_strains)
     result = differential_evolution(
         joint_objective,
         bounds,
         args=opt_args,
-        x0=initial_guess,  # Add initial guess parameter
+        x0=initial_guess,
         maxiter=max_iterations,
         popsize=20,
-        workers=-1,           # Force parallel processing
-        strategy='rand1bin',  # Safer than best1bin for stochastic functions
-        mutation=(0.5, 1.0),  # High mutation to explore the landscape
-        recombination=0.8,    # Correlated parameters (k_max and tau) need this
+        workers=-1,
+        strategy='rand1bin',
+        mutation=(0.5, 1.0),
+        recombination=0.8,
         polish=True,
-        **de_params
+        tol=1e-7,
+        disp=True
     )
     
-    # Always extract and display the best solution found, even if not converged
-    convergence_status = "converged" if result.success else "did not converge"
-    print(f"🔍 Optimization {convergence_status}!")
-    print(f"Best negative log-likelihood: {result.fun:.4f}")
-    
-    if not result.success:
-        print(f"Note: {result.message}")
-    
-    # Unpack and display results
     params = result.x
     param_dict = dict(zip(param_names, params))
     
-    # Calculate derived parameters for display
-    n1_derived = max(param_dict['r21'] * param_dict['n2'], 1)
-    n3_derived = max(param_dict['r23'] * param_dict['n2'], 1)
-    N1_derived = max(param_dict['R21'] * param_dict['N2'], 1)
-    N3_derived = max(param_dict['R23'] * param_dict['N2'], 1)
-    
-    print("\nBest Parameters Found:")
-    print(f"  Base: n2={param_dict['n2']:.1f}, N2={param_dict['N2']:.1f}")
-    print(f"  Ratios: r21={param_dict['r21']:.2f}, r23={param_dict['r23']:.2f}, R21={param_dict['R21']:.2f}, R23={param_dict['R23']:.2f}")
-    print(f"  Derived: n1={n1_derived:.1f}, n3={n3_derived:.1f}, N1={N1_derived:.1f}, N3={N3_derived:.1f}")
-    
-    # Print mechanism-specific parameters
-    if is_simple:
-        # Simple mechanisms have single 'k' parameter
-        print(f"  Rate: k={param_dict['k']:.4f}")
-    else:
-        # Time-varying mechanisms have k_max and tau
-        k_1_derived = param_dict['k_max'] / param_dict['tau']
-        print(f"  Rates: k_max={param_dict['k_max']:.4f}, tau={param_dict['tau']:.1f} min, k_1={k_1_derived:.6f}")
-    
-    # Print optional mechanism features (burst, onion)
-    if 'burst_size' in param_dict:
-        print(f"  Burst size: {param_dict['burst_size']:.1f}")
-    if 'n_inner' in param_dict:
-        print(f"  Inner threshold: {param_dict['n_inner']:.1f}")
-    
-    # Print mutant parameters
-    print(f"  Mutants: alpha={param_dict['alpha']:.3f}, beta_k={param_dict['beta_k']:.3f}", end='')
-    if 'beta_tau' in param_dict:
-        print(f", beta_tau={param_dict['beta_tau']:.3f}, beta_tau2={param_dict['beta_tau2']:.3f}")
-    else:
-        print()
-    
+    status = "converged" if result.success else "not converged"
+    print(f"Optimization {status}: NLL = {result.fun:.4f}")
     sys.stdout.flush()
     
     return {
@@ -345,7 +237,6 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
         selected_strains (list): List of strains used in fitting
     """
     if not results['success']:
-        print("Cannot save results - optimization failed")
         return
     
     # Determine filename based on selected strains
@@ -388,65 +279,36 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
             f.write(f"n3 = {n3_derived:.6f}\n")
             f.write(f"N1 = {N1_derived:.6f}\n")
             f.write(f"N3 = {N3_derived:.6f}\n")
-    
-    print(f"Results saved to: {filename}")
 
 
 def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 1000  # number of iterations for testing
-    num_simulations = 5  # Number of simulations per evaluation
+    max_iterations = 1000
+    num_simulations = 300
     
-    print("Simulation-based Optimization with KDE")
-    print("=" * 60)
-    sys.stdout.flush()
-    
-    # Load experimental data
     datasets = load_experimental_data()
     if not datasets:
         print("Error: No datasets loaded!")
-        sys.stdout.flush()
         return
     
-    sys.stdout.flush()
-    
-    # Choose mechanism type - can be overridden by command line argument
-    # Simple mechanisms: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
-    # Time-varying mechanisms: 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined'
-    
-    mechanism = 'simple'  # default mechanism
-    
-    print(f"Optimizing {mechanism} for ALL strains")
-    sys.stdout.flush()
+    mechanism = 'simple'
     
     try:
-        # Use unified optimization function that handles both simple and time-varying
         results = run_optimization(
-            mechanism, datasets, 
-            max_iterations=max_iterations, 
+            mechanism, datasets,
+            max_iterations=max_iterations,
             num_simulations=num_simulations,
             selected_strains=None,
             use_parallel=True,
             initial_guess=None
         )
-        
-        # Save results
         save_results(mechanism, results, selected_strains=None)
-        
-        print(f"\n{'-' * 60}")
-        sys.stdout.flush()
-        
     except Exception as e:
         print(f"Error during optimization: {e}")
-        sys.stdout.flush()
         import traceback
         traceback.print_exc()
-        sys.stdout.flush()
-     
-    print("Optimization complete!")
-    sys.stdout.flush()
 
 
 if __name__ == "__main__":

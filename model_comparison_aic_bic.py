@@ -39,7 +39,7 @@ except ImportError:
     HAS_SEABORN = False
 
 # Import optimization functions
-from SimulationOptimization_join import run_optimization, run_optimization_simple_mechanisms
+from SimulationOptimization_join import run_optimization
 from simulation_utils import load_experimental_data, get_parameter_bounds
 import sys
 import os
@@ -232,26 +232,17 @@ def run_single_optimization(args):
         np.random.seed(seed + run_number)
         
         # Choose optimization method based on mechanism type
-        if mechanism.endswith('_simulation'):
-            # Use simulation-based optimization for simple mechanisms with KDE
+        if mechanism.endswith('_simulation') or mechanism.startswith('time_varying_k'):
+            # Use simulation-based optimization for all simulation mechanisms (simple and time-varying)
             base_mechanism = mechanism.replace('_simulation', '')
             print(f"  📊 Run {run_number}: Using simulation-based optimization with KDE for {base_mechanism}...")
             sys.stdout.flush()
-            result = run_optimization_simple_mechanisms(
+            result = run_optimization(
                 base_mechanism, datasets,
                 max_iterations=max_interation,
-                num_simulations=num_simulations
-            )
-        elif mechanism.startswith('time_varying_k'):
-            # Use simulation-based optimization for time-varying mechanisms
-            print(f"  📊 Run {run_number}: Using simulation-based optimization...")
-            sys.stdout.flush()
-            result = run_optimization(
-                mechanism, datasets, 
-                max_iterations=max_interation,  # Reduced from 200 to prevent hanging
                 num_simulations=num_simulations,
                 selected_strains=None,
-                use_parallel=True  # Enable parallel computation within each run
+                use_parallel=True
             )
         else:
             # Use MoM-based optimization for constant rate mechanisms
@@ -825,7 +816,7 @@ def main():
         'simple',                          # 11 params
         'fixed_burst',                     # 12 params
         'feedback_onion',                  # 12 params
-        'fixed_burst_feedback_onion',      # 13 params
+        #'fixed_burst_feedback_onion',      # 13 params
         
         # Constant rate mechanisms (Simulation-based with KDE - no normal approximation)
         #'simple_simulation',                 # 9 params (no beta2_k, beta3_k)
@@ -852,7 +843,7 @@ def main():
     
     # Configuration for sequential runs with internal parallelization
     num_runs = 5  # Number of optimization runs per mechanism
-    num_simulations = 200  # Simulations per evaluation for simulation-based mechanisms
+    num_simulations = 400  # Simulations per evaluation for simulation-based mechanisms
     max_iterations = 20000  # Max iterations for DE
     use_bayesian_opt = False  # Set to True to use Bayesian optimization instead of DE
     
