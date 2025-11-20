@@ -3,71 +3,53 @@ from scipy.stats import norm
 import math
 
 
-def compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params, pair12 = True):
+def compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params, pair12=True):
     """
     Compute PDF for any mechanism with appropriate parameters.
+    
+    Args:
+        mechanism (str): Mechanism type - 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
+        data (ndarray): Data points at which to evaluate PDF
+        n_i, N_i (float): Threshold and initial cohesin count for chromosome i
+        n_j, N_j (float): Threshold and initial cohesin count for chromosome j
+        k (float): Degradation rate
+        mech_params (dict): Mechanism-specific parameters
+        pair12 (bool): Unused parameter, kept for backward compatibility
+    
+    Returns:
+        ndarray: PDF values evaluated at data points
     """
     if mechanism == 'simple':
         return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k)
     elif mechanism == 'fixed_burst':
         return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
                                burst_size=mech_params['burst_size'])
-    elif mechanism == 'time_varying_k':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               k_1=mech_params['k_1'])
-    elif mechanism == 'feedback':
-        return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               feedbackSteepness=mech_params['feedbackSteepness'],
-                               feedbackThreshold=mech_params['feedbackThreshold'])
-    elif mechanism == 'feedback_linear':
-        if pair12:
-            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               w1=mech_params['w1'], w2=mech_params['w2'])
-        else:
-            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               w1=mech_params['w3'], w2=mech_params['w2'])
     elif mechanism == 'feedback_onion':
         return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
                                n_inner=mech_params['n_inner'])
-    elif mechanism == 'feedback_zipper':
-        if pair12:
-            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               z1=mech_params['z1'], z2=mech_params['z2'])
-        else:
-            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               z1=mech_params['z3'], z2=mech_params['z2'])
-    elif mechanism == 'fixed_burst_feedback_linear':
-        if pair12:
-            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               burst_size=mech_params['burst_size'],
-                               w1=mech_params['w1'], w2=mech_params['w2'])
-        else:
-            return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
-                               burst_size=mech_params['burst_size'],
-                               w1=mech_params['w3'], w2=mech_params['w2'])
     elif mechanism == 'fixed_burst_feedback_onion':
         return compute_pdf_mom(mechanism, data, n_i, N_i, n_j, N_j, k,
                                burst_size=mech_params['burst_size'],
                                n_inner=mech_params['n_inner'])
     else:
-        raise ValueError(f"Unknown mechanism: {mechanism}")
+        raise ValueError(f"Unknown mechanism: {mechanism}. "
+                        f"Supported mechanisms: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'")
     
 
-def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=None, feedbackSteepness=None, feedbackThreshold=None, w1=None, w2=None, n_inner=None, z1=None, z2=None):
+def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, n_inner=None):
     """
     Compute Method of Moments mean and variance for f_X = T_i - T_j.
 
     Args:
-        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'fixed_burst_feedback_linear', 'fixed_burst_feedback_onion'.
-        n_i, n_j (float): Threshold cohesin counts for chromosomes i and j.
-        N_i, N_j (float): Initial cohesin counts for chromosomes i and j.
-        k (float): Degradation rates (k_i, k_j for simple; lambda_i, lambda_j for fixed_burst).
-        burst_size (float, optional): Burst size b for fixed_burst mechanism.
-        w1, w2 (float, optional): Feedback parameters for feedback_linear mechanism.
-        n_inner (float, optional): Inner parameter for feedback_onion mechanism.
+        mechanism (str): Mechanism type - 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
+        n_i, n_j (float): Threshold cohesin counts for chromosomes i and j
+        N_i, N_j (float): Initial cohesin counts for chromosomes i and j
+        k (float): Base degradation rate (per minute)
+        burst_size (float, optional): Burst size for fixed_burst mechanisms
+        n_inner (float, optional): Inner threshold for feedback_onion mechanisms
 
     Returns:
-        tuple: (mean_X, var_X) for f_X = T_i - T_j.
+        tuple: (mean_X, var_X) for f_X = T_i - T_j
     """
     # Input validation for all mechanisms
     if n_i < 0 or n_j < 0 or N_i <= 0 or N_j <= 0 or k <= 0:
@@ -309,16 +291,32 @@ def compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=N
 
     else:
         raise ValueError(
-            "Mechanism must be 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'fixed_burst_feedback_onion'.")
+            f"Mechanism must be 'simple', 'fixed_burst', 'feedback_onion', or 'fixed_burst_feedback_onion'. "
+            f"Got: '{mechanism}'")
 
     mean_X = mean_Ti - mean_Tj
     var_X = var_Ti + var_Tj
     return mean_X, var_X
 
 
-def compute_pdf_mom(mechanism, x_grid, n_i, N_i, n_j, N_j, k, burst_size=None, k_1=None, feedbackSteepness=None, feedbackThreshold=None, w1=None, w2=None, n_inner=None, z1=None, z2=None):
-    mean_X, var_X = compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, burst_size=burst_size,
-                                        k_1=k_1, feedbackSteepness=feedbackSteepness, feedbackThreshold=feedbackThreshold, w1=w1, w2=w2, n_inner=n_inner, z1=z1, z2=z2)
+def compute_pdf_mom(mechanism, x_grid, n_i, N_i, n_j, N_j, k, burst_size=None, n_inner=None):
+    """
+    Compute PDF using Method of Moments normal approximation.
+    
+    Args:
+        mechanism (str): Mechanism type
+        x_grid (ndarray): Points at which to evaluate PDF
+        n_i, N_i (float): Threshold and initial count for chromosome i
+        n_j, N_j (float): Threshold and initial count for chromosome j
+        k (float): Degradation rate
+        burst_size (float, optional): Burst size for burst mechanisms
+        n_inner (float, optional): Inner threshold for onion feedback
+    
+    Returns:
+        ndarray: PDF values at x_grid points
+    """
+    mean_X, var_X = compute_moments_mom(mechanism, n_i, N_i, n_j, N_j, k, 
+                                        burst_size=burst_size, n_inner=n_inner)
     if np.isinf(mean_X) or np.isinf(var_X):
         # Small positive value to avoid log(0)
         return np.full_like(x_grid, 1e-10)

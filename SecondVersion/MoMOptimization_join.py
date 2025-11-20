@@ -15,6 +15,141 @@ from scipy.stats import norm
 from MoMCalculations import compute_pdf_for_mechanism
 
 
+def validate_constraints(param_dict):
+    """
+    Validate parameter constraints for a parameter dictionary.
+    
+    Ensures:
+    - n_i < N_i for all chromosomes (baseline requirement)
+    - n_i * alpha < N_i for threshold mutant
+    
+    Args:
+        param_dict (dict): Unpacked parameter dictionary
+    
+    Returns:
+        bool: True if all constraints satisfied, False otherwise
+    """
+    # Wild-type constraints: n_i < N_i
+    if param_dict['n1'] >= param_dict['N1']:
+        return False
+    if param_dict['n2'] >= param_dict['N2']:
+        return False
+    if param_dict['n3'] >= param_dict['N3']:
+        return False
+    
+    # Threshold mutant constraints: n_i * alpha < N_i
+    n1_th = max(param_dict['n1'] * param_dict['alpha'], 1)
+    n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
+    n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
+    
+    if n1_th >= param_dict['N1']:
+        return False
+    if n2_th >= param_dict['N2']:
+        return False
+    if n3_th >= param_dict['N3']:
+        return False
+    
+    return True
+
+
+def compute_strain_nll(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params, pair12):
+    """
+    Compute negative log-likelihood for a single strain pair.
+    
+    Args:
+        mechanism (str): Mechanism type
+        data (ndarray): Experimental data (time differences between chromosomes)
+        n_i, N_i (float): Threshold and initial count for chromosome i
+        n_j, N_j (float): Threshold and initial count for chromosome j
+        k (float): Degradation rate
+        mech_params (dict): Mechanism-specific parameters
+        pair12 (bool): Unused, kept for backward compatibility
+    
+    Returns:
+        float: Negative log-likelihood, or np.inf if invalid
+    """
+    pdf = compute_pdf_for_mechanism(mechanism, data, n_i, N_i, n_j, N_j, k, mech_params, pair12=pair12)
+    
+    if np.any(pdf <= 0) or np.any(np.isnan(pdf)):
+        return np.inf
+    
+    return -np.sum(np.log(pdf))
+
+
+def calculate_individual_nlls(mechanism, param_dict, mech_params, data_arrays):
+    """
+    Calculate individual NLL values for each strain for reporting and visualization.
+    
+    Args:
+        mechanism (str): Mechanism type
+        param_dict (dict): Unpacked parameters with all derived values
+        mech_params (dict): Mechanism-specific parameters
+        data_arrays (dict): Dictionary with all data arrays
+    
+    Returns:
+        dict: Dictionary with strain names as keys and NLL values
+    """
+    nlls = {}
+    
+    # Wild-Type
+    nlls['wt'] = (
+        compute_strain_nll(mechanism, data_arrays['data_wt12'],
+                          param_dict['n1'], param_dict['N1'], param_dict['n2'], param_dict['N2'],
+                          param_dict['k'], mech_params, pair12=True) +
+        compute_strain_nll(mechanism, data_arrays['data_wt32'],
+                          param_dict['n3'], param_dict['N3'], param_dict['n2'], param_dict['N2'],
+                          param_dict['k'], mech_params, pair12=False)
+    )
+    
+    # Threshold Mutant
+    n1_th = max(param_dict['n1'] * param_dict['alpha'], 1)
+    n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
+    n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
+    nlls['threshold'] = (
+        compute_strain_nll(mechanism, data_arrays['data_threshold12'],
+                          n1_th, param_dict['N1'], n2_th, param_dict['N2'],
+                          param_dict['k'], mech_params, pair12=True) +
+        compute_strain_nll(mechanism, data_arrays['data_threshold32'],
+                          n3_th, param_dict['N3'], n2_th, param_dict['N2'],
+                          param_dict['k'], mech_params, pair12=False)
+    )
+    
+    # Degradation Rate Mutant
+    k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.001)
+    nlls['degrate'] = (
+        compute_strain_nll(mechanism, data_arrays['data_degrate12'],
+                          param_dict['n1'], param_dict['N1'], param_dict['n2'], param_dict['N2'],
+                          k_deg, mech_params, pair12=True) +
+        compute_strain_nll(mechanism, data_arrays['data_degrate32'],
+                          param_dict['n3'], param_dict['N3'], param_dict['n2'], param_dict['N2'],
+                          k_deg, mech_params, pair12=False)
+    )
+    
+    # Degradation Rate APC Mutant
+    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
+    nlls['degrateAPC'] = (
+        compute_strain_nll(mechanism, data_arrays['data_degrateAPC12'],
+                          param_dict['n1'], param_dict['N1'], param_dict['n2'], param_dict['N2'],
+                          k_degAPC, mech_params, pair12=True) +
+        compute_strain_nll(mechanism, data_arrays['data_degrateAPC32'],
+                          param_dict['n3'], param_dict['N3'], param_dict['n2'], param_dict['N2'],
+                          k_degAPC, mech_params, pair12=False)
+    )
+    
+    # Velcade Mutant
+    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.001)
+    nlls['velcade'] = (
+        compute_strain_nll(mechanism, data_arrays['data_velcade12'],
+                          param_dict['n1'], param_dict['N1'], param_dict['n2'], param_dict['N2'],
+                          k_velcade, mech_params, pair12=True) +
+        compute_strain_nll(mechanism, data_arrays['data_velcade32'],
+                          param_dict['n3'], param_dict['N3'], param_dict['n2'], param_dict['N2'],
+                          k_velcade, mech_params, pair12=False)
+    )
+    
+    return nlls
+
+
 def unpack_parameters(params, mechanism_info):
     """
     Unpack optimization parameters based on mechanism.
@@ -61,50 +196,16 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
     # Unpack parameters
     param_dict = unpack_parameters(params, mechanism_info)
 
-    # Validate constraints: n_i < N_i for all chromosomes
-    if param_dict['n1'] >= param_dict['N1']:
+    # Validate constraints
+    if not validate_constraints(param_dict):
         return np.inf
-    if param_dict['n2'] >= param_dict['N2']:
-        return np.inf
-    if param_dict['n3'] >= param_dict['N3']:
-        return np.inf
-
-    # Additional validation for mutant scenarios
-    # Threshold mutant: ensure n_i * alpha < N_i
-    n1_th = max(param_dict['n1'] * param_dict['alpha'], 1)
-    n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
-    n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
-
-    if n1_th >= param_dict['N1'] or n2_th >= param_dict['N2'] or n3_th >= param_dict['N3']:
-        return np.inf
-
-    # Initial proteins mutant: TEMPORARILY EXCLUDED FROM FITTING
-    # Constraints removed as initial strain is not being fitted
 
     # Extract mechanism-specific parameters
     mech_params = {}
     if mechanism == 'fixed_burst':
         mech_params['burst_size'] = param_dict['burst_size']
-    elif mechanism == 'time_varying_k':
-        mech_params['k_1'] = param_dict['k_1']
-    elif mechanism == 'feedback':
-        mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
-        mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
-    elif mechanism == 'feedback_linear':
-        mech_params['w1'] = param_dict['w1']
-        mech_params['w2'] = param_dict['w2']
-        mech_params['w3'] = param_dict['w3']
     elif mechanism == 'feedback_onion':
         mech_params['n_inner'] = param_dict['n_inner']
-    elif mechanism == 'feedback_zipper':
-        mech_params['z1'] = param_dict['z1']
-        mech_params['z2'] = param_dict['z2']
-        mech_params['z3'] = param_dict['z3']
-    elif mechanism == 'fixed_burst_feedback_linear':
-        mech_params['burst_size'] = param_dict['burst_size']
-        mech_params['w1'] = param_dict['w1']
-        mech_params['w2'] = param_dict['w2']
-        mech_params['w3'] = param_dict['w3']
     elif mechanism == 'fixed_burst_feedback_onion':
         mech_params['burst_size'] = param_dict['burst_size']
         mech_params['n_inner'] = param_dict['n_inner']
@@ -112,84 +213,79 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
     total_nll = 0.0
 
     # Wild-Type (Chrom1–Chrom2 and Chrom3–Chrom2)
-    pdf_wt12 = compute_pdf_for_mechanism(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
-    if np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12)):
+    nll_wt12 = compute_strain_nll(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
+                                   param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
+    if nll_wt12 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_wt12))  # REMOVED: / len(data_wt12)
+    total_nll += nll_wt12
 
-    pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
-    if np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32)):
+    nll_wt32 = compute_strain_nll(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
+                                   param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
+    if nll_wt32 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_wt32))  # REMOVED: / len(data_wt32)
+    total_nll += nll_wt32
 
     # Threshold Mutant
-    pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
-    if np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12)):
+    n1_th = max(param_dict['n1'] * param_dict['alpha'], 1)
+    n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
+    n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
+    
+    nll_th12 = compute_strain_nll(mechanism, data_threshold12, n1_th, param_dict['N1'],
+                                   n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
+    if nll_th12 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_th12))  # REMOVED: / len(data_threshold12)
+    total_nll += nll_th12
 
-    pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
-    if np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32)):
+    nll_th32 = compute_strain_nll(mechanism, data_threshold32, n3_th, param_dict['N3'],
+                                   n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
+    if nll_th32 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_th32))  # REMOVED: / len(data_threshold32)
+    total_nll += nll_th32
 
-    # Degradation Rate Mutant
+    # Degradation Rate Mutant (Separase)
     k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.0005)
-    if param_dict['beta_k'] * param_dict['k'] < 0.00005:
-        print("Warning: beta_k * k is less than 0.00005, setting k_deg to 0.00005")
 
-    pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
-    if np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12)):
+    nll_deg12 = compute_strain_nll(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
+                                    param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
+    if nll_deg12 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_deg12))  # REMOVED: / len(data_degrate12)
+    total_nll += nll_deg12
 
-    pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
-    if np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32)):
+    nll_deg32 = compute_strain_nll(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
+                                    param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
+    if nll_deg32 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_deg32))  # REMOVED: / len(data_degrate32)
+    total_nll += nll_deg32
 
     # Degradation Rate APC Mutant
     k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.0005)
-    if param_dict['beta2_k'] * param_dict['k'] < 0.0005:
-        print("Warning: beta2_k * k is less than 0.0005, setting k_degAPC to 0.0005")
 
-    pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
-                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
-    if np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12)):
+    nll_degAPC12 = compute_strain_nll(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
+                                       param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
+    if nll_degAPC12 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_degAPC12))  # REMOVED: / len(data_degrateAPC12)
+    total_nll += nll_degAPC12
 
-    pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
-                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
-    if np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32)):
+    nll_degAPC32 = compute_strain_nll(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
+                                       param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
+    if nll_degAPC32 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_degAPC32))  # REMOVED: / len(data_degrateAPC32)
+    total_nll += nll_degAPC32
 
     # Velcade Mutant
     k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.0005)
-    if param_dict['beta3_k'] * param_dict['k'] < 0.0005:
-        print("Warning: beta3_k * k is less than 0.0005, setting k_velcade to 0.0005")
 
-    pdf_velcade12 = compute_pdf_for_mechanism(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
-                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
-    if np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12)):
+    nll_velcade12 = compute_strain_nll(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
+                                        param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
+    if nll_velcade12 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_velcade12))  # REMOVED: / len(data_velcade12)
+    total_nll += nll_velcade12
 
-    pdf_velcade32 = compute_pdf_for_mechanism(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
-                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
-    if np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32)):
+    nll_velcade32 = compute_strain_nll(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
+                                        param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
+    if nll_velcade32 == np.inf:
         return np.inf
-    total_nll -= np.sum(np.log(pdf_velcade32))  # REMOVED: / len(data_velcade32)
-
-    # Initial Proteins Mutant - TEMPORARILY EXCLUDED FROM FITTING
-    # PDF calculations and NLL contribution removed as initial strain is not being fitted
+    total_nll += nll_velcade32
 
     return total_nll
 
@@ -221,35 +317,40 @@ def get_mechanism_info(mechanism, gamma_mode):
     Get mechanism-specific parameter information.
 
     Args:
-        mechanism (str): 'simple', 'fixed_burst', 'time_varying_k', 'feedback', 'feedback_linear', 'feedback_onion', 'feedback_zipper', 'fixed_burst_feedback_linear', or 'fixed_burst_feedback_onion'
+        mechanism (str): 'simple', 'fixed_burst', 'feedback_onion', or 'fixed_burst_feedback_onion'
         gamma_mode (str): 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
 
     Returns:
         dict: Contains parameter names, bounds, and default indices
+    
+    Bounds Notes:
+    - All bounds are synchronized with simulation_utils.py for consistency
+    - Biological constraints (n < N) are enforced in validate_constraints()
+    - Numerical bounds prevent optimization instabilities and unrealistic parameter values
     """
-    # Common parameters for all mechanisms - Updated to match simulation_utils.py bounds
+    # Common parameters for all mechanisms
+    # These represent wild-type characteristics and are shared across all mechanism variants
     common_params = ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23']
     common_bounds = [
-        (1.0, 50.0),      # n2 - Updated to match simulation bounds
-        (50.0, 1000.0),   # N2 - Updated to match simulation bounds  
-        (0.01, 0.1),      # k - Updated to match simulation k_max bounds
-        (0.25, 4.0),      # r21 - Updated to match simulation bounds
-        (0.25, 4.0),      # r23 - Updated to match simulation bounds
-        (0.4, 2),       # R21 - Updated to match simulation bounds
-        (0.5, 5.0),       # R23 - Kept same as both use (0.5, 5.0)
+        (1.0, 50.0),       # n2: threshold cohesin count for chromosome 2 (reference)
+        (50.0, 1000.0),    # N2: initial cohesin count for chromosome 2
+        (0.01, 0.1),       # k: base degradation rate (per minute)
+        (0.25, 4.0),       # r21: ratio n1/n2 (threshold ratio between chromosomes)
+        (0.25, 4.0),       # r23: ratio n3/n2 (threshold ratio between chromosomes)
+        (0.4, 2.0),        # R21: ratio N1/N2 (initial count ratio between chromosomes)
+        (0.5, 5.0),        # R23: ratio N3/N2 (initial count ratio between chromosomes)
     ]
     
-    # Integrality constraints: n2 and N2 are integers
+    # Integrality constraints: n2 and N2 must be integers (cohesin counts are discrete)
     common_integrality = [True, True, False, False, False, False, False]
 
-    # Mutant parameters - Updated to match simulation_utils.py bounds
-    # Including alpha, beta_k, beta2_k, beta3_k (gamma parameters excluded)
+    # Mutant parameters: represent biological effects of mutations
     mutant_params = ['alpha', 'beta_k', 'beta2_k', 'beta3_k']
     mutant_bounds = [
-        (0.1, 0.7),       # alpha - Updated to match simulation bounds
-        (0.1, 1.0),       # beta_k - Updated to match simulation bounds
-        (0.1, 1.0),        # beta2_k - Updated to match simulation beta_tau bounds
-        (0.1, 1.0),        # beta3_k (Velcade) - Updated to match simulation beta_tau2 bounds
+        (0.1, 0.7),        # alpha: threshold reduction factor (threshold mutants)
+        (0.1, 1.0),        # beta_k: degradation rate reduction (separase mutants)
+        (0.1, 1.0),        # beta2_k: degradation rate reduction (APC mutants)
+        (0.1, 1.0),        # beta3_k: degradation rate reduction (Velcade mutants)
     ]
     mutant_integrality = [False, False, False, False]
 
@@ -259,21 +360,19 @@ def get_mechanism_info(mechanism, gamma_mode):
         mechanism_integrality = []
     elif mechanism == 'fixed_burst':
         mechanism_params = ['burst_size']
-        mechanism_bounds = [(1.0, 20.0)]  # Updated to match simulation bounds
-        mechanism_integrality = [True]  # burst_size is integer
+        mechanism_bounds = [(1.0, 20.0)]  # Size of cohesin bursts per degradation event
+        mechanism_integrality = [True]  # burst_size must be integer
     elif mechanism == 'feedback_onion':
         mechanism_params = ['n_inner']
-        mechanism_bounds = [
-            (1.0, 4000.0),   # n_inner - Updated to match simulation bounds
-        ]
-        mechanism_integrality = [True]  # n_inner is integer
+        mechanism_bounds = [(1.0, 4000.0)]  # Inner threshold for onion-like feedback effect
+        mechanism_integrality = [True]  # n_inner must be integer
     elif mechanism == 'fixed_burst_feedback_onion':
         mechanism_params = ['burst_size', 'n_inner']
         mechanism_bounds = [
-            (1.0, 20.0),     # burst_size - Updated to match simulation bounds
-            (1.0, 4000.0),    # n_inner - Updated to match simulation bounds
+            (1.0, 20.0),     # burst_size: cohesin count per burst
+            (1.0, 4000.0),   # n_inner: inner threshold for feedback
         ]
-        mechanism_integrality = [True, True]  # both are integers
+        mechanism_integrality = [True, True]  # both are integer parameters
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
 
@@ -293,18 +392,61 @@ def get_mechanism_info(mechanism, gamma_mode):
 
 def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=500, seed=None, gamma_mode='separate'):
     """
-    Run a single MoM optimization for a given mechanism.
-    This function can be reused by other scripts for model comparison.
+    Run a single MoM (Method of Moments) optimization for a given mechanism.
+    
+    This is a reusable optimization function that can be called from main() or from other scripts
+    (e.g., model_comparison_aic_bic.py) for model selection and comparison workflows.
     
     Args:
-        mechanism (str): Mechanism name
-        data_arrays (dict): Dictionary containing data arrays, if None will load from file
-        max_iterations (int): Maximum iterations for optimization
-        seed (int): Random seed for reproducible results
-        gamma_mode (str): 'unified' or 'separate' gamma mode
+        mechanism (str): Mechanism type. Valid options:
+            - 'simple': Baseline harmonic degradation
+            - 'fixed_burst': Degradation in fixed-size bursts
+            - 'feedback_onion': Rate modified by onion-like feedback
+            - 'fixed_burst_feedback_onion': Combined burst + onion feedback
+        
+        data_arrays (dict, optional): Pre-loaded data arrays. If None, will load from file.
+            Expected keys: 'data_wt12', 'data_wt32', 'data_threshold12', 'data_threshold32',
+            'data_degrate12', 'data_degrate32', 'data_initial12', 'data_initial32',
+            'data_degrateAPC12', 'data_degrateAPC32', 'data_velcade12', 'data_velcade32'
+        
+        max_iterations (int): Maximum iterations for differential evolution (default: 500).
+            Higher values give more thorough search but take longer.
+        
+        seed (int, optional): Random seed for reproducible results. Defaults to 42 if not provided.
+        
+        gamma_mode (str): Parameter mode (default: 'separate').
+            - 'unified': Single gamma affects all chromosomes
+            - 'separate': Individual gamma for each chromosome (currently excluded from fitting)
     
     Returns:
-        dict: Results dictionary with success, nll, params, etc.
+        dict: Results dictionary containing:
+            - 'success' (bool): Whether optimization completed without exceptions
+            - 'converged' (bool): Whether scipy reports convergence
+            - 'nll' (float): Best negative log-likelihood found
+            - 'params' (dict): Dictionary of optimized parameter names and values
+            - 'result' (scipy result): Full scipy.optimize.differential_evolution result object
+            - 'message' (str): Status message (success or error description)
+            - 'mechanism_info' (dict): Mechanism metadata including parameter names and bounds
+    
+    Examples:
+        # Direct call with data arrays (e.g., from model_comparison_aic_bic.py)
+        result = run_mom_optimization_single(
+            mechanism='fixed_burst',
+            data_arrays=data_dict,
+            max_iterations=500,
+            seed=42
+        )
+        
+        # Call without data arrays (loads from file)
+        result = run_mom_optimization_single(
+            mechanism='simple',
+            max_iterations=400
+        )
+        
+        # Access results
+        if result['success']:
+            print(f"NLL: {result['nll']:.4f}")
+            print(f"Parameters: {result['params']}")
     """
     try:
         # Get mechanism-specific information
@@ -365,16 +507,16 @@ def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=500,
                   data_degrateAPC12, data_degrateAPC32,
                   data_velcade12, data_velcade32),
             maxiter=max_iterations,
-            popsize=30,             # Reduced: 200 is overkill (see reasoning below)
-            strategy='rand1bin',    # Changed: More robust against local minima than 'best1bin'
+            popsize=20,             
+            strategy='best1bin',    # Changed: More robust against local minima than 'best1bin'
             mutation=(0.5, 1.0),    # Kept: High mutation helps jump over 'np.inf' cliffs
-            recombination=0.9,      # Increased: Parameters (N, n, k) are highly correlated
-            tol=1e-4,               # Relaxed slightly: adequate for NLL optimization
+            recombination=0.7,      # Increased: Parameters (N, n, k) are highly correlated
+            tol=1e-8,               # Relaxed slightly: adequate for NLL optimization
             seed=optimization_seed,
             polish=True,            # Crucial: L-BFGS-B performs the final cleanup
             workers=-1,
-            integrality=mechanism_info['integrality'],
-            disp=True               # Helpful to see progress
+            integrality=mechanism_info['integrality']
+            #disp=True               # Helpful to see progress
         )
         
         # Convert to standard format
@@ -479,89 +621,19 @@ def main():
     mech_params = {}
     if mechanism == 'fixed_burst':
         mech_params['burst_size'] = param_dict['burst_size']
-    elif mechanism == 'time_varying_k':
-        mech_params['k_1'] = param_dict['k_1']
-    elif mechanism == 'feedback':
-        mech_params['feedbackSteepness'] = param_dict['feedbackSteepness']
-        mech_params['feedbackThreshold'] = param_dict['feedbackThreshold']
-    elif mechanism == 'feedback_linear':
-        mech_params['w1'] = param_dict['w1']
-        mech_params['w2'] = param_dict['w2']
-        mech_params['w3'] = param_dict['w3']
     elif mechanism == 'feedback_onion':
         mech_params['n_inner'] = param_dict['n_inner']
-    elif mechanism == 'feedback_zipper':
-        mech_params['z1'] = param_dict['z1']
-        mech_params['z2'] = param_dict['z2']
-        mech_params['z3'] = param_dict['z3']
-    elif mechanism == 'fixed_burst_feedback_linear':
-        mech_params['burst_size'] = param_dict['burst_size']
-        mech_params['w1'] = param_dict['w1']
-        mech_params['w2'] = param_dict['w2']
-        mech_params['w3'] = param_dict['w3']
     elif mechanism == 'fixed_burst_feedback_onion':
         mech_params['burst_size'] = param_dict['burst_size']
         mech_params['n_inner'] = param_dict['n_inner']
 
     # Compute individual negative log-likelihoods for reporting
-    wt_nll = 0
-    pdf_wt12 = compute_pdf_for_mechanism(mechanism, data_wt12, param_dict['n1'], param_dict['N1'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=True)
-    if not (np.any(pdf_wt12 <= 0) or np.any(np.isnan(pdf_wt12))):
-        wt_nll -= np.sum(np.log(pdf_wt12))
-    pdf_wt32 = compute_pdf_for_mechanism(mechanism, data_wt32, param_dict['n3'], param_dict['N3'],
-                                         param_dict['n2'], param_dict['N2'], param_dict['k'], mech_params, pair12=False)
-    if not (np.any(pdf_wt32 <= 0) or np.any(np.isnan(pdf_wt32))):
-        wt_nll -= np.sum(np.log(pdf_wt32))
-
-    threshold_nll = 0
-    n1_th = max(param_dict['n1'] * param_dict['alpha'], 1)
-    n2_th = max(param_dict['n2'] * param_dict['alpha'], 1)
-    n3_th = max(param_dict['n3'] * param_dict['alpha'], 1)
-    pdf_th12 = compute_pdf_for_mechanism(mechanism, data_threshold12, n1_th, param_dict['N1'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=True)
-    if not (np.any(pdf_th12 <= 0) or np.any(np.isnan(pdf_th12))):
-        threshold_nll -= np.sum(np.log(pdf_th12))
-    pdf_th32 = compute_pdf_for_mechanism(mechanism, data_threshold32, n3_th, param_dict['N3'],
-                                         n2_th, param_dict['N2'], param_dict['k'], mech_params, pair12=False)
-    if not (np.any(pdf_th32 <= 0) or np.any(np.isnan(pdf_th32))):
-        threshold_nll -= np.sum(np.log(pdf_th32))
-
-    degrate_nll = 0
-    k_deg = max(param_dict['beta_k'] * param_dict['k'], 0.001)
-    pdf_deg12 = compute_pdf_for_mechanism(mechanism, data_degrate12, param_dict['n1'], param_dict['N1'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=True)
-    if not (np.any(pdf_deg12 <= 0) or np.any(np.isnan(pdf_deg12))):
-        degrate_nll -= np.sum(np.log(pdf_deg12))
-    pdf_deg32 = compute_pdf_for_mechanism(mechanism, data_degrate32, param_dict['n3'], param_dict['N3'],
-                                          param_dict['n2'], param_dict['N2'], k_deg, mech_params, pair12=False)
-    if not (np.any(pdf_deg32 <= 0) or np.any(np.isnan(pdf_deg32))):
-        degrate_nll -= np.sum(np.log(pdf_deg32))
-
-    degrateAPC_nll = 0
-    k_degAPC = max(param_dict['beta2_k'] * param_dict['k'], 0.001)
-    pdf_degAPC12 = compute_pdf_for_mechanism(mechanism, data_degrateAPC12, param_dict['n1'], param_dict['N1'],
-                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=True)
-    if not (np.any(pdf_degAPC12 <= 0) or np.any(np.isnan(pdf_degAPC12))):
-        degrateAPC_nll -= np.sum(np.log(pdf_degAPC12))
-    pdf_degAPC32 = compute_pdf_for_mechanism(mechanism, data_degrateAPC32, param_dict['n3'], param_dict['N3'],
-                                             param_dict['n2'], param_dict['N2'], k_degAPC, mech_params, pair12=False)
-    if not (np.any(pdf_degAPC32 <= 0) or np.any(np.isnan(pdf_degAPC32))):
-        degrateAPC_nll -= np.sum(np.log(pdf_degAPC32))
-
-    # Velcade Mutant
-    velcade_nll = 0
-    k_velcade = max(param_dict['beta3_k'] * param_dict['k'], 0.001)
-    pdf_velcade12 = compute_pdf_for_mechanism(mechanism, data_velcade12, param_dict['n1'], param_dict['N1'],
-                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=True)
-    if not (np.any(pdf_velcade12 <= 0) or np.any(np.isnan(pdf_velcade12))):
-        velcade_nll -= np.sum(np.log(pdf_velcade12))
-    pdf_velcade32 = compute_pdf_for_mechanism(mechanism, data_velcade32, param_dict['n3'], param_dict['N3'],
-                                              param_dict['n2'], param_dict['N2'], k_velcade, mech_params, pair12=False)
-    if not (np.any(pdf_velcade32 <= 0) or np.any(np.isnan(pdf_velcade32))):
-        velcade_nll -= np.sum(np.log(pdf_velcade32))
-
-    # Initial proteins mutant - TEMPORARILY EXCLUDED FROM FITTING
+    strain_nlls = calculate_individual_nlls(mechanism, param_dict, mech_params, data_arrays)
+    wt_nll = strain_nlls['wt']
+    threshold_nll = strain_nlls['threshold']
+    degrate_nll = strain_nlls['degrate']
+    degrateAPC_nll = strain_nlls['degrateAPC']
+    velcade_nll = strain_nlls['velcade']
     initial_nll = 0.0  # Set to 0 to exclude from total NLL
 
     # f) Print best solution
@@ -586,23 +658,9 @@ def main():
     if mechanism == 'fixed_burst':
         print(
             f"burst_size = {param_dict['burst_size']:.2f}")
-    elif mechanism == 'time_varying_k':
-        print(f"k_1 = {param_dict['k_1']:.4f}")
-    elif mechanism == 'feedback':
-        print(
-            f"feedbackSteepness = {param_dict['feedbackSteepness']:.3f}, feedbackThreshold = {param_dict['feedbackThreshold']:.1f}")
-    elif mechanism == 'feedback_linear':
-        print(
-            f"w1 = {param_dict['w1']:.3f}, w2 = {param_dict['w2']:.3f}, w3 = {param_dict['w3']:.3f}")
     elif mechanism == 'feedback_onion':
         print(
             f"n_inner = {param_dict['n_inner']:.2f}")
-    elif mechanism == 'feedback_zipper':
-        print(
-            f"z1 = {param_dict['z1']:.2f}, z2 = {param_dict['z2']:.2f}, z3 = {param_dict['z3']:.2f}")
-    elif mechanism == 'fixed_burst_feedback_linear':
-        print(
-            f"burst_size = {param_dict['burst_size']:.2f}, w1 = {param_dict['w1']:.3f}, w2 = {param_dict['w2']:.3f}, w3 = {param_dict['w3']:.3f}")
     elif mechanism == 'fixed_burst_feedback_onion':
         print(
             f"burst_size = {param_dict['burst_size']:.2f}, n_inner = {param_dict['n_inner']:.2f}")

@@ -10,6 +10,11 @@ from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
 from sklearn.neighbors import KernelDensity
 import warnings
 warnings.filterwarnings('ignore')
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'SecondVersion'))
+from MultiMechanismSimulation import MultiMechanismSimulation
+from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
 
 
 def load_experimental_data():
@@ -61,60 +66,82 @@ def load_experimental_data():
 
 def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, beta_tau2=None):
     """
-    Apply mutant-specific parameter modifications.
+    Apply mutant-specific parameter modifications for both simple and time-varying mechanisms.
     
     Args:
         base_params (dict): Base wildtype parameters
         mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade')
         alpha (float): Multiplier for threshold counts (threshold mutant)
-        beta_k (float): Multiplier for k_max (separase mutant)
-        beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger
-        beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter
+        beta_k (float): Multiplier for k (simple) or k_max (time-varying) - degradation rate
+        beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger (time-varying only)
+        beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter (time-varying only)
     
     Returns:
         tuple: (modified_params, modified_n0_list)
     """
     params = base_params.copy()
     
-    # Base parameters
+    # Base parameters - always present
     n1, n2, n3 = params['n1'], params['n2'], params['n3']
     N1, N2, N3 = params['N1'], params['N2'], params['N3']
+    
+    # Determine if this is a simple mechanism or time-varying
+    is_simple = 'k' in params  # Simple mechanisms have 'k', time-varying have 'k_max' and 'tau'
     
     if mutant_type == 'wildtype':
         # No modifications for wildtype
         pass
+    
     elif mutant_type == 'threshold':
         # Threshold mutant: reduce threshold counts (small n)
         n1, n2, n3 = alpha * n1, alpha * n2, alpha * n3
+    
     elif mutant_type == 'degrade':
-        # Separase mutant: reduce k_max (slower degradation)
-        params['k_max'] = beta_k * params['k_max']
+        # Degradation mutant: reduce degradation rate
+        if is_simple:
+            # Simple mechanisms: modify 'k' directly
+            params['k'] = beta_k * params['k']
+        else:
+            # Time-varying mechanisms: modify 'k_max'
+            params['k_max'] = beta_k * params['k_max']
+    
     elif mutant_type == 'degradeAPC':
-        # APC mutant: affects tau (makes it 2-3 times larger), which affects k_1
-        if 'tau' in params:
-            # Apply multiplier directly to tau
-            params['tau'] = beta_tau * params['tau']
-        elif 'k_1' in params and 'k_max' in params:
-            # Calculate current tau, apply multiplier, then recalculate k_1
-            current_tau = params['k_max'] / params['k_1']
-            new_tau = beta_tau * current_tau
-            params['k_1'] = params['k_max'] / new_tau
+        # APC mutant: affects tau (time-varying) or treated as degrade (simple)
+        if is_simple:
+            # Simple mechanisms: treat like degrade mutant
+            params['k'] = beta_k * params['k']
+        else:
+            # Time-varying mechanisms: affects tau
+            if 'tau' in params:
+                # Apply multiplier directly to tau
+                params['tau'] = beta_tau * params['tau']
+            elif 'k_1' in params and 'k_max' in params:
+                # Calculate current tau, apply multiplier, then recalculate k_1
+                current_tau = params['k_max'] / params['k_1']
+                new_tau = beta_tau * current_tau
+                params['k_1'] = params['k_max'] / new_tau
+    
     elif mutant_type == 'velcade':
-        # Velcade mutant: affects tau (similar to APC but separate parameter), which affects k_1
-        if 'tau' in params:
-            # Apply multiplier directly to tau
-            params['tau'] = beta_tau2 * params['tau']
-        elif 'k_1' in params and 'k_max' in params:
-            # Calculate current tau, apply multiplier, then recalculate k_1
-            current_tau = params['k_max'] / params['k_1']
-            new_tau = beta_tau2 * current_tau
-            params['k_1'] = params['k_max'] / new_tau
+        # Velcade mutant: affects tau (time-varying) or treated as degrade (simple)
+        if is_simple:
+            # Simple mechanisms: treat like degrade mutant
+            params['k'] = beta_k * params['k']
+        else:
+            # Time-varying mechanisms: affects tau
+            if 'tau' in params:
+                # Apply multiplier directly to tau
+                params['tau'] = beta_tau2 * params['tau']
+            elif 'k_1' in params and 'k_max' in params:
+                # Calculate current tau, apply multiplier, then recalculate k_1
+                current_tau = params['k_max'] / params['k_1']
+                new_tau = beta_tau2 * current_tau
+                params['k_1'] = params['k_max'] / new_tau
     
     # Update the modified parameters
     params['n1'], params['n2'], params['n3'] = n1, n2, n3
     params['N1'], params['N2'], params['N3'] = N1, N2, N3
     
-    # Ensure k_1 is calculated and available for simulations
+    # Ensure k_1 is calculated and available for simulations (time-varying mechanisms only)
     if 'tau' in params and 'k_max' in params and 'k_1' not in params:
         params['k_1'] = calculate_k1_from_params(params)
     
@@ -147,13 +174,34 @@ def calculate_k1_from_params(params):
 def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     """
     Run simulations for a given mechanism and parameters.
+    Handles both simple mechanisms (simple, fixed_burst, feedback_onion, fixed_burst_feedback_onion)
+    and time-varying mechanisms (time_varying_k, time_varying_k_fixed_burst, etc.)
+    
+    Args:
+        mechanism (str): Mechanism name
+        params (dict): Parameter dictionary
+        n0_list (list): List of threshold values [n01, n02, n03]
+        num_simulations (int): Number of simulations to run
+    
+    Returns:
+        tuple: (delta_t12_array, delta_t32_array) as numpy arrays, or (None, None) on failure
     """
-    try:
-        # (Your existing code for setting up the simulation)
-        # ...
-        initial_state = [int(round(params['N1'])), int(round(params['N2'])), int(round(params['N3']))]
+    # Check if simple mechanism
+    # Use simple mechanism simulator (SecondVersion)
+
+    
+    # Prepare rate parameters based on mechanism
+    if mechanism == 'simple':
+        rate_params = {'k': params['k']}
+    elif mechanism == 'fixed_burst':
+        rate_params = {'k': params['k'], 'burst_size': params['burst_size']}
+    elif mechanism == 'feedback_onion':
+        rate_params = {'k': params['k'], 'n_inner': params['n_inner']}
+    elif mechanism == 'fixed_burst_feedback_onion':
+        rate_params = {'k': params['k'], 'burst_size': params['burst_size'], 'n_inner': params['n_inner']}
+    else: # time-varying mechanisms
         k_1 = calculate_k1_from_params(params)
-        rate_params = { # Simplified for brevity, your full logic is correct
+        rate_params = {
             'k_1': k_1,
             'k_max': params['k_max']
         }
@@ -161,87 +209,100 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             rate_params['burst_size'] = params['burst_size']
         if 'n_inner' in params:
             rate_params['n_inner'] = params['n_inner']
-
-        delta_t12_list = []
-        delta_t32_list = []
-        
-        for _ in range(num_simulations):
-            try:
-                sim = MultiMechanismSimulationTimevary(
-                    mechanism=mechanism,
-                    initial_state_list=initial_state,
-                    rate_params=rate_params,
-                    n0_list=n0_list,
-                    max_time=1000
-                )
-                _, _, sep_times = sim.simulate()
-                delta_t12 = sep_times[0] - sep_times[1]
-                delta_t32 = sep_times[2] - sep_times[1]
-                delta_t12_list.append(delta_t12)
-                delta_t32_list.append(delta_t32)
-            except Exception as sim_error:
-                continue
-
-        # --- THIS IS THE CRITICAL CHANGE ---
-        # If all simulations failed and the lists are empty, signal failure.
-        if not delta_t12_list or not delta_t32_list:
-            return None, None
-        
-        return delta_t12_list, delta_t32_list
+    # Initial states
+    initial_state = [params['N1'], params['N2'], params['N3']]
     
-    except Exception as e:
-        # Also signal failure if there's a setup error
-        return None, None
+    # Run simulations
+    delta_t12_list = []
+    delta_t32_list = []
+    
+    for _ in range(num_simulations):
+        if mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']:
+            sim = MultiMechanismSimulation(
+                mechanism=mechanism,
+                initial_state_list=initial_state,
+                rate_params=rate_params,
+                n0_list=n0_list,
+                max_time=1000.0
+            )
+        else:
+            sim = MultiMechanismSimulationTimevary(
+                mechanism=mechanism,
+                initial_state_list=initial_state,
+                rate_params=rate_params,
+                n0_list=n0_list,
+                max_time=1000.0
+            )
+        
+        _, _, sep_times = sim.simulate()
+        
+        delta_t12 = sep_times[0] - sep_times[1]  # T1 - T2
+        delta_t32 = sep_times[2] - sep_times[1]  # T3 - T2
+        
+        delta_t12_list.append(delta_t12)
+        delta_t32_list.append(delta_t32)
+    
+    return np.array(delta_t12_list), np.array(delta_t32_list)
 
 
-def calculate_likelihood(experimental_data, simulated_data):
+def calculate_likelihood(exp_data, sim_data):
     """
-    Calculate likelihood using Kernel Density Estimation.
+    Calculate negative log-likelihood using KDE with Scott's rule bandwidth.
     
     Args:
-        experimental_data (dict): Dictionary with 'delta_t12' and 'delta_t32' arrays
-        simulated_data (dict): Dictionary with 'delta_t12' and 'delta_t32' arrays
-    
+        exp_data: Dictionary or array of experimental data
+        sim_data: Dictionary or array of simulation data
+        
     Returns:
         float: Negative log-likelihood
     """
     try:
-        nll_total = 0.0
+        # Handle dictionary input
+        if isinstance(exp_data, dict) and isinstance(sim_data, dict):
+            nll_total = 0
+            
+            for key in ['delta_t12', 'delta_t32']:
+                if key in exp_data and key in sim_data:
+                    exp_values = np.asarray(exp_data[key]).flatten()
+                    sim_values = np.asarray(sim_data[key]).flatten()
+                    
+                    # Remove non-finite values
+                    exp_values = exp_values[np.isfinite(exp_values)]
+                    sim_values = sim_values[np.isfinite(sim_values)]
+                    
+                    if len(exp_values) == 0 or len(sim_values) < 10:
+                        return 1e6
+                    
+                    # Build KDE using Scott's rule (automatic bandwidth)
+                    kde = KernelDensity(kernel='gaussian', bandwidth='scott')
+                    kde.fit(sim_values.reshape(-1, 1))
+                    
+                    # Calculate likelihood
+                    log_densities = kde.score_samples(exp_values.reshape(-1, 1))
+                    nll = -np.sum(log_densities)
+                    nll_total += nll
+            
+            return nll_total
         
-        for key in ['delta_t12', 'delta_t32']:
-            if key not in experimental_data or key not in simulated_data:
-                continue
+        # Handle array input
+        else:
+            exp_values = np.asarray(exp_data).flatten()
+            sim_values = np.asarray(sim_data).flatten()
             
-            exp_data = experimental_data[key]
-            sim_data = simulated_data[key]
+            exp_values = exp_values[np.isfinite(exp_values)]
+            sim_values = sim_values[np.isfinite(sim_values)]
             
-            if len(exp_data) == 0 or len(sim_data) == 0:
-                continue
+            if len(exp_values) == 0 or len(sim_values) < 10:
+                return 1e6
             
-            # Use KDE to estimate density from simulated data
-            kde = KernelDensity(kernel='gaussian', bandwidth=10.0)
-            kde.fit(sim_data.reshape(-1, 1))
-            
-            # Evaluate likelihood of experimental data under this density
-            log_densities = kde.score_samples(exp_data.reshape(-1, 1))
-            
-            # Sum negative log-likelihoods
-            nll = -np.sum(log_densities)
-            
-            # Add small penalty for extreme outliers
-            if np.any(log_densities < -20):
-                nll += 100 * np.sum(log_densities < -20)
-
-            # NORMALIZATION REMOVED: Use raw NLL to show true model differences
-            # nll = nll / len(exp_data)  # COMMENTED OUT for better discrimination
-
-            nll_total += nll
-        
-        return nll_total
+            kde = KernelDensity(kernel='gaussian', bandwidth='scott')
+            kde.fit(sim_values.reshape(-1, 1))
+            log_densities = kde.score_samples(exp_values.reshape(-1, 1))
+            return -np.sum(log_densities)
     
     except Exception as e:
-        print(f"Error in likelihood calculation: {e}")
-        return 1e6  # Return large penalty for errors
+        print(f"Likelihood calculation error: {e}")
+        return 1e6
 
 
 def get_parameter_bounds(mechanism):
@@ -254,16 +315,16 @@ def get_parameter_bounds(mechanism):
     Returns:
         list: List of (min, max) tuples for each parameter
     """
-    # Base bounds for all mechanisms
+    
     bounds = [
         (1.0, 50.0),      # n2
         (50.0, 1000.0),    # N2
-        (0.01, 0.1),     # k_max
-        (0.1, 0.2),    # tau
+        (0.01, 0.1),       # k_max
+        (0.1, 0.2),        # tau
         (0.25, 4.0),       # r21
         (0.25, 4.0),       # r23
-        (0.4, 2),       # R21
-        (0.5, 5.0),       # R23
+        (0.4, 2),          # R21
+        (0.5, 5.0),        # R23
     ]
     
     # Add mechanism-specific bounds
@@ -281,8 +342,8 @@ def get_parameter_bounds(mechanism):
     bounds.extend([
         (0.1, 0.7),       # alpha
         (0.1, 1.0),       # beta_k
-        (2, 10.0),         # beta_tau
-        (2, 40.0),         # beta_tau2
+        (2, 10.0),        # beta_tau
+        (2, 40.0),        # beta_tau2
     ])
     
     return bounds
