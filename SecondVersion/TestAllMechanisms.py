@@ -286,14 +286,14 @@ def test_mom_matching(mechanism, n1, n2, n3, N1, N2, N3, k, mechanism_params=Non
 if __name__ == "__main__":
     # ========== PARAMETER SPECIFICATION ==========
     # Common parameters for all mechanisms
-    N1, N2, N3 = 100, 150, 200  # Initial protein counts
-    n1, n2, n3 = 2, 4, 8      # Threshold protein counts
-    k = 0.05                     # Base degradation rate
-
+    N1, N2, N3 = 0.4231530419228542*980, 980, 4.651995192387707*980  # Initial protein counts
+    n1, n2, n3 = 0.32130232636872025*5, 5, 2.7917061905867135*5      # Threshold protein counts
+    k = 0.014478986712698283                     # Base degradation rate
+    #""n2"": 5.0, ""N2"": 980.0, ""k"": 0.014478986712698283, ""r21"": 0.32130232636872025, ""r23"": 2.7917061905867135, ""R21"": 0.4231530419228542, ""R23"": 4.651995192387707, ""burst_size"": 5.0, ""alpha"": 0.19107985964250104, ""beta_k"": 0.4271498852413332, ""beta2_k"": 0.4836025058642737, ""beta3_k"": 0.2324759899149937
     # Mechanism-specific parameters (optional - will use defaults if not specified)
     mechanism_params = {
         'simple': {},  # No additional parameters
-        'fixed_burst': {'burst_size': 4},
+        'fixed_burst': {'burst_size': 5},
         'time_varying_k': {'k_1': 0.005, 'k_max': 0.05},
         'feedback_onion': {'n_inner': 20},
         'fixed_burst_feedback_onion': {
@@ -317,5 +317,5 @@ if __name__ == "__main__":
         mechanism, n1, n2, n3, N1, N2, N3, k,
         mechanism_params.get(mechanism), 
         max_time=1000, 
-        num_sim=5000,
+        num_sim=1000,
     )

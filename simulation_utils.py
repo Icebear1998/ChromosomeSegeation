@@ -76,7 +76,10 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, 
     
     if mutant_type == 'threshold':
         # Threshold mutant: reduce threshold counts (small n)
-        n1, n2, n3 = alpha * n1, alpha * n2, alpha * n3
+        # FIX: Enforce n >= 1 to match MoM logic
+        n1 = max(alpha * n1, 1.0)
+        n2 = max(alpha * n2, 1.0)
+        n3 = max(alpha * n3, 1.0)
     
     elif mutant_type == 'degrade':
         # Degradation mutant: reduce degradation rate
@@ -184,7 +187,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             initial_state_list=initial_state,
             rate_params=rate_params,
             n0_list=n0_list,
-            max_time=1000.0
+            max_time=10000.0  # Increased from 1000.0 to ensure slow mutants complete
         )
         
         _, _, sep_times = sim.simulate()

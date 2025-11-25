@@ -197,15 +197,15 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         joint_objective,
         bounds,
         args=opt_args,
-        x0=initial_guess,
+        #x0=initial_guess,
         maxiter=max_iterations,
         popsize=20,
-        workers=-1,
-        strategy='rand1bin',
+        workers=1,
+        strategy='best1bin',
         mutation=(0.5, 1.0),
-        recombination=0.8,
+        recombination=0.7,
         polish=True,
-        tol=1e-7,
+        tol=1e-6,
         disp=True
     )
     
@@ -285,7 +285,7 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 1000
+    max_iterations = 2000
     num_simulations = 300
     
     datasets = load_experimental_data()

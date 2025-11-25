@@ -381,7 +381,7 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
     sys.stdout.flush()
     
     # Prepare arguments for parallel processing
-    base_seed = 1
+    base_seed = 10
     args_list = [
         (mechanism, datasets, num_simulations, max_iterations, run_num, base_seed, use_bayesian)
         for run_num in range(1, num_runs + 1)
@@ -842,7 +842,7 @@ def main():
     sys.stdout.flush()
     
     # Configuration for sequential runs with internal parallelization
-    num_runs = 5  # Number of optimization runs per mechanism
+    num_runs = 3  # Number of optimization runs per mechanism
     num_simulations = 400  # Simulations per evaluation for simulation-based mechanisms
     max_iterations = 20000  # Max iterations for DE
     use_bayesian_opt = False  # Set to True to use Bayesian optimization instead of DE

@@ -203,7 +203,7 @@ class MultiMechanismSimulation:
             
             # Check for chromosome separation
             for i in range(3):
-                if separate_times[i] is None and current_state[i] <= self.n0_list[i]:
+                if separate_times[i] is None and current_state[i] <= max(self.n0_list[i],1):
                     separate_times[i] = current_time
         
         # Finalize simulation
