@@ -162,7 +162,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
 
 
 
-def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, use_parallel=False, initial_guess=None):
+def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None):
     """
     Run joint optimization for all mechanism types.
     
@@ -199,8 +199,8 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         args=opt_args,
         #x0=initial_guess,
         maxiter=max_iterations,
-        popsize=20,
-        workers=1,
+        popsize=15,
+        workers=-1,
         strategy='best1bin',
         mutation=(0.5, 1.0),
         recombination=0.7,
@@ -285,24 +285,22 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 2000
-    num_simulations = 300
+    max_iterations = 1000
+    num_simulations = 10
     
     datasets = load_experimental_data()
     if not datasets:
         print("Error: No datasets loaded!")
         return
     
-    mechanism = 'simple'
+    mechanism = 'time_varying_k'  # Change as needed for different mechanisms
     
     try:
         results = run_optimization(
             mechanism, datasets,
             max_iterations=max_iterations,
             num_simulations=num_simulations,
-            selected_strains=None,
-            use_parallel=True,
-            initial_guess=None
+            selected_strains=None
         )
         save_results(mechanism, results, selected_strains=None)
     except Exception as e:

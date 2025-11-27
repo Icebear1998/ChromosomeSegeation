@@ -12,3 +12,4 @@ openpyxl>=3.0.0
 # Additional utilities (if needed)
 matplotlib>=3.5.0
 seaborn>=0.11.0
+torch>=2.0.0

@@ -187,7 +187,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             initial_state_list=initial_state,
             rate_params=rate_params,
             n0_list=n0_list,
-            max_time=10000.0  # Increased from 1000.0 to ensure slow mutants complete
+            max_time=2000.0  # Reduced from 10000.0 to improve performance, 2000 is sufficient for observed data range
         )
         
         _, _, sep_times = sim.simulate()
@@ -231,6 +231,17 @@ def calculate_likelihood(exp_data, sim_data):
                     
                     # Calculate likelihood
                     log_densities = kde.score_samples(exp_values.reshape(-1, 1))
+                    
+                    # Robust KDE: Mix with uniform background to handle outliers
+                    # This prevents infinite NLL for data points far from simulation range
+                    # P(x) = (1 - epsilon) * KDE(x) + epsilon * P_background
+                    epsilon = 1e-3
+                    background_density = 1e-6
+                    
+                    densities = np.exp(log_densities)
+                    robust_densities = (1 - epsilon) * densities + epsilon * background_density
+                    log_densities = np.log(robust_densities)
+                    
                     nll = -np.sum(log_densities)
                     nll_total += nll
             
@@ -249,7 +260,17 @@ def calculate_likelihood(exp_data, sim_data):
             
             kde = KernelDensity(kernel='gaussian', bandwidth='scott')
             kde.fit(sim_values.reshape(-1, 1))
+            
             log_densities = kde.score_samples(exp_values.reshape(-1, 1))
+            
+            # Robust KDE
+            epsilon = 1e-3
+            background_density = 1e-6
+            
+            densities = np.exp(log_densities)
+            robust_densities = (1 - epsilon) * densities + epsilon * background_density
+            log_densities = np.log(robust_densities)
+            
             return -np.sum(log_densities)
     
     except Exception:

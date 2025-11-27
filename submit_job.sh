@@ -17,13 +17,10 @@
 module load Miniforge3
 source activate $HOME/.conda/envs/simulationOptimizationEnv
 
-# Get mechanism from command line (default to 'simple' if not provided)
-MECHANISM=${1:-simple}
 
 echo "=========================================="
 echo "Simulation-based Optimization"
 echo "Job ID: $SLURM_JOB_ID"
-echo "Mechanism: $MECHANISM"
 echo "Start time: $(date)"
 echo "Node: $SLURM_NODELIST"
 echo "CPUs: $SLURM_CPUS_PER_TASK"

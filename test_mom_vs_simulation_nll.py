@@ -314,7 +314,7 @@ def calculate_simulation_kde_nll(mechanism, params_vector, datasets, num_simulat
         
         # Run simulations
         sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
-            mechanism, mutant_params, n0_list, num_simulations, use_gpu=False
+            mechanism, mutant_params, n0_list, num_simulations
         )
         
         if sim_delta_t12 is None or sim_delta_t32 is None:
@@ -425,7 +425,7 @@ def plot_mom_vs_kde_distributions(mechanism, params_vector, datasets, num_simula
         
         # Run simulations for KDE
         sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
-            mechanism, mutant_params, n0_list, num_simulations, use_gpu=False
+            mechanism, mutant_params, n0_list, num_simulations
         )
         
         if sim_delta_t12 is None or sim_delta_t32 is None:

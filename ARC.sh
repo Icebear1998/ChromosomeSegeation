@@ -2,7 +2,8 @@
 # Sample sbatch https://docs.arc.vt.edu/resources/compute/00tinkercliffs.html#specification-to-run-on-a100-gpu-nodes
 export VT_PID=kientp
 export CLUSTER=owl1
-
+#export CLUSTER=tinkercliffs1
+#export CLUSTER=owl1
 
 ### Step 1: Login and Request a partition
 # Note: Your login may fail several times until you receive a Duo Push notification.
