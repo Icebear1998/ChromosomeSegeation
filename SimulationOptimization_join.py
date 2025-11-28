@@ -205,7 +205,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         mutation=(0.5, 1.0),
         recombination=0.7,
         polish=True,
-        tol=1e-6,
+        tol=1e-8,
         disp=True
     )
     
@@ -285,8 +285,8 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 1000
-    num_simulations = 10
+    max_iterations = 500
+    num_simulations = 500
     
     datasets = load_experimental_data()
     if not datasets:

@@ -243,7 +243,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         mutation=(0.5, 1.0),
         recombination=0.7,
         polish=True,
-        tol=1e-6,
+        tol=1e-8,
         disp=True
     )
     
@@ -323,8 +323,8 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 2000
-    num_simulations = 300
+    max_iterations = 500
+    num_simulations = 500
     
     datasets = load_experimental_data()
     if not datasets:
@@ -332,7 +332,7 @@ def main():
         return
     
     # Default mechanism
-    mechanism = 'simple'
+    mechanism = 'time_varying_k'  # Change as needed for different mechanisms
     
     # Check for command line argument
     if len(sys.argv) > 1:

@@ -273,7 +273,7 @@ def run_simulation_for_dataset_gpu(mechanism, params, n0_list,
 
     # rough upper bound on iterations to avoid infinite loops
     # moved this here from MultiMechanismSimulationTimevary
-    max_steps = 100000
+    max_steps = 2000
 
     # 3- main simulation loop (vectorized across trajectories) ----------------
     # MAJOR CHANGE: single loop over steps, updates many trajectories in parallel with torch
