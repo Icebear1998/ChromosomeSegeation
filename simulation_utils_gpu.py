@@ -55,6 +55,7 @@ GPU device = "cpu"
 
 import numpy as np
 import torch
+import time
 
 # importing this from the original simulation_utils instead of re-defining (for continuity)
 from simulation_utils import calculate_k1_from_params 
@@ -211,6 +212,7 @@ def run_simulation_for_dataset_gpu(mechanism, params, n0_list,
     if rng_seed is not None:
         torch.manual_seed(rng_seed)
 
+    t0 = time.time()
     # 1- setup initial states and parameters on GPU ---------------------------
     # should be the same logic as old initial_state = [N1, N2, N3]- just a torch tensor
     initial_state = torch.tensor(
@@ -275,6 +277,7 @@ def run_simulation_for_dataset_gpu(mechanism, params, n0_list,
     # moved this here from MultiMechanismSimulationTimevary
     max_steps = 2000
 
+    t1 = time.time()
     # 3- main simulation loop (vectorized across trajectories) ----------------
     # MAJOR CHANGE: single loop over steps, updates many trajectories in parallel with torch
     # old version looped over each trajectory
@@ -425,6 +428,7 @@ def run_simulation_for_dataset_gpu(mechanism, params, n0_list,
         if torch.max(times) > max_time * 5:
             break
 
+    t2 = time.time()
     # 4- finalize- any sep_times still < 0, set to current time ---------------
     unsep_mask = sep_times < 0.0
     if torch.any(unsep_mask):
@@ -448,4 +452,6 @@ def run_simulation_for_dataset_gpu(mechanism, params, n0_list,
     if delta_t12.size == 0 or delta_t32.size == 0:
         return None, None
 
+    t3 = time.time()
+    # print(f"    GPU: Init={t1-t0:.4f}s, Loop={t2-t1:.4f}s, Transfer={t3-t2:.4f}s")
     return delta_t12, delta_t32

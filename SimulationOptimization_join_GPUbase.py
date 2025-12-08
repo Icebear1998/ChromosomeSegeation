@@ -21,6 +21,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 import numpy as np
 import sys
+import time
 from scipy.optimize import differential_evolution
 from simulation_utils import *
 from Chromosomes_Theory import *
@@ -147,6 +148,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             return 1e6
 
         total_nll = 0
+        t0_total = time.time()
         
         # Loop over all datasets
         for dataset_name, data_dict in datasets.items():
@@ -156,6 +158,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             )
             
             # Run simulations - GPU ACCELERATED
+            t0_sim = time.time()
             if USE_GPU and GPU_AVAILABLE:
                 sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset_gpu(
                     mechanism, params, n0_list, num_simulations=num_simulations, max_time=2000.0
@@ -164,6 +167,8 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
                     mechanism, params, n0_list, num_simulations
                 )
+            t1_sim = time.time()
+            print(f"  Dataset {dataset_name}: {t1_sim - t0_sim:.4f}s")
             
             if sim_delta_t12 is None or sim_delta_t32 is None:
                 print(f"Simulation failed (None returned) for dataset {dataset_name}")
@@ -181,6 +186,8 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             
             total_nll += nll
         
+        t1_total = time.time()
+        print(f"Objective eval time: {t1_total - t0_total:.4f}s")
         return total_nll
     
     except Exception as e:
@@ -188,7 +195,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         import traceback
         traceback.print_exc()
         return 1e6
-
 
 
 def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None):
@@ -237,7 +243,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         args=opt_args,
         #x0=initial_guess,
         maxiter=max_iterations,
-        popsize=15,
+        popsize=10,
         workers=workers,
         strategy='best1bin',
         mutation=(0.5, 1.0),
@@ -323,8 +329,8 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 500
-    num_simulations = 500
+    max_iterations = 100
+    num_simulations = 2000
     
     datasets = load_experimental_data()
     if not datasets:
@@ -332,7 +338,7 @@ def main():
         return
     
     # Default mechanism
-    mechanism = 'time_varying_k'  # Change as needed for different mechanisms
+    mechanism = 'simple'  # Change as needed for different mechanisms
     
     # Check for command line argument
     if len(sys.argv) > 1:

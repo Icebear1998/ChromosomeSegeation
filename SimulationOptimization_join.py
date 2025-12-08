@@ -14,6 +14,7 @@ Key differences from MoM-based optimization:
 
 import numpy as np
 import sys
+import time
 from scipy.optimize import differential_evolution
 from simulation_utils import *
 from Chromosomes_Theory import *
@@ -128,6 +129,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             return 1e6
 
         total_nll = 0
+        t0_total = time.time()
         
         # Loop over all datasets
         for dataset_name, data_dict in datasets.items():
@@ -137,9 +139,12 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             )
             
             # Run simulations
+            t0_sim = time.time()
             sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
                 mechanism, params, n0_list, num_simulations
             )
+            t1_sim = time.time()
+            # print(f"  Dataset {dataset_name}: {t1_sim - t0_sim:.4f}s")
             
             if sim_delta_t12 is None or sim_delta_t32 is None:
                 return 1e6
@@ -155,6 +160,8 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             
             total_nll += nll
         
+        t1_total = time.time()
+        # print(f"Objective eval time: {t1_total - t0_total:.4f}s")
         return total_nll
     
     except Exception:
@@ -189,7 +196,17 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     
     bounds = get_parameter_bounds(mechanism)
     
+    popsize = 15
+    strategy = 'best1bin'
+    mutation = (0.5, 1.0)
+    recombination = 0.7
+    tol = 1e-2
+    atol = 0
+
+
     print(f"\nOptimizing {mechanism} ({len(bounds)} parameters, {num_simulations} sims/eval)")
+    print(f"max_iterations = {max_iterations}, num_simulations = {num_simulations}")
+    print(f"popsize = {popsize}, strategy = {strategy}, mutation = {mutation}, recombination = {recombination}")
     sys.stdout.flush()
     
     opt_args = (mechanism, datasets, num_simulations, selected_strains)
@@ -199,13 +216,13 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         args=opt_args,
         #x0=initial_guess,
         maxiter=max_iterations,
-        popsize=15,
-        workers=-1,
-        strategy='best1bin',
-        mutation=(0.5, 1.0),
-        recombination=0.7,
-        polish=True,
-        tol=1e-8,
+        popsize=popsize,
+        workers=48,
+        strategy=strategy,
+        mutation=mutation,
+        recombination=recombination,
+        tol=tol,
+        atol=atol,
         disp=True
     )
     
@@ -293,7 +310,10 @@ def main():
         print("Error: No datasets loaded!")
         return
     
-    mechanism = 'time_varying_k'  # Change as needed for different mechanisms
+    if len(sys.argv) > 1:
+        mechanism = sys.argv[1]
+    else:
+        mechanism = 'simple'
     
     try:
         results = run_optimization(

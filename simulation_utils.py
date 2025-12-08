@@ -187,7 +187,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             initial_state_list=initial_state,
             rate_params=rate_params,
             n0_list=n0_list,
-            max_time=2000.0  # Reduced from 10000.0 to improve performance, 2000 is sufficient for observed data range
+            max_time=10000.0  # Reduced from 10000.0 to improve performance, 2000 is sufficient for observed data range
         )
         
         _, _, sep_times = sim.simulate()

@@ -27,7 +27,7 @@ echo "CPUs: $SLURM_CPUS_PER_TASK"
 echo "=========================================="
 
 # Run your script with mechanism argument
-python SimulationOptimization_join.py $MECHANISM
+python SimulationOptimization_join.py ${1:-simple}
 
 echo "=========================================="
 echo "Job completed at: $(date)"
