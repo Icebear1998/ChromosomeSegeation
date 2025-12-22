@@ -814,8 +814,8 @@ def main():
     mechanisms = [
         # Constant rate mechanisms (MoM-based - uses normal approximation)
         'simple',                          # 11 params
-        'fixed_burst',                     # 12 params
-        'feedback_onion',                  # 12 params
+        #'fixed_burst',                     # 12 params
+        #'feedback_onion',                  # 12 params
         #'fixed_burst_feedback_onion',      # 13 params
         
         # Constant rate mechanisms (Simulation-based with KDE - no normal approximation)
@@ -842,7 +842,7 @@ def main():
     sys.stdout.flush()
     
     # Configuration for sequential runs with internal parallelization
-    num_runs = 3  # Number of optimization runs per mechanism
+    num_runs = 10  # Number of optimization runs per mechanism
     num_simulations = 400  # Simulations per evaluation for simulation-based mechanisms
     max_iterations = 20000  # Max iterations for DE
     use_bayesian_opt = False  # Set to True to use Bayesian optimization instead of DE

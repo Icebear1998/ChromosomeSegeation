@@ -1,0 +1,22 @@
+# Mechanism: fixed_burst
+# Wild-Type Parameters
+n1: 1.032085
+n2: 3.000000
+n3: 9.275665
+N1: 148.598482
+N2: 358.000000
+N3: 1730.458379
+k: 0.016609
+burst_size: 5.000000
+wt_nll: 1132.465131
+# Mutant Parameters
+alpha: 0.191351
+beta_k: 0.432846
+beta2_k: 0.487570
+beta3_k: 0.234636
+# Initial proteins mutant parameters - EXCLUDED FROM FITTING
+threshold_nll: 580.622648
+degrate_nll: 2091.205094
+degrateAPC_nll: 1572.121085
+velcade_nll: 1604.738317
+total_nll: 6981.152275

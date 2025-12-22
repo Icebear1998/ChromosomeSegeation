@@ -1,0 +1,21 @@
+# Mechanism: simple
+# Wild-Type Parameters
+n1: 1.000000
+n2: 2.000000
+n3: 4.909368
+N1: 499.724814
+N2: 993.000000
+N3: 3851.671414
+k: 0.053032
+wt_nll: 1132.772787
+# Mutant Parameters
+alpha: 0.385925
+beta_k: 0.448307
+beta2_k: 0.499684
+beta3_k: 0.240623
+# Initial proteins mutant parameters - EXCLUDED FROM FITTING
+threshold_nll: 581.883087
+degrate_nll: 2089.716819
+degrateAPC_nll: 1573.299545
+velcade_nll: 1605.963822
+total_nll: 6983.636060

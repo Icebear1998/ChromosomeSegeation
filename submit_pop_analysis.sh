@@ -2,18 +2,13 @@
 #SBATCH --account=polya
 #SBATCH --partition=normal_q
 #SBATCH --qos=owl_normal_base
-#SBATCH --constraint=genoa
-#SBATCH --constraint=avx512
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=96
-#SBATCH --output=%j.out
-#SBATCH --error=%j.err
+#SBATCH --cpus-per-task=48
+#SBATCH --output=%j_pop_analysis.out
+#SBATCH --error=%j_pop_analysis.err
 
-# Usage: sbatch submit_job.sh [mechanism]
-# Example: sbatch submit_job.sh simple
-# Example: sbatch submit_job.sh time_varying_k
-# Default mechanism: simple
+# Usage: sbatch submit_pop_analysis.sh
 
 # Load Python environment
 module load Miniforge3
@@ -21,15 +16,15 @@ source activate $HOME/.conda/envs/simulationOptimizationEnv
 
 
 echo "=========================================="
-echo "Simulation-based Optimization"
+echo "Population Efficiency Analysis (MoM)"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Start time: $(date)"
 echo "Node: $SLURM_NODELIST"
 echo "CPUs: $SLURM_CPUS_PER_TASK"
 echo "=========================================="
 
-# Run your script with mechanism argument
-python SimulationOptimization_join.py ${1:-simple}
+# Run the analysis script
+python SecondVersion/AnalyzePopulationEfficiency.py
 
 echo "=========================================="
 echo "Job completed at: $(date)"

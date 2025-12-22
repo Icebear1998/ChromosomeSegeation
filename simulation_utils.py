@@ -226,7 +226,7 @@ def calculate_likelihood(exp_data, sim_data):
                         return 1e6
                     
                     # Build KDE using Scott's rule (automatic bandwidth)
-                    kde = KernelDensity(kernel='gaussian', bandwidth='scott')
+                    kde = KernelDensity(kernel='gaussian')
                     kde.fit(sim_values.reshape(-1, 1))
                     
                     # Calculate likelihood
@@ -258,7 +258,7 @@ def calculate_likelihood(exp_data, sim_data):
             if len(exp_values) == 0 or len(sim_values) < 10:
                 return 1e6
             
-            kde = KernelDensity(kernel='gaussian', bandwidth='scott')
+            kde = KernelDensity(kernel='gaussian')
             kde.fit(sim_values.reshape(-1, 1))
             
             log_densities = kde.score_samples(exp_values.reshape(-1, 1))

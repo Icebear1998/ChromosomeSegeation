@@ -147,7 +147,7 @@ class MultiMechanismSimulationTimevary:
             tuple: (times, states, separate_times)
         """
         # Initialize simulation state
-        current_state = [int(s) for s in self.initial_state_list]
+        current_state = [(s) for s in self.initial_state_list]
         current_time = 0.0
         times = [0.0]
         states = [current_state.copy()]
@@ -205,7 +205,7 @@ class MultiMechanismSimulationTimevary:
             
             # Check for chromosome separation
             for i in range(3):
-                if separate_times[i] is None and current_state[i] <= round(self.n0_list[i]):
+                if separate_times[i] is None and current_state[i] <= (self.n0_list[i]):
                     separate_times[i] = current_time
         
         # Finalize simulation

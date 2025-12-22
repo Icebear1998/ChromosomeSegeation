@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=48:00:00
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=48
 #SBATCH --output=%j_gpu.out
 #SBATCH --error=%j_gpu.err
 

@@ -160,7 +160,9 @@ def joint_objective(params, mechanism, mechanism_info, data_wt12, data_wt32, dat
     Joint objective function for all mechanisms.
     """
     param_dict = unpack_parameters(params, mechanism_info)
-    
+    # The line 'best_nll = result['nll']idate_constraints(param_dict):' from the instruction
+    # appears to be a partial line or typo. Assuming the intent was to keep the
+    # original constraint validation, it is preserved here.
     if not validate_constraints(param_dict):
         return np.inf
     
@@ -276,7 +278,7 @@ def get_mechanism_info(mechanism, gamma_mode):
     }
 
 
-def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=500, seed=None, gamma_mode='separate'):
+def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=500, seed=None, gamma_mode='separate', tol=1e-4, atol=0, popsize=15):
     """
     Run a single MoM (Method of Moments) optimization for a given mechanism.
     
@@ -384,11 +386,12 @@ def run_mom_optimization_single(mechanism, data_arrays=None, max_iterations=500,
                   data_degrateAPC12, data_degrateAPC32,
                   data_velcade12, data_velcade32),
             maxiter=max_iterations,
-            popsize=20,
+            popsize=popsize,
             strategy='best1bin',
             mutation=(0.5, 1.0),
             recombination=0.7,
-            tol=1e-8,
+            tol=tol,
+            atol=atol,
             seed=optimization_seed,
             polish=True,
             workers=-1,
@@ -425,7 +428,7 @@ def main():
     """
     # ========== MECHANISM CONFIGURATION ==========
     # Choose mechanism: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
-    mechanism = 'simple'  # Auto-set by RunAllMechanisms.py
+    mechanism = 'fixed_burst'  # Auto-set by RunAllMechanisms.py
 
     # ========== GAMMA CONFIGURATION ==========
     # Choose gamma mode: 'unified' for single gamma affecting all chromosomes, 'separate' for gamma1, gamma2, gamma3
@@ -461,12 +464,15 @@ def main():
         print(f"Optimization failed: {result['message']}")
         return
     
-    param_dict = result['params']
+    param_dict = unpack_parameters(result['result'].x, result['mechanism_info'])
     best_nll = result['nll']
     mech_params = _get_mech_params(mechanism, param_dict)
     strain_nlls = calculate_individual_nlls(mechanism, param_dict, mech_params, data_arrays)
     
     print(f"Optimization completed: NLL = {best_nll:.4f}")
+    print("Optimized Parameters:")
+    for key, value in param_dict.items():
+        print(f"  {key}: {value:.6f}")
 
     filename = f"optimized_parameters_{mechanism}_join.txt"
     with open(filename, "w") as f:

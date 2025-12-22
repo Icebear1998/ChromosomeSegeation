@@ -148,7 +148,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             return 1e6
 
         total_nll = 0
-        t0_total = time.time()
         
         # Loop over all datasets
         for dataset_name, data_dict in datasets.items():
@@ -158,7 +157,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             )
             
             # Run simulations - GPU ACCELERATED
-            t0_sim = time.time()
             if USE_GPU and GPU_AVAILABLE:
                 sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset_gpu(
                     mechanism, params, n0_list, num_simulations=num_simulations, max_time=2000.0
@@ -167,8 +165,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 sim_delta_t12, sim_delta_t32 = run_simulation_for_dataset(
                     mechanism, params, n0_list, num_simulations
                 )
-            t1_sim = time.time()
-            print(f"  Dataset {dataset_name}: {t1_sim - t0_sim:.4f}s")
             
             if sim_delta_t12 is None or sim_delta_t32 is None:
                 print(f"Simulation failed (None returned) for dataset {dataset_name}")
@@ -186,8 +182,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             
             total_nll += nll
         
-        t1_total = time.time()
-        print(f"Objective eval time: {t1_total - t0_total:.4f}s")
         return total_nll
     
     except Exception as e:
@@ -225,39 +219,82 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     bounds = get_parameter_bounds(mechanism)
     
     print(f"\nOptimizing {mechanism} ({len(bounds)} parameters, {num_simulations} sims/eval)")
-    if USE_GPU and GPU_AVAILABLE:
-        print("Using GPU acceleration.")
-        # When using GPU, we MUST use workers=1 to avoid "Cannot re-initialize CUDA in forked subprocess" error.
-        # The GPU simulation is already vectorized, so we don't need process-level parallelism.
-        workers = 1
-    else:
-        print("Using CPU (standard).")
-        workers = -1
-        
-    sys.stdout.flush()
+    print(f"\nOptimizing {mechanism} ({len(bounds)} parameters, {num_simulations} sims/eval)")
     
-    opt_args = (mechanism, datasets, num_simulations, selected_strains)
-    result = differential_evolution(
-        joint_objective,
-        bounds,
-        args=opt_args,
-        #x0=initial_guess,
-        maxiter=max_iterations,
-        popsize=10,
-        workers=workers,
-        strategy='best1bin',
-        mutation=(0.5, 1.0),
-        recombination=0.7,
-        polish=True,
-        tol=1e-8,
-        disp=True
-    )
+    # Setup multiprocessing pool
+    pool = None
+    try:
+        if USE_GPU and GPU_AVAILABLE:
+            print("Using GPU acceleration.")
+            try:
+                # Use 'spawn' for CUDA compatibility
+                import torch.multiprocessing as mp
+                ctx = mp.get_context('spawn')
+                
+                # Determine number of workers from SLURM environment or default
+                slurm_cpus = os.environ.get('SLURM_CPUS_PER_TASK')
+                if slurm_cpus:
+                    num_workers = int(slurm_cpus)
+                    print(f"Using {num_workers} workers (from SLURM_CPUS_PER_TASK).")
+                else:
+                    # Default backup if not running in SLURM or env var missing
+                    num_workers = 8 
+                    print(f"Using {num_workers} workers (default backup).")
+                
+                print(f"Initializing multiprocessing pool with {num_workers} workers (spawn method)...")
+                pool = ctx.Pool(num_workers)
+                workers = pool.map
+            except Exception as e:
+                print(f"Failed to initialize multiprocessing pool: {e}")
+                print("Falling back to sequential execution.")
+                workers = 1
+        if not (USE_GPU and GPU_AVAILABLE):
+            print("Using CPU (standard).")
+            workers = -1
+        
+        opt_args = (mechanism, datasets, num_simulations, selected_strains)
+        
+        # Define Differential Evolution settings
+        de_settings = {
+            'maxiter': max_iterations,
+            'popsize': 15,
+            'workers': workers,
+            'strategy': 'best1bin',
+            'tol': 1e-4,
+            'polish': True,
+            'disp': True
+        }
+        
+        print("\nDifferential Evolution Settings:")
+        for key, value in de_settings.items():
+            if key == 'workers' and not isinstance(value, int):
+                 print(f"  {key}: pool.map (using multiprocessing pool)")
+            else:
+                 print(f"  {key}: {value}")
+        sys.stdout.flush()
+
+        result = differential_evolution(
+            joint_objective,
+            bounds,
+            args=opt_args,
+            #x0=initial_guess,
+            **de_settings
+        )
+    finally:
+        if pool is not None:
+            pool.close()
+            pool.join()
     
     params = result.x
     param_dict = dict(zip(param_names, params))
     
     status = "converged" if result.success else "not converged"
     print(f"Optimization {status}: NLL = {result.fun:.4f}")
+    
+    print("\nBest Fit Parameters:")
+    for name, val in param_dict.items():
+        print(f"  {name}: {val:.6f}")
+    
     sys.stdout.flush()
     
     return {
@@ -329,8 +366,8 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 100
-    num_simulations = 2000
+    max_iterations = 200
+    num_simulations = 500
     
     datasets = load_experimental_data()
     if not datasets:
