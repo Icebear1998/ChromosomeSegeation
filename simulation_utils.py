@@ -5,7 +5,6 @@ Contains common functions used by both joint and independent optimization strate
 """
 
 import numpy as np
-import pandas as pd
 from sklearn.neighbors import KernelDensity
 import warnings
 import sys
@@ -26,27 +25,68 @@ def load_experimental_data():
     """
     try:
         file_path = "Data/All_strains_SCStimes.xlsx"
-        df = pd.read_excel(file_path, sheet_name='Sheet1')
         
-        datasets = {}
-        dataset_mapping = {
-            'wildtype': ('wildtype12', 'wildtype32'),
-            'threshold': ('threshold12', 'threshold32'),
-            'degrade': ('degRade12', 'degRade32'),
-            'degradeAPC': ('degRadeAPC12', 'degRadeAPC32'),
-            'velcade': ('degRadeVel12', 'degRadeVel32')
-        }
-        
-        for dataset_name, (col_12, col_32) in dataset_mapping.items():
-            if col_12 in df.columns and col_32 in df.columns:
-                datasets[dataset_name] = {
-                    'delta_t12': df[col_12].dropna().values,
-                    'delta_t32': df[col_32].dropna().values
-                }
-        
-        return datasets
-    
-    except Exception:
+        # Try importing pandas first
+        try:
+            import pandas as pd
+            df = pd.read_excel(file_path, sheet_name='Sheet1')
+            
+            datasets = {}
+            dataset_mapping = {
+                'wildtype': ('wildtype12', 'wildtype32'),
+                'threshold': ('threshold12', 'threshold32'),
+                'degrade': ('degRade12', 'degRade32'),
+                'degradeAPC': ('degRadeAPC12', 'degRadeAPC32'),
+                'velcade': ('degRadeVel12', 'degRadeVel32')
+            }
+            
+            for dataset_name, (col_12, col_32) in dataset_mapping.items():
+                if col_12 in df.columns and col_32 in df.columns:
+                    datasets[dataset_name] = {
+                        'delta_t12': df[col_12].dropna().values,
+                        'delta_t32': df[col_32].dropna().values
+                    }
+            return datasets
+            
+        except ImportError:
+            # Fallback to openpyxl if pandas is not available
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+            sheet = wb['Sheet1']
+            
+            # Get headers from first row
+            headers = [cell.value for cell in sheet[1]]
+            
+            data_cols = {}
+            for col_idx, header in enumerate(headers):
+                if header:
+                    # Read column data (skipping header)
+                    col_values = []
+                    for row in sheet.iter_rows(min_row=2, min_col=col_idx+1, max_col=col_idx+1, values_only=True):
+                        val = row[0]
+                        if val is not None:
+                            col_values.append(val)
+                    data_cols[header] = np.array(col_values)
+            
+            datasets = {}
+            dataset_mapping = {
+                'wildtype': ('wildtype12', 'wildtype32'),
+                'threshold': ('threshold12', 'threshold32'),
+                'degrade': ('degRade12', 'degRade32'),
+                'degradeAPC': ('degRadeAPC12', 'degRadeAPC32'),
+                'velcade': ('degRadeVel12', 'degRadeVel32')
+            }
+            
+            for dataset_name, (col_12, col_32) in dataset_mapping.items():
+                if col_12 in data_cols and col_32 in data_cols:
+                    datasets[dataset_name] = {
+                        'delta_t12': data_cols[col_12],
+                        'delta_t32': data_cols[col_32]
+                    }
+            return datasets
+
+    except Exception as e:
+        print(f"Error loading experimental data: {e}")
         return {}
 
 
@@ -148,6 +188,10 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     Handles both simple mechanisms (simple, fixed_burst, feedback_onion, fixed_burst_feedback_onion)
     and time-varying mechanisms (time_varying_k, time_varying_k_fixed_burst, etc.)
     
+    OPTIMIZATION: Uses O(1) Beta sampling for 'simple', 'fixed_burst', 'time_varying_k', 
+    and 'time_varying_k_fixed_burst' mechanisms, falling back to Gillespie for complex 
+    mechanisms (feedback, time-varying feedback).
+    
     Args:
         mechanism (str): Mechanism name
         params (dict): Parameter dictionary
@@ -157,6 +201,108 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     Returns:
         tuple: (delta_t12_array, delta_t32_array) as numpy arrays, or (None, None) on failure
     """
+    # Check if we can use the fast Beta method
+    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
+    
+    if use_beta_method:
+        # Import the fast Beta simulation method
+        try:
+            from FastBetaSimulation import simulate_batch
+            
+            # Prepare parameters for Beta method
+            initial_states = np.array([params['N1'], params['N2'], params['N3']])
+            n0_array = np.array(n0_list)
+            
+            # Prepare mechanism-specific parameters
+            if mechanism in ['simple', 'fixed_burst']:
+                k = params['k']
+                burst_size = params.get('burst_size', 1.0)
+                k_1 = None
+                k_max = None
+            else:  # time_varying_k mechanisms
+                k = None
+                burst_size = params.get('burst_size', 1.0)
+                k_1 = calculate_k1_from_params(params)
+                k_max = params['k_max']
+            
+            # Use the ultra-fast vectorized method
+            results = simulate_batch(
+                mechanism=mechanism,
+                initial_states=initial_states,
+                n0_lists=n0_array,
+                k=k,
+                burst_size=burst_size,
+                k_1=k_1,
+                k_max=k_max,
+                num_simulations=num_simulations
+            )
+            
+            # Extract segregation times (columns are chromosomes 1, 2, 3)
+            t1_array = results[:, 0]
+            t2_array = results[:, 1]
+            t3_array = results[:, 2]
+            
+            # Calculate time differences (matches Gillespie output format)
+            delta_t12_array = t1_array - t2_array
+            delta_t32_array = t3_array - t2_array
+            
+            return delta_t12_array, delta_t32_array
+            
+        except ImportError:
+            # Fall back to Gillespie if FastBetaSimulation is not available
+            warnings.warn("FastBetaSimulation not found, falling back to Gillespie method")
+            use_beta_method = False
+
+    # Check if we can use the fast Feedback method (Vectorized Sum of Exponentials)
+    use_feedback_method = mechanism in ['feedback_onion', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
+    
+    if use_feedback_method:
+        try:
+            from FastFeedbackSimulation import simulate_batch_feedback
+            
+            initial_states = np.array([params['N1'], params['N2'], params['N3']])
+            n0_array = np.array(n0_list)
+            
+            # Default optional params
+            k = None
+            n_inner = params['n_inner']
+            k_1 = None
+            k_max = None
+            burst_size = params.get('burst_size', 1.0)
+            
+            if mechanism == 'feedback_onion':
+                k = params['k']
+            elif mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
+                k_1 = calculate_k1_from_params(params)
+                k_max = params['k_max']
+                
+            results = simulate_batch_feedback(
+                mechanism=mechanism,
+                initial_states=initial_states,
+                n0_lists=n0_array,
+                k=k,
+                n_inner=n_inner,
+                k_1=k_1,
+                k_max=k_max,
+                burst_size=burst_size,
+                num_simulations=num_simulations
+            )
+            
+            t1_array = results[:, 0]
+            t2_array = results[:, 1]
+            t3_array = results[:, 2]
+            
+            delta_t12_array = t1_array - t2_array
+            delta_t32_array = t3_array - t2_array
+            
+            return delta_t12_array, delta_t32_array
+            
+        except ImportError:
+            warnings.warn("FastFeedbackSimulation not found, falling back to Gillespie")
+            use_feedback_method = False
+
+    
+    # Fall back to standard Gillespie simulation for complex mechanisms
     is_simple = mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']
     
     # Prepare rate parameters
@@ -197,6 +343,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     return np.array(delta_t12_list), np.array(delta_t32_list)
 
 
+
 def calculate_likelihood(exp_data, sim_data):
     """
     Calculate negative log-likelihood using KDE with Scott's rule bandwidth.
@@ -226,7 +373,7 @@ def calculate_likelihood(exp_data, sim_data):
                         return 1e6
                     
                     # Build KDE using Scott's rule (automatic bandwidth)
-                    kde = KernelDensity(kernel='gaussian')
+                    kde = KernelDensity(kernel='gaussian', bandwidth=10.0)
                     kde.fit(sim_values.reshape(-1, 1))
                     
                     # Calculate likelihood
@@ -258,7 +405,7 @@ def calculate_likelihood(exp_data, sim_data):
             if len(exp_values) == 0 or len(sim_values) < 10:
                 return 1e6
             
-            kde = KernelDensity(kernel='gaussian')
+            kde = KernelDensity(kernel='gaussian', bandwidth=10.0)
             kde.fit(sim_values.reshape(-1, 1))
             
             log_densities = kde.score_samples(exp_values.reshape(-1, 1))
@@ -293,19 +440,19 @@ def get_parameter_bounds(mechanism):
     if is_simple:
         bounds = [
             (1.0, 50.0),      # n2
-            (50.0, 1000.0),   # N2
-            (0.01, 0.1),      # k
+            (50.0, 2000.0),   # N2
+            (0.001, 0.1),      # k
             (0.25, 4.0),      # r21
             (0.25, 4.0),      # r23
-            (0.4, 2.0),       # R21
+            (0.4, 2),       # R21
             (0.5, 5.0),       # R23
         ]
     else:
         bounds = [
             (1.0, 50.0),      # n2
-            (50.0, 1000.0),   # N2
-            (0.01, 0.1),      # k_max
-            (0.1, 0.2),       # tau
+            (50.0, 2000.0),   # N2
+            (0.001, 0.1),      # k_max
+            (2.0, 240.0),       # tau
             (0.25, 4.0),      # r21
             (0.25, 4.0),      # r23
             (0.4, 2.0),        # R21
@@ -330,7 +477,7 @@ def get_parameter_bounds(mechanism):
     if not is_simple:
         bounds.extend([
             (2.0, 10.0),   # beta_tau
-            (2.0, 40.0),   # beta_tau2
+            (2.0, 20.0),   # beta_tau2
         ])
     
     return bounds

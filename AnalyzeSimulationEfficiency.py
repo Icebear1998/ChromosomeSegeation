@@ -218,14 +218,14 @@ def plot_efficiency_results(results, result_file=None):
     print(f"Results saved to {csv_file}")
 
 if __name__ == "__main__":
-    mechanism = 'fixed_burst'
-    params_file = 'optimized_parameters_fixed_burst_join.txt'
+    mechanism = 'simple'
+    params_file = 'optimized_parameters_simple_join_toTest.txt'
     replicates = 10
     #result_file = 'simulation_efficiency_results.csv'  # 'simulation_efficiency_results.csv'  # Set to None to run analysis
     
     #plot_efficiency_results(results=None, result_file=result_file)
     # Define counts to test
-    simulation_counts = [500, 1000, 2000, 4000, 6000, 8000] # Adjusted max for runtime
+    simulation_counts = [500, 1000, 2000, 3000] # Adjusted max for runtime
     
     if not os.path.exists(params_file):
         print(f"File not found: {params_file}")
