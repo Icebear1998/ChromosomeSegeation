@@ -44,16 +44,9 @@ from simulation_utils import load_experimental_data, get_parameter_bounds
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'SecondVersion'))
+# Note: MoM optimization imports kept for potential future use, but not used in current configuration
 from MoMOptimization_join import joint_objective, get_mechanism_info, run_mom_optimization_single
 from scipy.optimize import differential_evolution
-
-# Try to import Bayesian optimization (optional)
-try:
-    from MoMOptimization_bayesian import run_bayesian_optimization
-    HAS_BAYESIAN_OPT = True
-except ImportError:
-    HAS_BAYESIAN_OPT = False
-    print("⚠️  Bayesian optimization not available (install scikit-optimize)")
 
 
 def get_parameter_count(mechanism):
@@ -234,6 +227,10 @@ def run_single_optimization(args):
         # Choose optimization method based on mechanism type
         if mechanism.endswith('_simulation') or mechanism.startswith('time_varying_k'):
             # Use simulation-based optimization for all simulation mechanisms (simple and time-varying)
+            # NOTE: run_optimization() automatically uses Fast simulation methods when applicable:
+            #   - FastBetaSimulation for: simple, fixed_burst, time_varying_k, time_varying_k_fixed_burst
+            #   - FastFeedbackSimulation for: feedback_onion, time_varying_k_feedback_onion, time_varying_k_combined
+            #   - Gillespie fallback only for mechanisms without optimized implementations
             base_mechanism = mechanism.replace('_simulation', '')
             print(f"  📊 Run {run_number}: Using simulation-based optimization with KDE for {base_mechanism}...")
             sys.stdout.flush()
@@ -813,57 +810,53 @@ def main():
     # Define mechanisms to compare
     mechanisms = [
         # Constant rate mechanisms (MoM-based - uses normal approximation)
-        'simple',                          # 11 params
-        #'fixed_burst',                     # 12 params
-        #'feedback_onion',                  # 12 params
-        #'fixed_burst_feedback_onion',      # 13 params
+        #'simple',                          # 11 params → MoM
+        #'fixed_burst',                     # 12 params → MoM
+        #'feedback_onion',                  # 12 params → MoM
+        #'fixed_burst_feedback_onion',      # 13 params → MoM
         
-        # Constant rate mechanisms (Simulation-based with KDE - no normal approximation)
-        #'simple_simulation',                 # 9 params (no beta2_k, beta3_k)
-        #'fixed_burst_simulation',            # 10 params
-        # 'feedback_onion_simulation',       # 10 params
-        # 'fixed_burst_feedback_onion_simulation',  # 11 params
+        # Constant rate mechanisms (Simulation-based with Fast methods)
+        'simple_simulation',                 # 9 params → FastBetaSimulation
+        'fixed_burst_simulation',            # 10 params → FastBetaSimulation
+        'feedback_onion_simulation',         # 10 params → FastFeedbackSimulation
+        'fixed_burst_feedback_onion_simulation',  # 11 params → FastFeedbackSimulation
         
-        # Time-varying rate mechanisms (Simulation-based)
-        # 'time_varying_k',                  # 12 params
-        # 'time_varying_k_fixed_burst',      # 13 params
-        # 'time_varying_k_feedback_onion',   # 13 params
-        # 'time_varying_k_combined',         # 14 params
+        # Time-varying rate mechanisms (Simulation-based with Fast methods)
+        'time_varying_k',                    # 12 params → FastBetaSimulation
+        'time_varying_k_fixed_burst',        # 13 params → FastBetaSimulation
+        'time_varying_k_feedback_onion',     # 13 params → FastFeedbackSimulation
+        'time_varying_k_combined',           # 14 params → FastFeedbackSimulation
     ]
     
     print(f"\n🔬 Comparing {len(mechanisms)} mechanisms:")
     for i, mech in enumerate(mechanisms, 1):
         param_count = get_parameter_count(mech)
+        # Determine which method will be used
         if mech.endswith('_simulation') or mech.startswith('time_varying_k'):
-            mech_type = "Simulation-based (KDE)"
+            base_mech = mech.replace('_simulation', '')
+            if base_mech in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']:
+                method = "FastBetaSimulation"
+            elif base_mech in ['feedback_onion', 'fixed_burst_feedback_onion', 
+                              'time_varying_k_feedback_onion', 'time_varying_k_combined']:
+                method = "FastFeedbackSimulation"
+            else:
+                method = "Gillespie (fallback)"
         else:
-            mech_type = "MoM-based (Normal approx)"
-        print(f"  {i}. {mech} ({param_count} parameters, {mech_type})")
+            method = "MoM (Normal approx)"
+        print(f"  {i}. {mech} ({param_count} parameters, {method})")
     sys.stdout.flush()
     
     # Configuration for sequential runs with internal parallelization
-    num_runs = 10  # Number of optimization runs per mechanism
-    num_simulations = 400  # Simulations per evaluation for simulation-based mechanisms
-    max_iterations = 20000  # Max iterations for DE
-    use_bayesian_opt = False  # Set to True to use Bayesian optimization instead of DE
+    num_runs = 3  # Number of optimization runs per mechanism
+    num_simulations = 2000  # Simulations per evaluation for simulation-based mechanisms
+    max_iterations = 10000  # Max iterations for DE
     
     print(f"\n⚙️  Optimization configuration:")
     print(f"   Strategy: Sequential runs with parallel computation within each run")
     print(f"   Available CPUs for internal parallelization: {n_cpus}")
     print(f"   Runs per mechanism: {num_runs}")
-    print(f"   Simulations per evaluation: 500")
-    sys.stdout.flush()
-    
-    if use_bayesian_opt:
-        if HAS_BAYESIAN_OPT:
-            print(f"   MoM Optimizer: Bayesian Optimization (Gaussian Process)")
-        else:
-            print(f"   ⚠️  Bayesian optimization requested but not available!")
-            print(f"   Install with: pip install scikit-optimize")
-            print(f"   Falling back to Differential Evolution")
-            use_bayesian_opt = False
-    else:
-        print(f"   MoM Optimizer: Differential Evolution")
+    print(f"   Simulations per evaluation: {num_simulations}")
+    print(f"   Max iterations (DE): {max_iterations}")
     sys.stdout.flush()
     
     # Run comparison for each mechanism
@@ -887,7 +880,7 @@ def main():
                 max_iterations=max_iterations,
                 n_processes=1,  # Always 1 since we run sequentially with internal parallelization
                 optimized_params_csv=runs_csv,
-                use_bayesian=use_bayesian_opt
+                use_bayesian=False  # Only using simulation-based optimization (no MoM)
             )
             all_results.append(result)
             

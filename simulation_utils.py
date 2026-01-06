@@ -254,7 +254,8 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             use_beta_method = False
 
     # Check if we can use the fast Feedback method (Vectorized Sum of Exponentials)
-    use_feedback_method = mechanism in ['feedback_onion', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
+    use_feedback_method = mechanism in ['feedback_onion', 'fixed_burst_feedback_onion', 
+                                        'time_varying_k_feedback_onion', 'time_varying_k_combined']
     
     if use_feedback_method:
         try:
@@ -272,6 +273,9 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             
             if mechanism == 'feedback_onion':
                 k = params['k']
+            elif mechanism == 'fixed_burst_feedback_onion':
+                k = params['k']
+                # burst_size already extracted above
             elif mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
                 k_1 = calculate_k1_from_params(params)
                 k_max = params['k_max']

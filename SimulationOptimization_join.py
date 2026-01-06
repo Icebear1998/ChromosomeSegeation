@@ -195,12 +195,12 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     # Define Differential Evolution settings
     de_settings = {
         'maxiter': max_iterations,
-        'popsize': 15,
+        'popsize': 10,
         'workers': -1,
         'strategy': 'best1bin',
         #'mutation': (0.7, 1.0),
         #'recombination': 0.7,
-        #'tol': 1e-4,
+        'tol': 1e-4,
         #'atol': 1e-2,
         'disp': True
     }
@@ -300,15 +300,15 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 200
-    num_simulations = 500
+    max_iterations = 5000
+    num_simulations = 2000
     
     datasets = load_experimental_data()
     if not datasets:
         print("Error: No datasets loaded!")
         return
     
-    mechanism = 'time_varying_k'  # Default mechanism
+    mechanism = 'feedback_onion'  # Default mechanism
     
     try:
         results = run_optimization(

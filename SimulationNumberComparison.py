@@ -108,8 +108,8 @@ def run_comparison(mechanism, params_file, simulation_counts=[500, 5000]):
     
     results = {}
     
-    # Base keys for simple mechanism
-    base_keys = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k']
+    # Base keys for simple and other mechanisms
+    base_keys = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k', 'burst_size', 'n_inner', 'k_max', 'tau', 'k_1']
     base_params = {k: params.get(k) for k in base_keys if k in params}
     
     # Store simulation data for plotting
@@ -206,88 +206,117 @@ def run_comparison(mechanism, params_file, simulation_counts=[500, 5000]):
     print("="*60)
     
     # NLL Comparison Table
-    print(f"{'Dataset':<15} | {'NLL (' + str(simulation_counts[0]) + ')':<15} | {'NLL (' + str(simulation_counts[1]) + ')':<15} | {'Diff':<10} | {'% Diff':<10}")
-    print("-" * 80)
-    
-    c1 = simulation_counts[0]
-    c2 = simulation_counts[1]
+    # Build header
+    header = f"{'Dataset':<15}"
+    for count in simulation_counts:
+        header += f" | {'NLL (' + str(count) + ')':<15}"
+    print(header)
+    print("-" * len(header))
     
     for ds in dataset_names:
-        if ds in results[c1]['individual_nlls']:
-            nll1 = results[c1]['individual_nlls'][ds]
-            nll2 = results[c2]['individual_nlls'][ds]
-            diff = abs(nll1 - nll2)
-            pct = (diff / abs(nll2)) * 100 if nll2 != 0 else 0
+        row_str = f"{ds:<15}"
+        for count in simulation_counts:
+            val = results[count]['individual_nlls'].get(ds, 0.0)
+            row_str += f" | {val:<15.4f}"
+        print(row_str)
             
-            print(f"{ds:<15} | {nll1:<15.4f} | {nll2:<15.4f} | {diff:<10.4f} | {pct:<10.2f}")
+    print("-" * len(header))
     
-    print("-" * 80)
-    t_nll1 = results[c1]['total_nll']
-    t_nll2 = results[c2]['total_nll']
-    t_diff = abs(t_nll1 - t_nll2)
-    t_pct = (t_diff / abs(t_nll2)) * 100
-    print(f"{'TOTAL':<15} | {t_nll1:<15.4f} | {t_nll2:<15.4f} | {t_diff:<10.4f} | {t_pct:<10.2f}")
+    # Total row
+    row_str = f"{'TOTAL':<15}"
+    for count in simulation_counts:
+        val = results[count]['total_nll']
+        row_str += f" | {val:<15.4f}"
+    print(row_str)
     
     print(f"\nTime Efficiency:")
-    print(f"  {c1} sims: {results[c1]['time']:.2f}s")
-    print(f"  {c2} sims: {results[c2]['time']:.2f}s")
+    for count in simulation_counts:
+        print(f"  {count} sims: {results[count]['time']:.2f}s")
+
     
     # Plotting
     print("\nGenerating comparison plots...")
-    plot_comparison(exp_datasets, sim_data_storage, simulation_counts)
+    plot_comparison(exp_datasets, sim_data_storage, results, simulation_counts)
 
-def plot_comparison(exp_datasets, sim_data_storage, simulation_counts):
-    """Generate plots comparing KDEs and experimental data."""
-    c1, c2 = simulation_counts
+def plot_comparison(exp_datasets, sim_data_storage, results, simulation_counts):
+    """Generate plots comparing KDEs and experimental data for multiple simulation counts."""
+    # Setup colors for different counts
+    # Use 'tab10' for distinct legible colors
+    colors = plt.cm.tab10(np.linspace(0, 1, max(10, len(simulation_counts))))
+    # Or just select from the cycle directly
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    if len(simulation_counts) > len(colors):
+        colors = plt.cm.tab20(np.linspace(0, 1, len(simulation_counts)))
+    
     dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']
     
-    fig, axes = plt.subplots(len(dataset_names), 2, figsize=(15, 3 * len(dataset_names)))
+    fig, axes = plt.subplots(len(dataset_names), 2, figsize=(15, 3.5 * len(dataset_names)))
     
     for i, ds in enumerate(dataset_names):
         if ds not in exp_datasets:
             continue
             
         exp_data = exp_datasets[ds]
-        sim1 = sim_data_storage[c1].get(ds)
-        sim2 = sim_data_storage[c2].get(ds)
         
-        if not sim1 or not sim2:
-            continue
-            
         # Plot T1-T2 (Left Column)
         ax_left = axes[i, 0]
-        plot_single_panel(ax_left, exp_data['delta_t12'], sim1[0], sim2[0], f"{ds} (T1-T2)", c1, c2)
+        plot_single_panel_multi(ax_left, exp_data['delta_t12'], ds, 0, sim_data_storage, results, simulation_counts, colors, f"{ds} (T1-T2)")
         
         # Plot T3-T2 (Right Column)
         ax_right = axes[i, 1]
-        plot_single_panel(ax_right, exp_data['delta_t32'], sim1[1], sim2[1], f"{ds} (T3-T2)", c1, c2)
+        plot_single_panel_multi(ax_right, exp_data['delta_t32'], ds, 1, sim_data_storage, results, simulation_counts, colors, f"{ds} (T3-T2)")
         
     plt.tight_layout()
-    plt.savefig(f"simulation_comparison_{c1}_vs_{c2}.png")
-    print(f"Plot saved to simulation_comparison_{c1}_vs_{c2}.png")
+    output_filename = f"simulation_comparison_{'_'.join(map(str, simulation_counts))}.png"
+    plt.savefig(output_filename)
+    print(f"Plot saved to {output_filename}")
 
-def plot_single_panel(ax, exp, s1, s2, title, c1, c2):
-    """Helper to plot a single panel with Hist + KDEs."""
+def plot_single_panel_multi(ax, exp, ds_name, time_idx, sim_data_storage, results, simulation_counts, colors, title):
+    """Helper to plot a single panel with Hist + KDEs for multiple counts."""
     # Experimental Hist
     ax.hist(exp, bins=30, density=True, alpha=0.3, color='gray', label='Exp Data')
     
-    # Limits for KDE evaluation
-    data_min = min(exp.min(), s1.min(), s2.min())
-    data_max = max(exp.max(), s1.max(), s2.max())
+    # Check limits first to build grid
+    all_data = [exp]
+    for count in simulation_counts:
+        sim_data = sim_data_storage.get(count, {}).get(ds_name)
+        if sim_data:
+            all_data.append(sim_data[time_idx])
+            
+    data_min = min(d.min() for d in all_data if len(d) > 0)
+    data_max = max(d.max() for d in all_data if len(d) > 0)
     pad = (data_max - data_min) * 0.1
     x_grid = np.linspace(data_min - pad, data_max + pad, 200)
     
-    # KDE 1
-    kde1 = gaussian_kde(s1)
-    ax.plot(x_grid, kde1(x_grid), 'b--', lw=2, label=f'Sim {c1} (KDE)')
-    
-    # KDE 2
-    kde2 = gaussian_kde(s2)
-    ax.plot(x_grid, kde2(x_grid), 'r-', lw=2, alpha=0.7, label=f'Sim {c2} (KDE)')
-    
+    # Plot KDEs for each count
+    for i, count in enumerate(simulation_counts):
+        sim_data = sim_data_storage.get(count, {}).get(ds_name)
+        if not sim_data: continue
+        
+        s_vals = sim_data[time_idx]
+        if len(s_vals) < 2: continue
+        
+        # Get NLL for label
+        nll_val = results[count]['individual_nlls'].get(ds_name, float('nan'))
+        
+        # Use default bandwidth (1.0) explicitly here too if needed, but scipy defaults to scott.
+        # However, simulation_utils calls fix bandwidth. Here we are just visualizing.
+        # Let's use standard default for visualization or try to match utils?
+        # Visualization usually uses scott.
+        try:
+            kde = gaussian_kde(s_vals) # Scipy uses scott by default.
+            # Label with NLL
+            label = f'N={count} (NLL={nll_val:.1f})'
+            style = '--' if i % 2 == 0 else '-'
+            ax.plot(x_grid, kde(x_grid), linestyle=style, color=colors[i], lw=2, alpha=0.8, label=label)
+        except Exception:
+            pass
+            
     ax.set_title(title)
-    if 'wildtype' in title and 'T1-T2' in title: # Only legend on first plot to reduce clutter
-        ax.legend()
+    ax.legend(fontsize=8)
+
+
 
 def run_stability_test(mechanism, params_file, count=500, replicates=20):
     """Run multiple replicates to measure NLL variance."""
@@ -299,7 +328,7 @@ def run_stability_test(mechanism, params_file, count=500, replicates=20):
     if params is None: return
 
     # Prepare params... (simplified version of run_comparison)
-    base_keys = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k']
+    base_keys = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k', 'burst_size', 'n_inner', 'k_max', 'tau', 'k_1']
     base_params = {k: params.get(k) for k in base_keys if k in params}
     exp_datasets = load_experimental_data()
     dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']
@@ -356,8 +385,8 @@ def run_stability_test(mechanism, params_file, count=500, replicates=20):
         print("✓ Variance seems acceptable.")
 
 if __name__ == "__main__":
-    mechanism = 'simple'
-    params_file = 'optimized_parameters_simple_join.txt'
+    mechanism = 'fixed_burst'
+    params_file = 'optimized_parameters_fixed_burst_join.txt'
     
     if len(sys.argv) > 1 and sys.argv[1] == 'stability':
         if not os.path.exists(params_file):
@@ -366,7 +395,7 @@ if __name__ == "__main__":
             run_stability_test(mechanism, params_file, count=5000, replicates=10)
     else:
         # Default behavior``
-        simulation_counts = [500, 2000]
+        simulation_counts = [500, 1000, 2000]
         if not os.path.exists(params_file):
             print(f"File not found: {params_file}")
         else:

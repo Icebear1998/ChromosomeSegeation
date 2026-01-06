@@ -60,6 +60,40 @@ def simulate_feedback_onion_single(N: float, n: float, k: float, n_inner: float)
     # Total time is sum of waiting times
     return np.sum(waiting_times)
 
+def simulate_fixed_burst_feedback_onion_single(N: float, n: float, k: float, n_inner: float, burst_size: float) -> float:
+    """
+    Simulate 'fixed_burst_feedback_onion' for a single chromosome.
+    
+    Combines:
+    1. Constant rate k
+    2. Feedback rates (W(i))
+    3. Fixed Bursts (jumps of size > 1)
+    
+    Path is deterministic: N -> N-b -> N-2b ...
+    Waiting time at each step: t_i ~ Exp(k * state * W(state))
+    """
+    # States iteration handles the bursts
+    # We iterate down by burst_size
+    states = np.arange(int(N), int(n), -int(burst_size))
+    
+    if len(states) == 0:
+        return 0.0
+    
+    # Vectorized calculation of weights
+    weights = np.ones_like(states, dtype=float)
+    mask = states > n_inner
+    weights[mask] = (states[mask] / n_inner) ** (-1/3)
+    
+    # Calculate rates: λ_i = k * state * weight
+    rates = k * states * weights
+    
+    # Sample waiting times: t_i ~ Exp(λ_i)
+    u = np.random.random(len(states))
+    waiting_times = -np.log(u) / rates
+    
+    # Total time is sum of waiting times
+    return np.sum(waiting_times)
+
 def simulate_time_varying_combined_single(N: float, n: float, k_1: float, k_max: float, 
                                           burst_size: float, n_inner: float) -> float:
     """
@@ -138,6 +172,22 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
         
         if mechanism == 'feedback_onion':
             states = np.arange(int(N), int(n), -1)
+            num_steps = len(states)
+            
+            if num_steps > 0:
+                weights = np.ones(num_steps)
+                mask = states > n_inner
+                weights[mask] = (states[mask] / n_inner) ** (-1/3)
+                rates = k * states * weights
+                
+                random_exps = np.random.exponential(1.0, size=(num_simulations, num_steps))
+                time_increments = random_exps / rates
+                results[:, i] = np.sum(time_increments, axis=1)
+        
+        elif mechanism == 'fixed_burst_feedback_onion':
+            # Constant k + feedback onion + fixed bursts
+            step = int(burst_size) if burst_size else 1
+            states = np.arange(int(N), int(n), -step)
             num_steps = len(states)
             
             if num_steps > 0:

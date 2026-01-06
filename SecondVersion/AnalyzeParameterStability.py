@@ -37,7 +37,7 @@ def load_data():
 def main():
     # ========== CONFIGURATION ==========
     mechanism = 'fixed_burst_feedback_onion'       # Options: 'simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion'
-    tol = 1e-4                 # Optimal tolerance found from analysis (adjust as needed)
+    tol = 1e-2                 # Optimal tolerance found from analysis (adjust as needed)
     num_runs = 10               # Number of repetitions
     # ===================================
 
