@@ -114,7 +114,7 @@ def get_mom_data_points(datasets):
     return total_points
 
 
-def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strains=None, seed=None, use_bayesian=False):
+def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strains=None, seed=None):
     """
     Wrapper function for MoM optimization that calls the reusable function from MoMOptimization_join.py.
     Uses the already loaded datasets to avoid redundant data loading.
@@ -122,10 +122,9 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
     Args:
         mechanism (str): Mechanism name
         datasets (dict): Experimental datasets (already loaded)
-        max_iterations (int): Maximum iterations for optimization
+        max_iterations (int): Maximum iterations for differential evolution
         selected_strains (list): List of strain names (not used, kept for interface compatibility)
         seed (int): Random seed for reproducible results
-        use_bayesian (bool): If True, use Bayesian optimization instead of differential evolution
     
     Returns:
         dict: Results dictionary matching the simulation optimization interface
@@ -148,32 +147,14 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
             'data_initial32': np.array([])
         }
         
-        if use_bayesian and HAS_BAYESIAN_OPT:
-            # Use Bayesian optimization
-            print(f"  Using Bayesian optimization (GP-based)...")
-            # Use more calls to match DE's evaluation budget (maxiter * popsize)
-            # DE: max_iterations=200, popsize=15 → ~3000 evaluations
-            # BO: Use 500 calls for better convergence
-            n_calls = max(500, max_iterations * 2)  # More evaluations for better convergence
-            n_random_starts = min(100, n_calls // 5)  # 20% random exploration
-            
-            result = run_bayesian_optimization(
-                mechanism=mechanism,
-                data_arrays=data_arrays,
-                n_calls=n_calls,
-                n_random_starts=n_random_starts,
-                seed=seed,
-                gamma_mode='separate'
-            )
-        else:
-            # Use differential evolution (default)
-            result = run_mom_optimization_single(
-                mechanism=mechanism,
-                data_arrays=data_arrays,
-                max_iterations=max_iterations,
-                seed=seed,
-                gamma_mode='separate'  # Use separate gamma for each chromosome
-            )
+        # Use differential evolution
+        result = run_mom_optimization_single(
+            mechanism=mechanism,
+            data_arrays=data_arrays,
+            max_iterations=max_iterations,
+            seed=seed,
+            gamma_mode='separate'  # Use separate gamma for each chromosome
+        )
         
         return result
         
@@ -210,12 +191,12 @@ def run_single_optimization(args):
     Run a single optimization for parallel processing.
     
     Args:
-        args (tuple): (mechanism, datasets, num_simulations, run_number, seed, use_bayesian)
+        args (tuple): (mechanism, datasets, num_simulations, max_iterations, run_number, seed)
     
     Returns:
         dict: Single optimization result
     """
-    mechanism, datasets, num_simulations, max_interation, run_number, seed, use_bayesian = args
+    mechanism, datasets, num_simulations, max_interation, run_number, seed = args
     
     try:
         print(f"  🔄 Starting run {run_number} for {mechanism}...")
@@ -238,20 +219,17 @@ def run_single_optimization(args):
                 base_mechanism, datasets,
                 max_iterations=max_interation,
                 num_simulations=num_simulations,
-                selected_strains=None,
-                use_parallel=True
+                selected_strains=None
             )
         else:
-            # Use MoM-based optimization for constant rate mechanisms
-            opt_method = "Bayesian (GP)" if use_bayesian else "Differential Evolution"
-            print(f"  📊 Run {run_number}: Using MoM-based optimization ({opt_method})...")
+            # Use MoM-based optimization (Differential Evolution)
+            print(f"  📊 Run {run_number}: Using MoM-based optimization (Differential Evolution)...")
             sys.stdout.flush()
             result = run_mom_optimization(
                 mechanism, datasets,
                 max_iterations=max_interation, 
                 selected_strains=None,
-                seed=seed + run_number,  # Use unique seed for each run
-                use_bayesian=use_bayesian
+                seed=seed + run_number
             )
         
         print(f"  ✅ Run {run_number} completed: Success={result['success']}, NLL={result.get('nll', 'N/A')}")
@@ -340,7 +318,7 @@ def _append_run_to_csv(csv_path, row, write_header_if_new=True):
         writer.writerow(out)
 
 
-def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=500, max_iterations = 200, n_processes=None, optimized_params_csv=None, use_bayesian=False):
+def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=500, max_iterations=200, n_processes=None, optimized_params_csv=None):
     """
     Run multiple optimization runs for a single mechanism and collect AIC/BIC statistics.
     Uses parallel processing for faster execution.
@@ -350,9 +328,9 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
         datasets (dict): Experimental datasets
         num_runs (int): Number of optimization runs
         num_simulations (int): Number of simulations per evaluation
+        max_iterations (int): Maximum iterations for differential evolution
         n_processes (int): Number of parallel processes (None for auto-detect)
         optimized_params_csv (str): Path to CSV for storing parameters
-        use_bayesian (bool): If True, use Bayesian optimization for MoM mechanisms
     
     Returns:
         dict: Results including AIC/BIC statistics
@@ -380,7 +358,7 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
     # Prepare arguments for parallel processing
     base_seed = 10
     args_list = [
-        (mechanism, datasets, num_simulations, max_iterations, run_num, base_seed, use_bayesian)
+        (mechanism, datasets, num_simulations, max_iterations, run_num, base_seed)
         for run_num in range(1, num_runs + 1)
     ]
     
@@ -879,8 +857,7 @@ def main():
                 num_simulations=num_simulations,
                 max_iterations=max_iterations,
                 n_processes=1,  # Always 1 since we run sequentially with internal parallelization
-                optimized_params_csv=runs_csv,
-                use_bayesian=False  # Only using simulation-based optimization (no MoM)
+                optimized_params_csv=runs_csv
             )
             all_results.append(result)
             

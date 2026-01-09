@@ -202,7 +202,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         #'recombination': 0.7,
         'tol': 1e-4,
         #'atol': 1e-2,
-        'disp': True
+        'disp': False
     }
 
     print("\nDifferential Evolution Settings:")
