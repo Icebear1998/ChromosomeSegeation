@@ -361,7 +361,7 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
                 results[linear_phase, i] = np.sqrt(2 * y[linear_phase] / k_1)
                 results[~linear_phase, i] = tau + (y[~linear_phase] - y_critical) / k_max
                 
-        elif mechanism == 'time_varying_k_fixed_burst':
+        elif mechanism in ['time_varying_k_fixed_burst', 'time_varying_k_burst_onion']:
             N_prime = int(np.ceil(N / burst_size))
             n_prime = int(np.floor(n / burst_size))
             k_1_prime = k_1 * burst_size

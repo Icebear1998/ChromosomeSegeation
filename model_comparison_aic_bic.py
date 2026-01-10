@@ -378,7 +378,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
         for result in results:
             run_num = result['run_number']
             
-            if result['success'] and result['converged']:
+            #if result['success'] and result['converged']:
+            if result['success']:
                 nll = result['nll']
                 aic, bic = calculate_aic_bic(nll, n_params, n_data)
                 
@@ -452,7 +453,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
             result = run_single_optimization(args)
             run_num = result['run_number']
             
-            if result['success'] and result['converged']:
+            #if result['success'] and result['converged']:
+            if result['success']:
                 nll = result['nll']
                 aic, bic = calculate_aic_bic(nll, n_params, n_data)
                 

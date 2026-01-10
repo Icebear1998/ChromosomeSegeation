@@ -202,7 +202,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         tuple: (delta_t12_array, delta_t32_array) as numpy arrays, or (None, None) on failure
     """
     # Check if we can use the fast Beta method
-    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
+    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_burst_onion']
     
     if use_beta_method:
         # Import the fast Beta simulation method
