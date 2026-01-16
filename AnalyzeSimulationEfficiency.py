@@ -274,19 +274,19 @@ def plot_efficiency_results(results, mechanism='unknown', result_file=None):
 if __name__ == "__main__":
     mechanism = 'simple'  # Change as needed
     params_file = 'simulation_optimized_parameters_simple.txt'
-    replicates = 1000
+    replicates = 200
     n_workers = 48  # Adjust based on your CPU cores
     
     # KDE Bandwidth configuration
     # Options: 'scott' (adaptive, h = std * n^(-1/5)) or 'fixed' (constant bandwidth)
-    bandwidth_method = 'scott'     # 'scott' or 'fixed'
-    fixed_bandwidth = 15.0         # Used when bandwidth_method='fixed'
+    bandwidth_method = 'fixed'     # 'scott' or 'fixed'
+    fixed_bandwidth = 10.0         # Used when bandwidth_method='fixed'
     
     # Set bandwidth configuration
     set_kde_bandwidth(method=bandwidth_method, fixed_value=fixed_bandwidth)
     
     # Extended counts to observe NLL plateau effect
-    simulation_counts = [2000, 5000, 10000, 20000, 40000, 60000, 80000, 100000, 150000, 200000]#, 300000, 500000]
+    simulation_counts = [2000, 5000, 10000, 20000, 40000, 60000, 80000, 100000]#, 150000, 200000, 300000, 500000]
     
     if not os.path.exists(params_file):
         print(f"File not found: {params_file}")

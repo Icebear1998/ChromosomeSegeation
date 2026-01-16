@@ -30,7 +30,7 @@ def run_gillespie_simulations(mechanism, N_list, n_list, params, num_sims):
     start_time = time.time()
     results = []
     
-    is_simple = mechanism == 'feedback_onion'
+    is_simple = mechanism in ['feedback_onion', 'fixed_burst_feedback_onion']
     
     for _ in range(num_sims):
         if is_simple:
@@ -131,7 +131,7 @@ def compare_statistics(gillespie_results, beta_results, labels):
 def plot_comparison(gillespie_results, beta_results, labels, mechanism):
     """Create comparison plots."""
     print("\nGenerating comparison plots...")
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
     for i, (ax, label) in enumerate(zip(axes, labels)):
         g_data = gillespie_results[:, i]
@@ -174,29 +174,47 @@ def test_mechanism(mechanism, params, N_list, n_list, num_simulations):
     print(f"  Gillespie: {g_time:.2f}s")
     print(f"  Fast Feedback: {f_time:.2f}s")
     
-    compare_statistics(g_res, f_res, ['Chr1', 'Chr2', 'Chr3'])
-    plot_comparison(g_res, f_res, ['Chr1', 'Chr2', 'Chr3'], mechanism)
+    # Calculate Delta T values (T1-T2, T3-T2) from segregation times
+    # g_res and f_res are (num_simulations, 3) arrays with [T1, T2, T3]
+    print(f"\nCalculating Delta T values (T1-T2, T3-T2)...")
+    g_delta_t12 = g_res[:, 0] - g_res[:, 1]  # T1 - T2
+    g_delta_t32 = g_res[:, 2] - g_res[:, 1]  # T3 - T2
+    
+    f_delta_t12 = f_res[:, 0] - f_res[:, 1]  # T1 - T2
+    f_delta_t32 = f_res[:, 2] - f_res[:, 1]  # T3 - T2
+    
+    # Stack Delta T values for comparison
+    g_delta = np.column_stack([g_delta_t12, g_delta_t32])
+    f_delta = np.column_stack([f_delta_t12, f_delta_t32])
+    
+    # Statistical comparison (use Delta T values)
+    labels = ['ΔT₁₂ (Chr1 - Chr2)', 'ΔT₃₂ (Chr3 - Chr2)']
+    compare_statistics(g_delta, f_delta, labels)
+    plot_comparison(g_delta, f_delta, labels, mechanism)
     
     return speedup
 
 def main():
     print("FAST FEEDBACK SIMULATION VALIDATION")
     
-    num_sims = 2000
-    N_list = [300.0, 1000.0, 2000.0]
-    n_list = [10.0, 15.0, 20.0]
+    num_sims = 5000
+    N_list = [300.0, 400.0, 5000.0]
+    n_list = [3.0, 5.0, 8.0]
     
     # Test 1: feedback_onion
-    params_onion = {'k': 0.05, 'n_inner': 50.0}
-    test_mechanism('feedback_onion', params_onion, N_list, n_list, num_sims)
+    # params_onion = {'k': 0.05, 'n_inner': 50.0}
+    # test_mechanism('feedback_onion', params_onion, N_list, n_list, num_sims)
     
-    # Test 2: time_varying_k_feedback_onion
-    params_tv_onion = {'k_1': 0.001, 'k_max': 0.1, 'n_inner': 50.0}
-    test_mechanism('time_varying_k_feedback_onion', params_tv_onion, N_list, n_list, num_sims)
+    # # Test 2: time_varying_k_feedback_onion
+    # params_tv_onion = {'k_1': 0.001, 'k_max': 0.05, 'n_inner': 50.0}
+    # test_mechanism('time_varying_k_feedback_onion', params_tv_onion, N_list, n_list, num_sims)
     
     # Test 3: time_varying_k_combined
-    params_tv_combined = {'k_1': 0.001, 'k_max': 0.1, 'n_inner': 50.0, 'burst_size': 5.0}
-    test_mechanism('time_varying_k_combined', params_tv_combined, N_list, n_list, num_sims)
+    # Test 4: fixed_burst_feedback_onion
+    print("\n---------------------------------------------------")
+    print("Test: fixed_burst_feedback_onion")
+    params_fixed_onion = {'k': 0.05, 'n_inner': 50.0, 'burst_size': 5.0}
+    test_mechanism('fixed_burst_feedback_onion', params_fixed_onion, N_list, n_list, num_sims)
 
 if __name__ == "__main__":
     main()

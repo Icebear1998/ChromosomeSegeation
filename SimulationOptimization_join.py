@@ -342,6 +342,14 @@ def main():
     max_iterations = 5000
     num_simulations = 10000
     
+    # KDE Bandwidth configuration
+    # Options: 'scott' (adaptive, h = std * n^(-1/5)) or 'fixed' (constant bandwidth)
+    bandwidth_method = 'fixed'     # 'scott' or 'fixed'
+    fixed_bandwidth = 10.0         # Used when bandwidth_method='fixed'
+    
+    # Set bandwidth configuration
+    set_kde_bandwidth(method=bandwidth_method, fixed_value=fixed_bandwidth)
+    
     datasets = load_experimental_data()
     if not datasets:
         print("Error: No datasets loaded!")

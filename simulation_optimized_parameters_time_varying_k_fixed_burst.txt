@@ -1,0 +1,28 @@
+Simulation-based Optimization Results (KDE)
+Mechanism: time_varying_k_fixed_burst
+Selected Strains: all datasets
+Negative Log-Likelihood: 6972.338967
+Converged: False
+Status: Maximum number of iterations has been exceeded.
+Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade
+
+Optimized Parameters (ratio-based):
+n2 = 20.299916
+N2 = 564.463484
+k_max = 0.004885
+tau = 79.643579
+r21 = 0.571964
+r23 = 0.860159
+R21 = 0.618967
+R23 = 3.561751
+burst_size = 25.072673
+alpha = 0.695855
+beta_k = 0.415944
+beta_tau = 4.127570
+beta_tau2 = 18.231904
+
+Derived Parameters:
+n1 = 11.610828
+n3 = 17.461153
+N1 = 349.384489
+N3 = 2010.478224

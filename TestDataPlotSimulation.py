@@ -111,9 +111,14 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         # Create base parameters dict
         base_params = {
             'n1': params['n1'], 'n2': params['n2'], 'n3': params['n3'],
-            'N1': params['N1'], 'N2': params['N2'], 'N3': params['N3'],
-            'k_max': params['k_max']
+            'N1': params['N1'], 'N2': params['N2'], 'N3': params['N3']
         }
+        
+        # Add rate parameter - either k (simple mechanisms) or k_max (time-varying mechanisms)
+        if 'k_max' in params:
+            base_params['k_max'] = params['k_max']
+        elif 'k' in params:
+            base_params['k'] = params['k']
         
         # Add tau parameter if available
         if 'tau' in params:
@@ -124,7 +129,14 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         # k_1 calculation is now handled by simulation_utils.calculate_k1_from_params
         
         # Add mechanism-specific parameters
-        if mechanism == 'time_varying_k_fixed_burst':
+        if mechanism == 'fixed_burst':
+            base_params['burst_size'] = params['burst_size']
+        elif mechanism == 'feedback_onion':
+            base_params['n_inner'] = params['n_inner']
+        elif mechanism == 'fixed_burst_feedback_onion':
+            base_params['burst_size'] = params['burst_size']
+            base_params['n_inner'] = params['n_inner']
+        elif mechanism == 'time_varying_k_fixed_burst':
             base_params['burst_size'] = params['burst_size']
         elif mechanism == 'time_varying_k_feedback_onion':
             base_params['n_inner'] = params['n_inner']
@@ -140,7 +152,28 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         # Extract rate parameters
         initial_state = [mutant_params['N1'], mutant_params['N2'], mutant_params['N3']]
         
-        if mechanism == 'time_varying_k':
+        # Build rate_params based on mechanism type
+        if mechanism == 'simple':
+            rate_params = {
+                'k': mutant_params['k']
+            }
+        elif mechanism == 'fixed_burst':
+            rate_params = {
+                'k': mutant_params['k'],
+                'burst_size': mutant_params['burst_size']
+            }
+        elif mechanism == 'feedback_onion':
+            rate_params = {
+                'k': mutant_params['k'],
+                'n_inner': mutant_params['n_inner']
+            }
+        elif mechanism == 'fixed_burst_feedback_onion':
+            rate_params = {
+                'k': mutant_params['k'],
+                'burst_size': mutant_params['burst_size'],
+                'n_inner': mutant_params['n_inner']
+            }
+        elif mechanism == 'time_varying_k':
             rate_params = {
                 'k_1': mutant_params['k_1'],
                 'k_max': mutant_params['k_max']
@@ -171,26 +204,21 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
                 'burst_size': mutant_params['burst_size']
             }
         
-        # Run simulations
-        delta_t12_list = []
-        delta_t32_list = []
         
-        for _ in range(num_simulations):
-            sim = MultiMechanismSimulationTimevary(
-                mechanism=mechanism,
-                initial_state_list=initial_state,
-                rate_params=rate_params,
-                n0_list=n0_list,
-                max_time=1000
-            )
-            
-            _, _, sep_times = sim.simulate()
-            
-            delta_t12 = sep_times[0] - sep_times[1]  # T1 - T2
-            delta_t32 = sep_times[2] - sep_times[1]  # T3 - T2
-            
-            delta_t12_list.append(delta_t12)
-            delta_t32_list.append(delta_t32)
+        # Run simulations using simulation_utils which handles all mechanism types
+        # This will automatically dispatch to the appropriate simulator (Gillespie, FastBeta, or FastFeedback)
+        from simulation_utils import run_simulation_for_dataset
+        
+        delta_t12_array, delta_t32_array = run_simulation_for_dataset(
+            mechanism=mechanism,
+            params=mutant_params,
+            n0_list=n0_list,
+            num_simulations=num_simulations
+        )
+        
+        # Convert to lists and return
+        delta_t12_list = delta_t12_array.tolist() if isinstance(delta_t12_array, np.ndarray) else list(delta_t12_array)
+        delta_t32_list = delta_t32_array.tolist() if isinstance(delta_t32_array, np.ndarray) else list(delta_t32_array)
         
         return delta_t12_list, delta_t32_list
     
@@ -217,7 +245,7 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
     
     alpha = params['alpha']
     beta_k = params['beta_k']
-    beta_tau = params['beta_tau']
+    beta_tau = params.get('beta_tau', None)  # Default to None if not present
     beta_tau2 = params.get('beta_tau2', None)  # Default to None if not present
     
     for i, (dataset_name, title) in enumerate(zip(dataset_names, dataset_titles)):
@@ -334,7 +362,7 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     
     alpha = params['alpha']
     beta_k = params['beta_k']
-    beta_tau = params['beta_tau']
+    beta_tau = params.get('beta_tau', None)  # Default to None if not present
     beta_tau2 = params.get('beta_tau2', None)  # Default to None if not present
     
     # Run simulations
@@ -555,9 +583,9 @@ if __name__ == "__main__":
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'time_varying_k'  # Choose mechanism to test
-    filename = 'simulation_optimized_parameters_time_varying_k.txt'
-    dataset = 'threshold'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
+    mechanism = 'simple'  # Choose mechanism to test
+    filename = 'simulation_optimized_parameters_simple.txt'
+    dataset = 'velcade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
     
     if run_all_mechanisms:
         main()

@@ -167,7 +167,7 @@ def plot_comparison(gillespie_results, beta_results, labels, mechanism):
     """Create visual comparison plots."""
     print("\nGenerating comparison plots...")
     
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
     for i, (ax, label) in enumerate(zip(axes, labels)):
         g_data = gillespie_results[:, i]
@@ -242,12 +242,25 @@ def test_mechanism(mechanism, params, N_list, n_list, num_simulations):
     else:
         print(f"  ⚠ Speedup lower than expected")
     
-    # Statistical comparison
-    labels = ['Chromosome 1', 'Chromosome 2', 'Chromosome 3']
-    compare_statistics(gillespie_results, beta_results, labels)
+    # Calculate Delta T values (T1-T2, T3-T2) from segregation times
+    # gillespie_results and beta_results are (num_simulations, 3) arrays with [T1, T2, T3]
+    print(f"\nCalculating Delta T values (T1-T2, T3-T2)...")
+    gillespie_delta_t12 = gillespie_results[:, 0] - gillespie_results[:, 1]  # T1 - T2
+    gillespie_delta_t32 = gillespie_results[:, 2] - gillespie_results[:, 1]  # T3 - T2
     
-    # Visual comparison
-    plot_comparison(gillespie_results, beta_results, labels, mechanism)
+    beta_delta_t12 = beta_results[:, 0] - beta_results[:, 1]  # T1 - T2
+    beta_delta_t32 = beta_results[:, 2] - beta_results[:, 1]  # T3 - T2
+    
+    # Stack Delta T values for comparison
+    gillespie_delta = np.column_stack([gillespie_delta_t12, gillespie_delta_t32])
+    beta_delta = np.column_stack([beta_delta_t12, beta_delta_t32])
+    
+    # Statistical comparison (use Delta T values)
+    labels = ['ΔT₁₂ (Chr1 - Chr2)', 'ΔT₃₂ (Chr3 - Chr2)']
+    compare_statistics(gillespie_delta, beta_delta, labels)
+    
+    # Visual comparison (use Delta T values)
+    plot_comparison(gillespie_delta, beta_delta, labels, mechanism)
     
     return speedup
 
@@ -262,8 +275,8 @@ def main():
     num_simulations = 5000  # Reduced for faster testing
     
     # Common parameters
-    N_list = [300.0, 400.0, 500.0]
-    n_list = [10.0, 15.0, 20.0]
+    N_list = [300.0, 400.0, 1000.0]
+    n_list = [3.0, 5.0, 8.0]
     
     # Test configurations for each mechanism
     test_configs = {
@@ -276,11 +289,11 @@ def main():
         },
         'time_varying_k': {
             'k_1': 0.001,
-            'k_max': 0.1
+            'k_max': 0.05
         },
         'time_varying_k_fixed_burst': {
             'k_1': 0.001,
-            'k_max': 0.1,
+            'k_max': 0.05,
             'burst_size': 5.0
         }
     }
