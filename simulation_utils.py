@@ -348,9 +348,52 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
 
 
 
+# ======================== KDE BANDWIDTH CONFIGURATION ========================
+# Global configuration for KDE bandwidth selection
+# Options:
+#   method='scott': Use Scott's rule (h = std * n^(-1/5)) - adaptive to sample size
+#   method='fixed': Use a fixed bandwidth value
+KDE_BANDWIDTH_CONFIG = {
+    'method': 'scott',      # 'scott' or 'fixed'
+    'fixed_value': 10.0     # Used when method='fixed'
+}
+
+def set_kde_bandwidth(method='scott', fixed_value=10.0):
+    """
+    Set the KDE bandwidth configuration globally.
+    
+    Args:
+        method: 'scott' for Scott's rule (adaptive) or 'fixed' for fixed bandwidth
+        fixed_value: Bandwidth value when method='fixed'
+    
+    Example:
+        set_kde_bandwidth(method='fixed', fixed_value=15.0)
+        set_kde_bandwidth(method='scott')
+    """
+    global KDE_BANDWIDTH_CONFIG
+    if method not in ['scott', 'fixed']:
+        raise ValueError("method must be 'scott' or 'fixed'")
+    KDE_BANDWIDTH_CONFIG['method'] = method
+    KDE_BANDWIDTH_CONFIG['fixed_value'] = fixed_value
+    print(f"KDE bandwidth set to: method='{method}'" + 
+          (f", fixed_value={fixed_value}" if method == 'fixed' else " (adaptive)"))
+
+def get_kde_bandwidth():
+    """Get current KDE bandwidth configuration."""
+    return KDE_BANDWIDTH_CONFIG.copy()
+
+# =============================================================================
+
+
 def calculate_likelihood(exp_data, sim_data):
     """
-    Calculate negative log-likelihood using KDE with Scott's rule bandwidth.
+    Calculate negative log-likelihood using KDE.
+    
+    Bandwidth selection is controlled by global KDE_BANDWIDTH_CONFIG:
+    - 'scott': Scott's rule (h = std * n^(-1/5)) - adaptive to sample size
+    - 'fixed': Use fixed bandwidth value
+    
+    Use set_kde_bandwidth() to change the configuration.
     
     Args:
         exp_data: Dictionary or array of experimental data
@@ -376,8 +419,14 @@ def calculate_likelihood(exp_data, sim_data):
                     if len(exp_values) == 0 or len(sim_values) < 10:
                         return 1e6
                     
-                    # Build KDE using Scott's rule (automatic bandwidth)
-                    kde = KernelDensity(kernel='gaussian', bandwidth=10.0)
+                    # Select bandwidth based on configuration
+                    if KDE_BANDWIDTH_CONFIG['method'] == 'scott':
+                        bandwidth = np.std(sim_values) * (len(sim_values) ** (-1/5))
+                        bandwidth = max(bandwidth, 0.1)  # Minimum to avoid numerical issues
+                    else:
+                        bandwidth = KDE_BANDWIDTH_CONFIG['fixed_value']
+                    
+                    kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth)
                     kde.fit(sim_values.reshape(-1, 1))
                     
                     # Calculate likelihood
@@ -409,7 +458,14 @@ def calculate_likelihood(exp_data, sim_data):
             if len(exp_values) == 0 or len(sim_values) < 10:
                 return 1e6
             
-            kde = KernelDensity(kernel='gaussian', bandwidth=10.0)
+            # Select bandwidth based on configuration
+            if KDE_BANDWIDTH_CONFIG['method'] == 'scott':
+                bandwidth = np.std(sim_values) * (len(sim_values) ** (-1/5))
+                bandwidth = max(bandwidth, 0.1)
+            else:
+                bandwidth = KDE_BANDWIDTH_CONFIG['fixed_value']
+            
+            kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth)
             kde.fit(sim_values.reshape(-1, 1))
             
             log_densities = kde.score_samples(exp_values.reshape(-1, 1))

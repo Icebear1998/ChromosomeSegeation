@@ -5,14 +5,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 import warnings
+import sys
+import os
+
+# Import for MoM optimization
 from MoMOptimization_join import run_mom_optimization_single
+
+# Imports for Fast simulation-based optimization
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from SimulationOptimization_join import run_optimization
+from simulation_utils import load_experimental_data
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="scipy.optimize")
 warnings.filterwarnings("ignore", category=FutureWarning, module="seaborn")
 
-def load_data():
-    """Load data arrays once to avoid repeated file I/O."""
+def load_data_mom():
+    """Load data arrays for MoM optimization."""
     try:
         # Try finding file in likely locations
         file_path = "Data/All_strains_SCStimes.xlsx"
@@ -40,19 +49,41 @@ def load_data():
         return None
 
 def analyze_population_efficiency():
-    mechanisms = ['simple', 'fixed_burst', 'feedback_onion']
+    # ========== CHOOSE WHICH METHOD TO TEST ==========
+    # Comment/uncomment one of the following:
     
-    pop_sizes = [5, 10, 15, 20, 30, 40]
-    num_runs = 10
+    # Option 1: Test MoM mechanisms (analytical, fast but approximate)
+    # MoM_mechanisms = ['simple', 'fixed_burst', 'feedback_onion']
+    # mechanisms = MoM_mechanisms
+    # use_simulation = False
+    
+    # Option 2: Test Fast simulation mechanisms (exact but slower)
+    Fast_mechanisms = ['simple', 'fixed_burst', 'feedback_onion', 'time_varying_k']
+    mechanisms = Fast_mechanisms
+    use_simulation = True
+    # =================================================
+    
+    pop_sizes = [5, 10, 15, 20, 30]
+    num_runs = 100
     
     # Use efficient tol/atol found previously or defaults
     # For now, use robust defaults or what was used in stability analysis
     tol = 1e-4
-    atol = 0
+    max_interations = 5000
+    num_simulations = 10000  # Only used for simulation-based methods
     
-    data_arrays = load_data()
-    if data_arrays is None:
-        return
+    # Load data based on which method we're using
+    if use_simulation:
+        datasets = load_experimental_data()
+        if not datasets:
+            print("Error: Could not load experimental data!")
+            return
+        data_arrays = None
+    else:
+        data_arrays = load_data_mom()
+        if data_arrays is None:
+            return
+        datasets = None
 
     results = {
         'Mechanism': [],
@@ -75,16 +106,29 @@ def analyze_population_efficiency():
                 seed = 42 + i + pop # Unique seed
                 
                 start_time = time.time()
-                res = run_mom_optimization_single(
-                    mechanism=mech,
-                    data_arrays=data_arrays,
-                    max_iterations=400,
-                    seed=seed,
-                    gamma_mode='unified',
-                    tol=tol,
-                    atol=atol,
-                    popsize=pop
-                )
+                
+                if use_simulation:
+                    # Use Fast simulation-based optimization
+                    np.random.seed(seed)
+                    res = run_optimization(
+                        mechanism=mech,
+                        datasets=datasets,
+                        max_iterations=max_interations,
+                        num_simulations=num_simulations,
+                        selected_strains=None
+                    )
+                else:
+                    # Use MoM optimization
+                    res = run_mom_optimization_single(
+                        mechanism=mech,
+                        data_arrays=data_arrays,
+                        max_iterations=max_interations,
+                        seed=seed,
+                        gamma_mode='unified',
+                        tol=tol,
+                        popsize=pop
+                    )
+                
                 elapsed = time.time() - start_time
                 
                 results['Mechanism'].append(mech)
@@ -111,7 +155,8 @@ def analyze_population_efficiency():
     summary.columns = ['Mechanism', 'PopSize', 'NLL_mean', 'NLL_min', 'NLL_std', 'Time_mean', 'Time_std']
     
     # Save CSV
-    csv_file = "SecondVersion/population_efficiency_results.csv"
+    method_name = 'simulation' if use_simulation else 'mom'
+    csv_file = f"SecondVersion/population_efficiency_results_{method_name}.csv"
     df.to_csv(csv_file, index=False)
     print(f"\nResults saved to {csv_file}")
     
@@ -146,7 +191,8 @@ def analyze_population_efficiency():
     ax2.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plot_file = "SecondVersion/population_efficiency_plot.png"
+    method_name = 'simulation' if use_simulation else 'mom'
+    plot_file = f"SecondVersion/population_efficiency_plot_{method_name}.png"
     plt.savefig(plot_file)
     print(f"Plot saved to {plot_file}")
 

@@ -23,6 +23,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+
 MECHANISM_PARAM_NAMES = {
     'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k'],
     'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k'],
@@ -104,7 +105,7 @@ def unpack_mechanism_params(params_vector, mechanism):
     return base_params, alpha, beta_k, beta_tau, beta_tau2
 
 
-def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None):
+def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False):
     """
     Joint objective function that handles both simple and time-varying mechanisms.
     
@@ -114,9 +115,11 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         datasets: Experimental data dictionary
         num_simulations: Number of simulations per evaluation
         selected_strains: Optional list of strain names to include in fitting
+        return_breakdown: If True, return dict with per-dataset NLLs instead of total
         
     Returns:
-        float: Total negative log-likelihood
+        float: Total negative log-likelihood (if return_breakdown=False)
+        dict: {'total': float, 'per_dataset': dict} (if return_breakdown=True)
     """
     try:
         # Unpack parameters based on mechanism
@@ -126,9 +129,12 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         if base_params['n1'] >= base_params['N1'] or \
             base_params['n2'] >= base_params['N2'] or \
             base_params['n3'] >= base_params['N3']:
+            if return_breakdown:
+                return {'total': 1e6, 'per_dataset': {}}
             return 1e6
 
         total_nll = 0
+        per_dataset_nll = {}
         
         # Loop over all datasets
         for dataset_name, data_dict in datasets.items():
@@ -143,6 +149,8 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             )
             
             if sim_delta_t12 is None or sim_delta_t32 is None:
+                if return_breakdown:
+                    return {'total': 1e6, 'per_dataset': {}}
                 return 1e6
             
             # Calculate likelihood using KDE
@@ -152,15 +160,38 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
             nll = calculate_likelihood(exp_data, sim_data)
             
             if nll >= 1e6:
+                if return_breakdown:
+                    return {'total': 1e6, 'per_dataset': {}}
                 return 1e6
             
+            per_dataset_nll[dataset_name] = nll
             total_nll += nll
         
+        if return_breakdown:
+            return {'total': total_nll, 'per_dataset': per_dataset_nll}
         return total_nll
     
     except Exception:
+        if return_breakdown:
+            return {'total': 1e6, 'per_dataset': {}}
         return 1e6
 
+
+def get_per_dataset_nll(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None):
+    """
+    Calculate per-dataset NLL breakdown for given parameters.
+    
+    Args:
+        params_vector: Parameter vector
+        mechanism: Mechanism name
+        datasets: Experimental datasets
+        num_simulations: Number of simulations per evaluation
+        selected_strains: Optional list of strain names
+        
+    Returns:
+        dict: {'total': float, 'per_dataset': dict} with per-dataset NLLs
+    """
+    return joint_objective(params_vector, mechanism, datasets, num_simulations, selected_strains, return_breakdown=True)
 
 
 def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None):
@@ -176,10 +207,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         max_iterations (int): Maximum iterations for optimization
         num_simulations (int): Number of simulations per evaluation
         selected_strains (list): List of strain names to include in fitting (optional)
-        use_parallel (bool): Whether to use parallel processing
-        initial_guess (list, optional): Initial guess parameter vector. If None, uses random initialization.
-                                       Example: [n2, N2, k_max, tau, r21, r23, R21, R23, alpha, beta_k, beta_tau, beta_tau2]
-    
+        
     Returns:
         dict: Optimization results
     """
@@ -228,14 +256,25 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     print("\nBest Fit Parameters:")
     for name, val in param_dict.items():
         print(f"  {name}: {val:.6f}")
-        
-    sys.stdout.flush()
+    
+    # Get per-dataset NLL breakdown at final parameters
+    nll_breakdown = get_per_dataset_nll(params, mechanism, datasets, num_simulations, selected_strains)
+    per_dataset_nll = nll_breakdown.get('per_dataset', {})
+    
+    if per_dataset_nll:
+        print("\nPer-dataset NLL breakdown:")
+        for dataset_name, nll_val in per_dataset_nll.items():
+            print(f"  {dataset_name}: {nll_val:.4f}")
+    
+    print(f"\nOptimization converged: NLL = {result.fun:.4f}")
+
     
     return {
         'success': True,  # Always treat as success to save results
         'converged': result.success,  # Track actual convergence status
         'params': param_dict,
         'nll': result.fun,
+        'per_dataset_nll': per_dataset_nll,  # Add per-dataset breakdown
         'result': result,
         'message': result.message if not result.success else "Converged successfully"
     }
@@ -301,14 +340,14 @@ def main():
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
     max_iterations = 5000
-    num_simulations = 2000
+    num_simulations = 10000
     
     datasets = load_experimental_data()
     if not datasets:
         print("Error: No datasets loaded!")
         return
     
-    mechanism = 'feedback_onion'  # Default mechanism
+    mechanism = 'simple'  # Default mechanism
     
     try:
         results = run_optimization(
@@ -317,6 +356,7 @@ def main():
             num_simulations=num_simulations,
             selected_strains=None
         )
+
         save_results(mechanism, results, selected_strains=None)
     except Exception as e:
         print(f"Error during optimization: {e}")

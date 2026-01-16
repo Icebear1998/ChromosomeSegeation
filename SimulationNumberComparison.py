@@ -2,6 +2,13 @@
 """
 Script to compare simulation efficiency (NLL and KDE) for different simulation counts.
 Focuses on 500 vs 5000 simulations to determine if 500 is sufficient.
+
+NOTE: This script automatically uses Fast simulation methods where available:
+  - FastBetaSimulation for: simple, fixed_burst, time_varying_k, time_varying_k_fixed_burst
+  - FastFeedbackSimulation for: feedback_onion, fixed_burst_feedback_onion, 
+    time_varying_k_feedback_onion, time_varying_k_combined
+  - Falls back to Gillespie for other mechanisms
+This is handled automatically by run_simulation_for_dataset() in simulation_utils.
 """
 
 import numpy as np
@@ -12,14 +19,14 @@ import sys
 import os
 import time
 
-# Add paths for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'SecondVersion'))
+# Import simulation utilities (includes automatic Fast method dispatch)
 from simulation_utils import (
     load_experimental_data, 
     apply_mutant_params,
     calculate_likelihood,
-    run_simulation_for_dataset
+    run_simulation_for_dataset  # Automatically uses Fast methods where available
 )
+
 
 def load_parameters(filename):
     """Load parameters from optimization results file."""
@@ -385,14 +392,14 @@ def run_stability_test(mechanism, params_file, count=500, replicates=20):
         print("✓ Variance seems acceptable.")
 
 if __name__ == "__main__":
-    mechanism = 'fixed_burst'
-    params_file = 'optimized_parameters_fixed_burst_join.txt'
+    mechanism = 'simple'
+    params_file = 'optimized_parameters_simple_join.txt'
     
     if len(sys.argv) > 1 and sys.argv[1] == 'stability':
         if not os.path.exists(params_file):
             print(f"File not found: {params_file}")
         else:
-            run_stability_test(mechanism, params_file, count=5000, replicates=10)
+            run_stability_test(mechanism, params_file, count=10000, replicates=10)
     else:
         # Default behavior``
         simulation_counts = [500, 1000, 2000]

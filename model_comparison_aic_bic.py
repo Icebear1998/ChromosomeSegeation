@@ -156,6 +156,33 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
             gamma_mode='separate'  # Use separate gamma for each chromosome
         )
         
+        # Calculate per-dataset NLL breakdown if optimization succeeded
+        if result['success'] and result['params']:
+            from SecondVersion.MoMOptimization_join import calculate_individual_nlls, get_mechanism_info
+            
+            # Get mechanism-specific parameters
+            mech_params = {}
+            if mechanism == 'fixed_burst':
+                mech_params['burst_size'] = result['params'].get('burst_size', 1)
+            elif mechanism == 'feedback_onion':
+                mech_params['n_inner'] = result['params'].get('n_inner', 1)
+            elif mechanism == 'fixed_burst_feedback_onion':
+                mech_params['burst_size'] = result['params'].get('burst_size', 1)
+                mech_params['n_inner'] = result['params'].get('n_inner', 1)
+            
+            # Calculate per-dataset NLLs
+            nlls = calculate_individual_nlls(mechanism, result['params'], mech_params, data_arrays)
+            
+            # Map to standard dataset names
+            per_dataset_nll = {
+                'wildtype': nlls.get('wt', np.nan),
+                'threshold': nlls.get('threshold', np.nan),
+                'degrade': nlls.get('degrate', np.nan),
+                'degradeAPC': nlls.get('degrateAPC', np.nan),
+                'velcade': nlls.get('velcade', np.nan)
+            }
+            result['per_dataset_nll'] = per_dataset_nll
+        
         return result
         
     except Exception as e:
@@ -164,6 +191,7 @@ def run_mom_optimization(mechanism, datasets, max_iterations=200, selected_strai
             'converged': False,
             'nll': np.inf,
             'params': {},
+            'per_dataset_nll': {},
             'result': None,
             'message': f"MoM optimization wrapper failed: {e}"
         }
@@ -241,7 +269,8 @@ def run_single_optimization(args):
             'converged': result.get('converged', False),
             'nll': result['nll'],
             'message': result.get('message', ''),
-            'params': result.get('params', {})
+            'params': result.get('params', {}),
+            'per_dataset_nll': result.get('per_dataset_nll', {})
         }
         
     except Exception as e:
@@ -253,7 +282,8 @@ def run_single_optimization(args):
             'converged': False,
             'nll': np.inf,
             'message': f"Error: {e}",
-            'params': {}
+            'params': {},
+            'per_dataset_nll': {}
         }
 
 
@@ -277,6 +307,15 @@ PARAM_COLUMNS = [
     'beta2_k', 'beta3_k',
 ]
 
+# Per-dataset NLL columns
+DATASET_NLL_COLUMNS = [
+    'nll_wildtype',
+    'nll_threshold',
+    'nll_degrade',
+    'nll_degradeAPC',
+    'nll_velcade',
+]
+
 
 def _append_run_to_csv(csv_path, row, write_header_if_new=True):
     """
@@ -289,6 +328,8 @@ def _append_run_to_csv(csv_path, row, write_header_if_new=True):
         'success', 'converged',
         'nll', 'aic', 'bic',
         'message',
+        # Per-dataset NLL columns
+    ] + DATASET_NLL_COLUMNS + [
         # Parameter columns (fixed-width, blank if not present)
     ] + PARAM_COLUMNS + [
         # Keep JSON as a backup/trace of full parameters
@@ -309,6 +350,13 @@ def _append_run_to_csv(csv_path, row, write_header_if_new=True):
         for p in PARAM_COLUMNS:
             if p in params_dict and out.get(p, '') == '':
                 out[p] = params_dict.get(p, '')
+    # Populate per-dataset NLL columns if provided
+    per_dataset_nll = row.get('per_dataset_nll') or {}
+    if isinstance(per_dataset_nll, dict):
+        for dataset_name in ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']:
+            col_name = f'nll_{dataset_name}'
+            if dataset_name in per_dataset_nll and out.get(col_name, '') == '':
+                out[col_name] = per_dataset_nll[dataset_name]
     # Write with header if needed
     import csv
     with open(csv_path, 'a', newline='') as f:
@@ -418,7 +466,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
                             'bic': bic,
                             'message': result.get('message', ''),
                             'params_json': json.dumps(params),
-                            'params_dict': params
+                            'params_dict': params,
+                            'per_dataset_nll': result.get('per_dataset_nll', {})
                         }
                     )
             else:
@@ -440,7 +489,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
                             'bic': '',
                             'message': result.get('message', ''),
                             'params_json': json.dumps(result.get('params', {})),
-                            'params_dict': result.get('params', {})
+                            'params_dict': result.get('params', {}),
+                            'per_dataset_nll': result.get('per_dataset_nll', {})
                         }
                     )
                 
@@ -512,7 +562,8 @@ def run_mechanism_comparison(mechanism, datasets, num_runs=10, num_simulations=5
                             'bic': '',
                             'message': result.get('message', ''),
                             'params_json': json.dumps(result.get('params', {})),
-                            'params_dict': result.get('params', {})
+                            'params_dict': result.get('params', {}),
+                            'per_dataset_nll': result.get('per_dataset_nll', {})
                         }
                     )
     
@@ -796,10 +847,10 @@ def main():
         #'fixed_burst_feedback_onion',      # 13 params → MoM
         
         # Constant rate mechanisms (Simulation-based with Fast methods)
-        'simple_simulation',                 # 9 params → FastBetaSimulation
-        'fixed_burst_simulation',            # 10 params → FastBetaSimulation
-        'feedback_onion_simulation',         # 10 params → FastFeedbackSimulation
-        'fixed_burst_feedback_onion_simulation',  # 11 params → FastFeedbackSimulation
+        # 'simple_simulation',                 # 9 params → FastBetaSimulation
+        # 'fixed_burst_simulation',            # 10 params → FastBetaSimulation
+        # 'feedback_onion_simulation',         # 10 params → FastFeedbackSimulation
+        # 'fixed_burst_feedback_onion_simulation',  # 11 params → FastFeedbackSimulation
         
         # Time-varying rate mechanisms (Simulation-based with Fast methods)
         'time_varying_k',                    # 12 params → FastBetaSimulation
@@ -827,9 +878,9 @@ def main():
     sys.stdout.flush()
     
     # Configuration for sequential runs with internal parallelization
-    num_runs = 3  # Number of optimization runs per mechanism
-    num_simulations = 2000  # Simulations per evaluation for simulation-based mechanisms
-    max_iterations = 10000  # Max iterations for DE
+    num_runs = 5  # Number of optimization runs per mechanism
+    num_simulations = 10000  # Simulations per evaluation for simulation-based mechanisms
+    max_iterations = 50000  # Max iterations for DE
     
     print(f"\n⚙️  Optimization configuration:")
     print(f"   Strategy: Sequential runs with parallel computation within each run")
