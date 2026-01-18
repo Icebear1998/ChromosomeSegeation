@@ -6,6 +6,7 @@ Contains common functions used by both joint and independent optimization strate
 
 import numpy as np
 from sklearn.neighbors import KernelDensity
+from scipy.stats import wasserstein_distance
 import warnings
 import sys
 import os
@@ -484,6 +485,59 @@ def calculate_likelihood(exp_data, sim_data):
         return 1e6
 
 
+
+def calculate_emd(exp_data, sim_data):
+    """
+    Calculate Earth Mover's Distance (Wasserstein Distance) between experimental and simulation data.
+    
+    This metric does not require bandwidth tuning and converges more stably than NLL.
+    
+    Args:
+        exp_data: Dictionary or array of experimental data
+        sim_data: Dictionary or array of simulation data
+        
+    Returns:
+        float: Sum of Wasserstein distances across all datasets (in minutes)
+    """
+    try:
+        # Handle dictionary input
+        if isinstance(exp_data, dict) and isinstance(sim_data, dict):
+            total_emd = 0
+            
+            for key in ['delta_t12', 'delta_t32']:
+                if key in exp_data and key in sim_data:
+                    exp_values = np.asarray(exp_data[key]).flatten()
+                    sim_values = np.asarray(sim_data[key]).flatten()
+                    
+                    # Remove non-finite values
+                    exp_values = exp_values[np.isfinite(exp_values)]
+                    sim_values = sim_values[np.isfinite(sim_values)]
+                    
+                    if len(exp_values) == 0 or len(sim_values) == 0:
+                        return 1e6  # Penalty for empty data
+                    
+                    emd = wasserstein_distance(exp_values, sim_values)
+                    total_emd += emd
+            
+            return total_emd
+        
+        # Handle array input
+        else:
+            exp_values = np.asarray(exp_data).flatten()
+            sim_values = np.asarray(sim_data).flatten()
+            
+            exp_values = exp_values[np.isfinite(exp_values)]
+            sim_values = sim_values[np.isfinite(sim_values)]
+            
+            if len(exp_values) == 0 or len(sim_values) == 0:
+                return 1e6
+            
+            return wasserstein_distance(exp_values, sim_values)
+    
+    except Exception:
+        return 1e6
+
+
 def get_parameter_bounds(mechanism):
     """
     Get parameter bounds for optimization.
@@ -554,6 +608,10 @@ def get_parameter_names(mechanism):
         list: List of parameter names
     """
     time_varying_params = {
+        'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k'],
+        'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k'],
+        'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k'],
+        'fixed_burst_feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k'],
         'time_varying_k': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_feedback_onion': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
@@ -562,7 +620,7 @@ def get_parameter_names(mechanism):
     }
     
     if mechanism not in time_varying_params:
-        raise ValueError(f"Unknown time-varying mechanism: {mechanism}")
+        raise ValueError(f"Unknown mechanism: {mechanism}")
     
     return time_varying_params[mechanism]
 
@@ -582,13 +640,14 @@ def parse_parameters(params_vector, mechanism):
     param_dict = dict(zip(param_names, params_vector))
     
     # Calculate derived parameters
-    param_dict.update({
-        'n1': max(param_dict['r21'] * param_dict['n2'], 1),
-        'n3': max(param_dict['r23'] * param_dict['n2'], 1),
-        'N1': max(param_dict['R21'] * param_dict['N2'], 1),
-        'N3': max(param_dict['R23'] * param_dict['N2'], 1),
-        'k_1': calculate_k1_from_params(param_dict)
-    })
+    # Calculate derived parameters
+    param_dict['n1'] = max(param_dict['r21'] * param_dict['n2'], 1)
+    param_dict['n3'] = max(param_dict['r23'] * param_dict['n2'], 1)
+    param_dict['N1'] = max(param_dict['R21'] * param_dict['N2'], 1)
+    param_dict['N3'] = max(param_dict['R23'] * param_dict['N2'], 1)
+    
+    if 'k_max' in param_dict and 'tau' in param_dict:
+        param_dict['k_1'] = calculate_k1_from_params(param_dict)
     
     return param_dict
 
@@ -643,3 +702,56 @@ def save_optimization_results(mechanism, results, filename=None, selected_strain
     
     except Exception:
         pass
+
+
+def load_parameters(filename):
+    """
+    Load parameters from optimization results file.
+    
+    Args:
+        filename (str): Path to parameter file
+    
+    Returns:
+        dict: Dictionary of parameters, or None if error occurred
+    """
+    params = {}
+    try:
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            if ':' in line:
+                parts = line.split(':', 1)
+                try:
+                    key = parts[0].strip()
+                    val = float(parts[1].strip())
+                    params[key] = val
+                except ValueError:
+                    pass
+            elif '=' in line:
+                parts = line.split('=', 1)
+                try:
+                    key = parts[0].strip()
+                    val = float(parts[1].strip())
+                    params[key] = val
+                except ValueError:
+                    pass
+        
+        # Calculate derived parameters if missing
+        if 'r21' in params and 'n1' not in params:
+            params['n1'] = max(params['r21'] * params['n2'], 1)
+        if 'r23' in params and 'n3' not in params:
+             params['n3'] = max(params['r23'] * params['n2'], 1)
+        if 'R21' in params and 'N1' not in params:
+             params['N1'] = max(params['R21'] * params['N2'], 1)
+        if 'R23' in params and 'N3' not in params:
+             params['N3'] = max(params['R23'] * params['N2'], 1)
+             
+        return params
+    except Exception as e:
+        print(f"Error loading parameters: {e}")
+        return None

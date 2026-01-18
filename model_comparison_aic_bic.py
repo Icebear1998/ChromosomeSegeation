@@ -847,10 +847,10 @@ def main():
         #'fixed_burst_feedback_onion',      # 13 params → MoM
         
         # Constant rate mechanisms (Simulation-based with Fast methods)
-        # 'simple_simulation',                 # 9 params → FastBetaSimulation
-        # 'fixed_burst_simulation',            # 10 params → FastBetaSimulation
-        # 'feedback_onion_simulation',         # 10 params → FastFeedbackSimulation
-        # 'fixed_burst_feedback_onion_simulation',  # 11 params → FastFeedbackSimulation
+        'simple_simulation',                 # 9 params → FastBetaSimulation
+        'fixed_burst_simulation',            # 10 params → FastBetaSimulation
+        'feedback_onion_simulation',         # 10 params → FastFeedbackSimulation
+        'fixed_burst_feedback_onion_simulation',  # 11 params → FastFeedbackSimulation
         
         # Time-varying rate mechanisms (Simulation-based with Fast methods)
         'time_varying_k',                    # 12 params → FastBetaSimulation

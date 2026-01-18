@@ -32,53 +32,11 @@ from simulation_utils import (
     apply_mutant_params,
     calculate_likelihood,
     run_simulation_for_dataset,  # Automatically uses Fast methods where available
-    set_kde_bandwidth  # For bandwidth configuration
+    set_kde_bandwidth,  # For bandwidth configuration
+    load_parameters
 )
 
 
-# Reuse load_parameters from SimulationNumberComparison.py logic
-def load_parameters(filename):
-    """Load parameters from optimization results file."""
-    params = {}
-    try:
-        with open(filename, 'r') as f:
-            lines = f.readlines()
-        
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            
-            if ':' in line:
-                parts = line.split(':', 1)
-                try:
-                    key = parts[0].strip()
-                    val = float(parts[1].strip())
-                    params[key] = val
-                except ValueError:
-                    pass
-            elif '=' in line:
-                parts = line.split('=', 1)
-                try:
-                    key = parts[0].strip()
-                    val = float(parts[1].strip())
-                    params[key] = val
-                except ValueError:
-                    pass
-        
-        if 'r21' in params and 'n1' not in params:
-            params['n1'] = max(params['r21'] * params['n2'], 1)
-        if 'r23' in params and 'n3' not in params:
-             params['n3'] = max(params['r23'] * params['n2'], 1)
-        if 'R21' in params and 'N1' not in params:
-             params['N1'] = max(params['R21'] * params['N2'], 1)
-        if 'R23' in params and 'N3' not in params:
-             params['N3'] = max(params['R23'] * params['N2'], 1)
-             
-        return params
-    except Exception as e:
-        print(f"Error loading parameters: {e}")
-        return None
 
 def analyze_efficiency(mechanism, params_file, simulation_counts_list, replicates=20, n_workers=None):
     """

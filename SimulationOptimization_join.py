@@ -105,9 +105,10 @@ def unpack_mechanism_params(params_vector, mechanism):
     return base_params, alpha, beta_k, beta_tau, beta_tau2
 
 
-def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False):
+def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False, objective_metric='nll'):
     """
     Joint objective function that handles both simple and time-varying mechanisms.
+    Supports both NLL (Negative Log-Likelihood) and EMD (Earth Mover's Distance).
     
     Args:
         params_vector: Parameter vector (mechanism-specific)
@@ -115,10 +116,11 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         datasets: Experimental data dictionary
         num_simulations: Number of simulations per evaluation
         selected_strains: Optional list of strain names to include in fitting
-        return_breakdown: If True, return dict with per-dataset NLLs instead of total
+        return_breakdown: If True, return dict with per-dataset scores instead of total
+        objective_metric: 'nll' or 'emd' (default: 'nll')
         
     Returns:
-        float: Total negative log-likelihood (if return_breakdown=False)
+        float: Total score (NLL or EMD)
         dict: {'total': float, 'per_dataset': dict} (if return_breakdown=True)
     """
     try:
@@ -133,8 +135,8 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 return {'total': 1e6, 'per_dataset': {}}
             return 1e6
 
-        total_nll = 0
-        per_dataset_nll = {}
+        total_score = 0
+        per_dataset_score = {}
         
         # Loop over all datasets
         for dataset_name, data_dict in datasets.items():
@@ -153,23 +155,29 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                     return {'total': 1e6, 'per_dataset': {}}
                 return 1e6
             
-            # Calculate likelihood using KDE
+            # Calculate objective metric
             exp_data = {'delta_t12': data_dict['delta_t12'], 'delta_t32': data_dict['delta_t32']}
             sim_data = {'delta_t12': sim_delta_t12, 'delta_t32': sim_delta_t32}
             
-            nll = calculate_likelihood(exp_data, sim_data)
+            if objective_metric == 'emd':
+                 score = calculate_emd(exp_data, sim_data)
+                 # No log transform for EMD, it's already a distance
+            else:
+                 # Default to NLL
+                 score = calculate_likelihood(exp_data, sim_data)
             
-            if nll >= 1e6:
+            # Large penalty check
+            if score >= 1e6:
                 if return_breakdown:
                     return {'total': 1e6, 'per_dataset': {}}
                 return 1e6
             
-            per_dataset_nll[dataset_name] = nll
-            total_nll += nll
+            per_dataset_score[dataset_name] = score
+            total_score += score
         
         if return_breakdown:
-            return {'total': total_nll, 'per_dataset': per_dataset_nll}
-        return total_nll
+            return {'total': total_score, 'per_dataset': per_dataset_score}
+        return total_score
     
     except Exception:
         if return_breakdown:
@@ -194,7 +202,7 @@ def get_per_dataset_nll(params_vector, mechanism, datasets, num_simulations=500,
     return joint_objective(params_vector, mechanism, datasets, num_simulations, selected_strains, return_breakdown=True)
 
 
-def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None):
+def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, objective_metric='nll'):
     """
     Run joint optimization for all mechanism types.
     
@@ -207,6 +215,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         max_iterations (int): Maximum iterations for optimization
         num_simulations (int): Number of simulations per evaluation
         selected_strains (list): List of strain names to include in fitting (optional)
+        objective_metric (str): 'nll' or 'emd' (default: 'nll')
         
     Returns:
         dict: Optimization results
@@ -218,7 +227,8 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     
     bounds = get_parameter_bounds(mechanism)
     
-    print(f"\nOptimizing {mechanism} ({len(bounds)} parameters, {num_simulations} sims/eval)")
+    metric_label = "EMD" if objective_metric == 'emd' else "NLL"
+    print(f"\nOptimizing {mechanism} using {metric_label} ({len(bounds)} parameters, {num_simulations} sims/eval)")
     
     # Define Differential Evolution settings
     de_settings = {
@@ -228,9 +238,9 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'strategy': 'best1bin',
         #'mutation': (0.7, 1.0),
         #'recombination': 0.7,
-        'tol': 1e-4,
+        'tol': 1e-3,
         #'atol': 1e-2,
-        'disp': False
+        'disp': True
     }
 
     print("\nDifferential Evolution Settings:")
@@ -238,7 +248,9 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         print(f"  {key}: {value}")
     sys.stdout.flush()
     
-    opt_args = (mechanism, datasets, num_simulations, selected_strains)
+    # Now passing metric to objective
+    opt_args = (mechanism, datasets, num_simulations, selected_strains, False, objective_metric)
+    
     result = differential_evolution(
         joint_objective,
         bounds,
@@ -251,7 +263,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     param_dict = dict(zip(param_names, params))
     
     status = "converged" if result.success else "not converged"
-    print(f"Optimization {status}: NLL = {result.fun:.4f}")
+    print(f"Optimization {status}: {metric_label} = {result.fun:.4f}")
     
     print("\nBest Fit Parameters:")
     for name, val in param_dict.items():
@@ -280,7 +292,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     }
 
 
-def save_results(mechanism, results, filename=None, selected_strains=None):
+def save_results(mechanism, results, filename=None, selected_strains=None, objective_metric='nll'):
     """
     Save optimization results to file.
     
@@ -289,6 +301,7 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
         results (dict): Optimization results
         filename (str): Output filename (optional)
         selected_strains (list): List of strains used in fitting
+        objective_metric (str): 'nll' or 'emd'
     """
     if not results['success']:
         return
@@ -302,8 +315,15 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
         
         filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}.txt"
     
+    metric_label = "Earth Mover's Distance" if objective_metric == 'emd' else "Negative Log-Likelihood"
+    val_key = 'nll' if 'nll' in results else 'emd' # Fallback check
+    if 'emd' in results: val_key = 'emd' # Explicit check if added later
+    
+    # Use generic 'score' or fun from result object if available
+    metric_value = results.get('nll', results['result'].fun)
+    
     with open(filename, 'w') as f:
-        f.write(f"Simulation-based Optimization Results (KDE)\n")
+        f.write(f"Simulation-based Optimization Results ({metric_label})\n")
         f.write(f"Mechanism: {mechanism}\n")
         
         # Add strain selection information
@@ -312,7 +332,7 @@ def save_results(mechanism, results, filename=None, selected_strains=None):
         else:
             f.write(f"Selected Strains: all datasets\n")
         
-        f.write(f"Negative Log-Likelihood: {results['nll']:.6f}\n")
+        f.write(f"{metric_label}: {metric_value:.6f}\n")
         f.write(f"Converged: {results.get('converged', 'Unknown')}\n")
         f.write(f"Status: {results.get('message', 'No message')}\n")
         f.write(f"Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade\n\n")
@@ -339,7 +359,13 @@ def main():
     """
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
-    max_iterations = 5000
+    # Mechanism to optimize
+    mechanism = 'simple'  # Default mechanism
+    
+    # Objective Metric: 'nll' or 'emd'
+    objective_metric = 'emd'      # Switch to EMD by default
+
+    max_iterations = 1000
     num_simulations = 10000
     
     # KDE Bandwidth configuration
@@ -354,15 +380,15 @@ def main():
     if not datasets:
         print("Error: No datasets loaded!")
         return
-    
-    mechanism = 'simple'  # Default mechanism
+
     
     try:
         results = run_optimization(
             mechanism, datasets,
             max_iterations=max_iterations,
             num_simulations=num_simulations,
-            selected_strains=None
+            selected_strains=None,
+            objective_metric=objective_metric
         )
 
         save_results(mechanism, results, selected_strains=None)

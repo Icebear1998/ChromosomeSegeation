@@ -24,73 +24,12 @@ from simulation_utils import (
     load_experimental_data, 
     apply_mutant_params,
     calculate_likelihood,
-    run_simulation_for_dataset  # Automatically uses Fast methods where available
+    run_simulation_for_dataset,  # Automatically uses Fast methods where available
+    load_parameters
 )
 
 
-def load_parameters(filename):
-    """Load parameters from optimization results file."""
-    params = {}
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-        
-def load_parameters(filename):
-    """Load parameters from optimization results file."""
-    params = {}
-    try:
-        with open(filename, 'r') as f:
-            lines = f.readlines()
-        
-        # Try different parsing strategies
-        # Strategy 1: Look for simple key: value pairs (common in some output files)
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            
-            # support "key: value" or "key = value"
-            if ':' in line:
-                parts = line.split(':', 1)
-                try:
-                    key = parts[0].strip()
-                    val = float(parts[1].strip())
-                    params[key] = val
-                except ValueError:
-                    pass
-            elif '=' in line:
-                parts = line.split('=', 1)
-                try:
-                    key = parts[0].strip()
-                    val = float(parts[1].strip())
-                    params[key] = val
-                except ValueError:
-                    pass
-        
-        # Calculate derived parameters if not present
-        if 'r21' in params and 'n1' not in params:
-            params['n1'] = max(params['r21'] * params['n2'], 1)
-        if 'r23' in params and 'n3' not in params:
-            params['n3'] = max(params['r23'] * params['n2'], 1)
-        if 'R21' in params and 'N1' not in params:
-            params['N1'] = max(params['R21'] * params['N2'], 1)
-        if 'R23' in params and 'N3' not in params:
-            params['N3'] = max(params['R23'] * params['N2'], 1)
-            
-        # Ensure we have n1, n2, n3, N1, N2, N3 for the simulation
-        required = ['n1', 'n2', 'n3', 'N1', 'N2', 'N3', 'k']
-        missing = [p for p in required if p not in params and p != 'k'] # k might be beta_k modified later
-        
-        if missing:
-             # Try to recover if we have r21/R21 style but map didn't work (which shouldn't happen with logic above)
-             pass
 
-        return params
-    except Exception as e:
-        print(f"Error loading parameters: {e}")
-        return None
-    except Exception as e:
-        print(f"Error loading parameters: {e}")
-        return None
 
 def run_comparison(mechanism, params_file, simulation_counts=[500, 5000]):
     """

@@ -9,47 +9,11 @@ import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde, norm
 import pandas as pd
 from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
-from simulation_utils import apply_mutant_params
+from simulation_utils import apply_mutant_params, load_parameters
 import warnings
 warnings.filterwarnings('ignore')
 
 
-def load_parameters(filename):
-    """Load parameters from optimization results file."""
-    params = {}
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-    
-    param_section = False
-    for line in lines:
-        line_stripped = line.strip()
-        
-        if "Optimized Parameters (ratio-based):" in line:
-            param_section = True
-            continue
-        elif line_stripped.startswith("Derived Parameters:") or line_stripped.startswith("==="):
-            param_section = False
-            continue
-        
-        if param_section and "=" in line_stripped:
-            try:
-                key, value = line_stripped.split(" = ", 1)
-                params[key.strip()] = float(value.strip())
-            except ValueError:
-                continue
-    
-    # Calculate derived parameters if not present
-    if 'r21' in params and 'n1' not in params:
-        params['n1'] = max(params['r21'] * params['n2'], 1)
-        params['n3'] = max(params['r23'] * params['n2'], 1)
-        params['N1'] = max(params['R21'] * params['N2'], 1)
-        params['N3'] = max(params['R23'] * params['N2'], 1)
-    
-    # Calculate k_1 from k_max and tau
-    if 'k_max' in params and 'tau' in params:
-        params['k_1'] = params['k_max'] / params['tau']
-    
-    return params
 
 
 def run_simulations(mechanism, params, mutant_type, num_simulations=1000):
