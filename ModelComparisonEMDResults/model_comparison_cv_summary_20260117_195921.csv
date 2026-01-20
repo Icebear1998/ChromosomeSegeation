@@ -1,0 +1,9 @@
+Mechanism,Parameters,K-Folds,Mean Val EMD,Std Val EMD,Mean Train EMD,Std Train EMD,Status
+time_varying_k_feedback_onion,13,5,103.00,5.14,56.31,1.30,Success
+time_varying_k,12,5,105.33,3.51,57.23,1.38,Success
+time_varying_k_combined,14,5,105.48,4.99,60.43,3.17,Success
+time_varying_k_fixed_burst,13,5,108.24,7.27,68.90,1.01,Success
+fixed_burst_feedback_onion,11,5,117.85,19.44,90.51,4.69,Success
+simple,9,5,122.45,19.21,89.76,4.70,Success
+feedback_onion,10,5,123.19,18.89,88.83,4.83,Success
+fixed_burst,10,5,124.12,16.05,95.61,4.12,Success

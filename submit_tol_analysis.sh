@@ -2,9 +2,9 @@
 #SBATCH --account=polya
 #SBATCH --partition=normal_q
 #SBATCH --qos=owl_normal_base
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=48
+#SBATCH --cpus-per-task=96
 #SBATCH --output=%j_tol_analysis.out
 #SBATCH --error=%j_tol_analysis.err
 
@@ -24,7 +24,7 @@ echo "CPUs: $SLURM_CPUS_PER_TASK"
 echo "=========================================="
 
 # Run the analysis script
-python SecondVersion/AnalyzeTolEfficiency.py
+python AnalyzeTolEfficiency_EMD.py
 
 echo "=========================================="
 echo "Job completed at: $(date)"

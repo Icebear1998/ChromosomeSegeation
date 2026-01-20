@@ -22,7 +22,7 @@ tmux a -t node
 # The --verbose flag provides more output.
 export ALLOCATION_ID=polya # or `personal`. Find in https://coldfront.arc.vt.edu/.
 export NUM_GPUS=0
-export NUM_HOURS=4
+export NUM_HOURS=10
 export NUM_CPUS_PER_TASK=48
 export PARTITION=normal_q
 export QOS=tc_a100_normal_base
