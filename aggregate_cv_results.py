@@ -53,12 +53,15 @@ def find_cv_result_files(run_id=None):
     Returns:
         list: List of matching CSV file paths
     """
+    # Search in ModelComparisonEMDResults folder
+    search_dir = 'ModelComparisonEMDResults'
+    
     if run_id:
         # Find files with specific run_id
-        pattern = f'cv_results_*_{run_id}.csv'
+        pattern = f'{search_dir}/cv_results_*_{run_id}.csv'
     else:
         # Find all cv_results files (dangerous! may mix runs)
-        pattern = 'cv_results_*.csv'
+        pattern = f'{search_dir}/cv_results_*.csv'
     
     files = glob.glob(pattern)
     return sorted(files)
@@ -135,114 +138,298 @@ def load_cv_results(csv_files):
     return all_results
 
 
-def plot_parameter_distributions(mechanism_results, run_id=None, save_plots=True):
+def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     """
-    Create parameter distribution plots for a mechanism, similar to stability plots.
-    Shows box plots with overlaid colored data points.
+    Create a matrix plot of parameter distributions across all mechanisms.
+    Each row shows one parameter across all mechanisms.
     
     Args:
-        mechanism_results (dict): Results dictionary for a single mechanism
+        all_results (list): List of results dictionaries for all mechanisms
         run_id (str): Run ID for filename (optional)
         save_plots (bool): Whether to save the plot
     """
-    mechanism = mechanism_results['mechanism']
-    params = mechanism_results['params']
+    # Filter results with parameter data
+    results_with_params = [r for r in all_results if r.get('params') and any(p is not None for p in r['params'])]
     
-    if not params or all(p is None for p in params):
-        print(f"⚠️  No parameter data available for {mechanism}")
+    if not results_with_params:
+        print("⚠️  No parameter data available for any mechanism")
         return
-    
-    # Get parameter names
-    try:
-        param_names = get_parameter_names(mechanism)
-    except:
-        print(f"⚠️  Could not get parameter names for {mechanism}")
-        return
-    
-    # Convert params list to numpy array
-    params_array = np.array([p for p in params if p is not None])
-    n_params = len(param_names)
-    n_runs = len(params_array)
-    
-    # Calculate CV percentage
-    cv_percentages = []
-    for i in range(n_params):
-        param_values = params_array[:, i]
-        mean_val = np.mean(param_values)
-        std_val = np.std(param_values)
-        cv = (std_val / mean_val * 100) if mean_val != 0 else 0
-        cv_percentages.append(cv)
-    
-    # Create subplots - determine grid size
-    n_cols = 4
-    n_rows = int(np.ceil(n_params / n_cols))
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 4 * n_rows))
-    fig.suptitle(f'Parameter Stability: {mechanism} ({n_runs} runs)', fontsize=18, fontweight='bold')
-    
-    # Flatten axes for easy iteration
-    if n_params == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten() if n_rows > 1 else axes
-    
-    # Get parameter bounds for this mechanism
-    try:
-        param_bounds = get_parameter_bounds(mechanism)
-    except:
-        param_bounds = None
-    
-    # Create color palette for different runs
-    colors = plt.cm.tab10(np.linspace(0, 1, n_runs))
-    
-    # Plot each parameter
-    for i in range(n_params):
-        ax = axes[i]
-        param_values = params_array[:, i]
         
-        # Create box plot
-        bp = ax.boxplot([param_values], positions=[0], widths=0.6, patch_artist=True,
-                        boxprops=dict(facecolor='lightblue', alpha=0.7),
-                        medianprops=dict(color='darkblue', linewidth=2),
-                        whiskerprops=dict(linewidth=1.5),
-                        capprops=dict(linewidth=1.5))
+    # User-specified mechanism order
+    desired_order = [
+        'simple',
+        'fixed_burst',
+        'feedback_onion',
+        'fixed_burst_feedback_onion',
+        'time_varying_k',
+        'time_varying_k_fixed_burst',
+        'time_varying_k_feedback_onion',
+        'time_varying_k_combined'
+    ]
+    
+    # Sort results to match desired order
+    # (Put any unspecified mechanisms at the end)
+    def sort_key(result):
+        mech = result['mechanism']
+        if mech in desired_order:
+            return desired_order.index(mech)
+        return len(desired_order) + 1
         
-        # Overlay individual points with jitter - each run gets its own color
-        x_jitter = np.random.normal(0, 0.04, size=len(param_values))
-        for j, (x, y, color) in enumerate(zip(x_jitter, param_values, colors)):
-            ax.scatter(x, y, alpha=0.8, s=100, color=color, edgecolors='black', linewidths=1.2, zorder=3)
+    results_with_params.sort(key=sort_key)
+    
+    # Define parameter order (all possible parameters)
+    # Note: k and k_max are merged into 'k/k_max'
+    # Added n1/N1, n2/N2, n3/N3 at the bottom
+    param_order = [
+        'n2', 'N2',           # Population sizes
+        'k/k_max', 'tau',     # Rate parameters (k and k_max merged)
+        'r21', 'r23',         # Ratios
+        'R21', 'R23',         # Chromosome-specific ratios
+        'burst_size',         # Burst
+        'n_inner',            # Feedback
+        'alpha',              # Mutant parameters
+        'beta_k', 'beta_tau', 'beta_tau2',
+        'n1/N1', 'n2/N2', 'n3/N3' # Derived concentrations
+    ]
+    
+    # Collect all unique parameters and mechanisms
+    all_param_names = []
+    
+    # Process mechanism names for display (Renaming)
+    mechanism_names = []
+    for r in results_with_params:
+        name = r['mechanism']
+        # Replace 'feedback_onion' with 'steric_hindrance'
+        display_name = name.replace('feedback_onion', 'steric_hindrance')
+        mechanism_names.append(display_name)
         
-        # Set title and labels with larger fonts
-        ax.set_title(param_names[i], fontsize=14, fontweight='bold')
-        ax.set_ylabel(param_names[i], fontsize=12)
-        ax.set_xlabel(f'CV: {cv_percentages[i]:.1f}%', fontsize=11)
-        ax.set_xticks([])
-        ax.tick_params(axis='y', labelsize=11)
+    n_mechanisms = len(mechanism_names)
+    
+    # Debug: print mechanism names
+    print(f"DEBUG: Mechanism names for plotting: {mechanism_names}")
+    
+    for result in results_with_params:
+        try:
+            param_names = get_parameter_names(result['mechanism'])
+            for name in param_names:
+                # Map k and k_max to 'k/k_max'
+                if name in ['k', 'k_max']:
+                    display_name = 'k/k_max'
+                else:
+                    display_name = name
+                    
+                if display_name not in all_param_names:
+                    all_param_names.append(display_name)
+        except:
+            continue
+            
+    # Add derived parameters to the list if check passes (they rely on other params)
+    # Since all mechanisms have n2, N2, etc., we assume these can be calculated
+    all_param_names.extend(['n1/N1', 'n2/N2', 'n3/N3'])
+    
+    # Sort parameters by defined order
+    all_param_names = [p for p in param_order if p in all_param_names]
+    
+    n_params = len(all_param_names)
+    
+    # Create figure with one row per parameter
+    # IMPORTANT: sharex=False to prevent matplotlib from enforcing numeric formatting
+    # We will manually align x-limits.
+    fig, axes = plt.subplots(n_params, 1, 
+                            figsize=(max(12, 1.5 * n_mechanisms), 2.0 * n_params),
+                            sharex=False,
+                            squeeze=False)
+    
+    # Global Title
+    fig.suptitle('Parameter Distributions Across Mechanisms', fontsize=18, fontweight='bold', y=0.99)
+    
+    # Iterate through parameters (rows)
+    for param_idx, param_name in enumerate(all_param_names):
+        ax = axes[param_idx, 0]
         
-        # Set y-axis to show full parameter bounds if available, otherwise data range
-        if param_bounds and i < len(param_bounds):
-            min_bound, max_bound = param_bounds[i]
-            ax.set_ylim(min_bound, max_bound)
+        # Collect data for this parameter across all mechanisms
+        all_box_data = [None] * n_mechanisms  # Initialize with None for all positions
+        all_point_data = [None] * n_mechanisms
+        param_bound = None # Reset for each parameter
+        
+        for mech_idx, result in enumerate(results_with_params):
+            mechanism = result['mechanism']
+            params = result['params']
+            
+            if not params or all(p is None for p in params):
+                continue
+            
+            try:
+                param_names = get_parameter_names(mechanism)
+                param_bounds = get_parameter_bounds(mechanism)
+            except:
+                continue
+            
+            # Helper to get column values
+            def get_col(name):
+                if name in param_names:
+                    idx = param_names.index(name)
+                    # Filter out None entries from params_array before indexing
+                    valid_params = [p for p in params if p is not None]
+                    if valid_params:
+                        return np.array([p[idx] for p in valid_params])
+                return None
+            
+            param_values = None # Initialize param_values for this mechanism and parameter
+            
+            # Handle Derived Parameters
+            if param_name in ['n1/N1', 'n2/N2', 'n3/N3']:
+                n2_vals = get_col('n2')
+                N2_vals = get_col('N2')
+                
+                if n2_vals is not None and N2_vals is not None and len(n2_vals) == len(N2_vals):
+                    if param_name == 'n2/N2':
+                        param_values = n2_vals / N2_vals
+                    elif param_name == 'n1/N1':
+                        r21 = get_col('r21')
+                        R21 = get_col('R21')
+                        if r21 is not None and R21 is not None and len(r21) == len(n2_vals) and len(R21) == len(N2_vals):
+                            n1_vals = np.maximum(r21 * n2_vals, 1.0)
+                            N1_vals = np.maximum(R21 * N2_vals, 1.0)
+                            param_values = n1_vals / N1_vals
+                        else:
+                            param_values = None
+                    elif param_name == 'n3/N3':
+                        r23 = get_col('r23')
+                        R23 = get_col('R23')
+                        if r23 is not None and R23 is not None and len(r23) == len(n2_vals) and len(R23) == len(N2_vals):
+                            n3_vals = np.maximum(r23 * n2_vals, 1.0)
+                            N3_vals = np.maximum(R23 * N2_vals, 1.0)
+                            param_values = n3_vals / N3_vals
+                        else:
+                            param_values = None
+                
+                # For derived parameters, param_bound will be handled dynamically later
+                # We can set a placeholder or just leave it None for now.
+                # param_bound = (0, 0.1) # Concentration is usually small
+                
+            else:
+                # Regular Parameters
+                # Check if this mechanism has this parameter
+                # For 'k/k_max', check for either 'k' or 'k_max'
+                if param_name == 'k/k_max':
+                    actual_param_name = 'k' if 'k' in param_names else ('k_max' if 'k_max' in param_names else None)
+                else:
+                    actual_param_name = param_name if param_name in param_names else None
+                
+                if actual_param_name:
+                    param_local_idx = param_names.index(actual_param_name)
+                    
+                    # Get parameter values
+                    params_array = np.array([p for p in params if p is not None])
+                    if params_array.size > 0: # Check if array is not empty
+                        param_values = params_array[:, param_local_idx]
+                    else:
+                        param_values = None
+                    
+                    # Get bounds (use first valid one we find for regular params)
+                    if param_bound is None and param_bounds and param_local_idx < len(param_bounds):
+                        param_bound = param_bounds[param_local_idx]
+            
+            # Store values if found
+            if param_values is not None and len(param_values) > 0:
+                all_box_data[mech_idx] = param_values
+                all_point_data[mech_idx] = param_values
+        
+        # Filter out None values but track positions
+        valid_positions = [i for i, data in enumerate(all_box_data) if data is not None]
+        valid_box_data = [all_box_data[i] for i in valid_positions]
+        valid_point_data = [all_point_data[i] for i in valid_positions]
+        
+        # Zebra striping for background
+        if param_idx % 2 == 0:
+            ax.set_facecolor('#f8f9fa')
+            
+        if valid_box_data:
+            # Create box plots at consistent positions
+            # Style: Lighter fill, thinner lines
+            bp = ax.boxplot(valid_box_data, positions=valid_positions, widths=0.4, patch_artist=True,
+                           boxprops=dict(facecolor='#e0e0e0', alpha=0.5, edgecolor='#666666'),
+                           medianprops=dict(color='#d62728', linewidth=1.5),
+                           whiskerprops=dict(linewidth=1, color='#666666'),
+                           capprops=dict(linewidth=1, color='#666666'),
+                           flierprops=dict(marker='o', markersize=3, alpha=0.5))
+            
+            # Overlay colored points for each mechanism
+            # Use a nice palette
+            colors = plt.cm.tab10(np.linspace(0, 1, 10))  
+            
+            for pos, param_values in zip(valid_positions, valid_point_data):
+                n_points = len(param_values)
+                # Jitter
+                x_jitter = np.random.normal(pos, 0.05, size=n_points)
+                x_jitter = np.clip(x_jitter, pos - 0.2, pos + 0.2)
+                
+                for point_idx, (x, y) in enumerate(zip(x_jitter, param_values)):
+                    color = colors[point_idx % len(colors)]
+                    ax.scatter(x, y, alpha=0.7, s=40, color=color, 
+                              edgecolors='white', linewidths=0.5, zorder=3)
+            
+            # Set y-axis to parameter bounds
+            if param_bound:
+                if param_name in ['n1/N1', 'n2/N2', 'n3/N3']:
+                    # Use auto-scaling for derived params or loose fixed limits if needed
+                    # Typically concentration is < 0.1
+                    # Let's check max value
+                    max_val = max([np.max(d) for d in valid_box_data])
+                    ax.set_ylim(0, max(max_val * 1.2, 0.05))
+                else:
+                    min_bound, max_bound = param_bound
+                    ax.set_ylim(min_bound, max_bound)
+            
+            # Y-Axis Label
+            ax.set_ylabel(param_name, fontsize=12, fontweight='bold', rotation=90, labelpad=10)
+            ax.tick_params(axis='y', labelsize=10)
+            
+            # Grid
+            ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+            
+            # Add vertical lines to separate mechanisms clearly
+            for i in range(n_mechanisms - 1):
+                ax.axvline(i + 0.5, color='gray', linestyle=':', alpha=0.3)
+
         else:
-            # Fallback to data range with padding
-            y_range = param_values.max() - param_values.min()
-            if y_range > 0:
-                ax.set_ylim(param_values.min() - 0.1 * y_range, param_values.max() + 0.1 * y_range)
-    
-    # Hide unused subplots
-    for i in range(n_params, len(axes)):
-        axes[i].axis('off')
-    
-    plt.tight_layout()
+            # No mechanisms have this parameter
+            ax.text(0.5, 0.5, f'{param_name} (Not used)', 
+                   ha='center', va='center', transform=ax.transAxes, 
+                   fontsize=10, color='gray', style='italic')
+            ax.set_yticks([])
+            ax.set_ylabel(param_name, fontsize=12, fontweight='bold', color='gray')
+            
+        # Ensure x-limits match for all rows using the same range
+        ax.set_xlim(-0.5, n_mechanisms - 0.5)
+        
+        # Hide default x-ticks for all plots initially
+        ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+        ax.set_xticklabels([])
+
+    # NOW setup the Top Labels on the first subplot
+    # Do this LAST to ensure nothing overwrites it
+    ax_top = axes[0, 0]
+    ax_top.xaxis.set_label_position('top')
+    ax_top.xaxis.tick_top()
+    ax_top.tick_params(axis='x', which='both', top=True, labeltop=True)
+    ax_top.set_xticks(range(n_mechanisms))
+    ax_top.set_xticklabels(mechanism_names, rotation=45, ha='left', fontsize=11, fontweight='bold')
+
+    # Adjust layout
+    # Increased top margin for rotated labels
+    plt.subplots_adjust(hspace=0.1, left=0.1, right=0.95, top=0.88, bottom=0.05)
     
     if save_plots:
         if run_id:
-            filename = f'parameter_distributions_{mechanism}_{run_id}.png'
+            filename = f'ModelComparisonEMDResults/parameter_matrix_{run_id}.png'
         else:
+            from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'parameter_distributions_{mechanism}_{timestamp}.png'
+            filename = f'ModelComparisonEMDResults/parameter_matrix_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
-        print(f"   📊 Saved: {filename}")
+        print(f"\n📊 Parameter matrix saved as: {filename}")
     
     plt.close()
 
@@ -257,10 +444,10 @@ def create_summary_table_with_runid(all_results, run_id=None, save_table=True):
     # Save with run_id if requested
     if save_table:
         if run_id:
-            filename = f'model_comparison_cv_summary_{run_id}.csv'
+            filename = f'ModelComparisonEMDResults/model_comparison_cv_summary_{run_id}.csv'
         else:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'model_comparison_cv_summary_{timestamp}.csv'
+            filename = f'ModelComparisonEMDResults/model_comparison_cv_summary_{timestamp}.csv'
         df_summary.to_csv(filename, index=False)
         print(f"\n💾 Summary table saved as: {filename}")
     
@@ -278,22 +465,24 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
         print("No successful results to plot!")
         return
     
-    # Define mechanism ordering
+    # Define mechanism ordering (updated with new order and names)
     mechanism_order = [
         'simple',
         'fixed_burst',
-        'feedback_onion', 
+        'steric_hindrance', 
+        'fixed_burst_steric_hindrance',
         'time_varying_k',
-        'fixed_burst_feedback_onion',
         'time_varying_k_fixed_burst',
-        'time_varying_k_feedback_onion',
+        'time_varying_k_steric_hindrance',
         'time_varying_k_combined'
     ]
     
     # Create DataFrame for plotting
     plot_data = []
     for result in successful_results:
-        mechanism = result['mechanism']
+        # Rename mechanism for display
+        mechanism = result['mechanism'].replace('feedback_onion', 'steric_hindrance')
+        
         for val_emd in result['val_emds']:
             plot_data.append({
                 'mechanism': mechanism,
@@ -308,7 +497,15 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
     
     # 1. Mean Validation EMD comparison (bar plot with error bars)
     mean_data = pd.DataFrame(successful_results)
+    
+    # Rename in mean_data as well
+    mean_data['mechanism'] = mean_data['mechanism'].apply(lambda x: x.replace('feedback_onion', 'steric_hindrance'))
+    
     mean_data['order'] = mean_data['mechanism'].map({m: i for i, m in enumerate(mechanism_order)})
+    
+    # Handle unknown mechanisms (assign order = len)
+    mean_data['order'] = mean_data['order'].fillna(len(mechanism_order))
+    
     mean_data = mean_data.sort_values('order')
     
     bars = ax1.bar(range(len(mean_data)), mean_data['mean_val_emd'], 
@@ -328,10 +525,17 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
     # 2. Validation EMD distribution boxplot
     if len(df) > 0:
         ordered_mechanisms = [m for m in mechanism_order if m in df['mechanism'].unique()]
+        # Add any remaining mechanisms not in the order list
+        existing_mechs = set(df['mechanism'].unique())
+        ordered_mechs_set = set(ordered_mechanisms)
+        remaining = list(existing_mechs - ordered_mechs_set)
+        ordered_mechanisms.extend(remaining)
+        
         emd_data = [df[df['mechanism'] == mech]['Validation EMD'].values for mech in ordered_mechanisms]
         
         if HAS_SEABORN:
-            df['mechanism'] = pd.Categorical(df['mechanism'], categories=mechanism_order, ordered=True)
+            # Update categories for seaborn
+            df['mechanism'] = pd.Categorical(df['mechanism'], categories=ordered_mechanisms, ordered=True)
             df_sorted = df.sort_values('mechanism')
             sns.boxplot(data=df_sorted, x='mechanism', y='Validation EMD', ax=ax2, palette='Set2')
         else:
@@ -349,10 +553,10 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
     
     if save_plots:
         if run_id:
-            filename = f'model_comparison_cv_emd_{run_id}.png'
+            filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{run_id}.png'
         else:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'model_comparison_cv_emd_{timestamp}.png'
+            filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         print(f"\n📊 Plot saved as: {filename}")
     
@@ -397,7 +601,7 @@ def main():
     if not csv_files:
         print(f"\n❌ No CV result files found!")
         if args.run_id:
-            print(f"   Searched for: cv_results_*_{args.run_id}.csv")
+            print(f"   Searched for: ModelComparisonEMDResults/cv_results_*_{args.run_id}.csv")
         print("\n💡 Make sure the SLURM job array has completed successfully.")
         return
     
@@ -421,12 +625,9 @@ def main():
     summary_df = create_summary_table_with_runid(all_results, run_id=args.run_id, save_table=True)
     create_comparison_plots_with_runid(all_results, run_id=args.run_id, save_plots=True)
     
-    # Generate parameter distribution plots for each mechanism
-    print(f"\n📊 Generating parameter distribution plots...")
-    for result in all_results:
-        if result['success'] and result['params']:
-            print(f"   Plotting {result['mechanism']}...")
-            plot_parameter_distributions(result, run_id=args.run_id, save_plots=True)
+    # Generate parameter matrix plot (all mechanisms in one plot)
+    print(f"\n📊 Generating parameter matrix plot...")
+    plot_parameter_matrix(all_results, run_id=args.run_id, save_plots=True)
     
     print(f"\n🎉 Aggregation complete!")
     if args.run_id:

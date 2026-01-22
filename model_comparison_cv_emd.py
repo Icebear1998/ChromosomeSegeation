@@ -94,7 +94,7 @@ def run_single_cv(mechanism, k_folds=5, n_simulations=2000, max_iter=1000, tol=0
         run_cross_validation(mechanism, k_folds=k_folds, n_simulations=n_simulations, max_iter=max_iter, tol=tol)
         
         # Load the results from the CSV file created by run_cross_validation
-        csv_file = f'cv_results_{mechanism}.csv'
+        csv_file = 'ModelComparisonEMDResults/cv_results_{}.csv'.format(mechanism)
         if os.path.exists(csv_file):
             df = pd.read_csv(csv_file)
             
@@ -103,7 +103,7 @@ def run_single_cv(mechanism, k_folds=5, n_simulations=2000, max_iter=1000, tol=0
             
             # Rename file to include run_id if provided
             if run_id:
-                new_csv_file = f'cv_results_{mechanism}_{run_id}.csv'
+                new_csv_file = 'ModelComparisonEMDResults/cv_results_{}_{}.csv'.format(mechanism, run_id)
                 os.rename(csv_file, new_csv_file)
                 csv_file = new_csv_file
             
@@ -240,7 +240,7 @@ def create_comparison_plots(all_results, save_plots=True):
     
     if save_plots:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f'model_comparison_cv_emd_{timestamp}.png'
+        filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         print(f"\n📊 Plot saved as: {filename}")
     
@@ -306,7 +306,7 @@ def create_summary_table(all_results, save_table=True):
     
     if save_table:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f'model_comparison_cv_summary_{timestamp}.csv'
+        filename = f'ModelComparisonEMDResults/model_comparison_cv_summary_{timestamp}.csv'
         df_summary.to_csv(filename, index=False)
         print(f"\n💾 Summary table saved as: {filename}")
     
@@ -322,7 +322,7 @@ def main():
     K_FOLDS = 5              # Number of cross-validation folds
     N_SIMULATIONS = 10000     # Number of simulations per evaluation
     MAX_ITER = 1000          # Maximum iterations for optimization
-    TOL = 0.01               # Tolerance for optimization convergence
+    TOL = 0.001               # Tolerance for optimization convergence
     # ===================================================================
     
     # Parse command-line arguments (CLI args override config above)
@@ -448,6 +448,7 @@ def main():
     # Run cross-validation for each mechanism
     all_results = []
     start_time = datetime.now()
+    run_id = args.run_id  # Assign for use in loop
     
     for i, mechanism in enumerate(mechanisms, 1):
         mechanism_start = datetime.now()

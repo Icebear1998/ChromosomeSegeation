@@ -105,7 +105,7 @@ def unpack_mechanism_params(params_vector, mechanism):
     return base_params, alpha, beta_k, beta_tau, beta_tau2
 
 
-def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False, objective_metric='nll'):
+def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False, objective_metric='emd'):
     """
     Joint objective function that handles both simple and time-varying mechanisms.
     Supports both NLL (Negative Log-Likelihood) and EMD (Earth Mover's Distance).
@@ -202,7 +202,7 @@ def get_per_dataset_nll(params_vector, mechanism, datasets, num_simulations=500,
     return joint_objective(params_vector, mechanism, datasets, num_simulations, selected_strains, return_breakdown=True)
 
 
-def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, objective_metric='nll'):
+def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, objective_metric='emd'):
     """
     Run joint optimization for all mechanism types.
     
@@ -238,7 +238,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'strategy': 'best1bin',
         #'mutation': (0.7, 1.0),
         #'recombination': 0.7,
-        'tol': 1e-3,
+        'tol': 0.001,
         #'atol': 1e-2,
         'disp': True
     }
@@ -269,16 +269,16 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     for name, val in param_dict.items():
         print(f"  {name}: {val:.6f}")
     
-    # Get per-dataset NLL breakdown at final parameters
-    nll_breakdown = get_per_dataset_nll(params, mechanism, datasets, num_simulations, selected_strains)
-    per_dataset_nll = nll_breakdown.get('per_dataset', {})
+    # Get per-dataset score breakdown at final parameters
+    score_breakdown = joint_objective(params, mechanism, datasets, num_simulations, selected_strains, return_breakdown=True, objective_metric=objective_metric)
+    per_dataset_score = score_breakdown.get('per_dataset', {})
     
-    if per_dataset_nll:
-        print("\nPer-dataset NLL breakdown:")
-        for dataset_name, nll_val in per_dataset_nll.items():
-            print(f"  {dataset_name}: {nll_val:.4f}")
+    if per_dataset_score:
+        print(f"\nPer-dataset {metric_label} breakdown:")
+        for dataset_name, score_val in per_dataset_score.items():
+            print(f"  {dataset_name}: {score_val:.4f}")
     
-    print(f"\nOptimization converged: NLL = {result.fun:.4f}")
+    print(f"\nOptimization converged: {metric_label} = {result.fun:.4f}")
 
     
     return {
@@ -286,13 +286,13 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'converged': result.success,  # Track actual convergence status
         'params': param_dict,
         'nll': result.fun,
-        'per_dataset_nll': per_dataset_nll,  # Add per-dataset breakdown
+        'per_dataset_score': per_dataset_score,  # Add per-dataset breakdown
         'result': result,
         'message': result.message if not result.success else "Converged successfully"
     }
 
 
-def save_results(mechanism, results, filename=None, selected_strains=None, objective_metric='nll'):
+def save_results(mechanism, results, filename=None, selected_strains=None, objective_metric='emd'):
     """
     Save optimization results to file.
     
@@ -391,7 +391,7 @@ def main():
             objective_metric=objective_metric
         )
 
-        save_results(mechanism, results, selected_strains=None)
+        save_results(mechanism, results, selected_strains=None, objective_metric=objective_metric)
     except Exception as e:
         print(f"Error during optimization: {e}")
         import traceback

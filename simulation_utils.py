@@ -554,7 +554,7 @@ def get_parameter_bounds(mechanism):
     if is_simple:
         bounds = [
             (1.0, 50.0),      # n2
-            (50.0, 2000.0),   # N2
+            (50.0, 1000.0),   # N2
             (0.001, 0.1),      # k
             (0.25, 4.0),      # r21
             (0.25, 4.0),      # r23
@@ -564,7 +564,7 @@ def get_parameter_bounds(mechanism):
     else:
         bounds = [
             (1.0, 50.0),      # n2
-            (50.0, 2000.0),   # N2
+            (50.0, 1000.0),   # N2
             (0.001, 0.1),      # k_max
             (2.0, 240.0),       # tau
             (0.25, 4.0),      # r21
@@ -696,7 +696,8 @@ def save_optimization_results(mechanism, results, filename=None, selected_strain
             f.write(f"n3 = {param_dict['n3']:.6f}\n")
             f.write(f"N1 = {param_dict['N1']:.6f}\n")
             f.write(f"N3 = {param_dict['N3']:.6f}\n")
-            f.write(f"k_1 = {param_dict['k_1']:.6f}\n")
+            if 'k_1' in param_dict:
+                f.write(f"k_1 = {param_dict['k_1']:.6f}\n")
             f.write("\n")
         
     
