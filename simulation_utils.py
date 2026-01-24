@@ -91,7 +91,7 @@ def load_experimental_data():
         return {}
 
 
-def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, beta_tau2=None):
+def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_k1=None, beta_k2=None, beta_k3=None, beta_tau=None, beta_tau2=None):
     """
     Apply mutant-specific parameter modifications for both simple and time-varying mechanisms.
     
@@ -99,7 +99,10 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, 
         base_params (dict): Base wildtype parameters
         mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade')
         alpha (float): Multiplier for threshold counts (threshold mutant)
-        beta_k (float): Multiplier for k (simple) or k_max (time-varying) - degradation rate
+        beta_k (float): Multiplier for k_max (time-varying) - degradation rate
+        beta_k1 (float): Multiplier for k (simple) - separase mutant (degrade)
+        beta_k2 (float): Multiplier for k (simple) - APC mutant (degradeAPC)
+        beta_k3 (float): Multiplier for k (simple) - velcade mutant (velcade)
         beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger (time-varying only)
         beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter (time-varying only)
     
@@ -114,7 +117,9 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, 
     
     # Determine if this is a simple mechanism or time-varying
     is_simple = 'k' in params  # Simple mechanisms have 'k', time-varying have 'k_max' and 'tau'
-    
+    # Note: 'beta_k' is now exclusively for time-varying k_max modification.
+    # Simple mechanisms use beta_k1, beta_k2, beta_k3.
+
     if mutant_type == 'threshold':
         # Threshold mutant: reduce threshold counts (small n)
         # FIX: Enforce n >= 1 to match MoM logic
@@ -125,15 +130,22 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, 
     elif mutant_type == 'degrade':
         # Degradation mutant: reduce degradation rate
         if is_simple:
-            # Simple mechanisms: modify 'k' directly
-            params['k'] = beta_k * params['k']
+            # Simple mechanisms: modify 'k' with beta_k1
+            if beta_k1 is None:
+                raise ValueError("beta_k1 required for simple mechanism 'degrade' mutant")
+            params['k'] = beta_k1 * params['k']
         else:
-            # Time-varying mechanisms: modify 'k_max'
+            # Time-varying mechanisms: modify 'k_max' with beta_k
+            if beta_k is None:
+                 raise ValueError("beta_k required for time-varying mechanism 'degrade' mutant")
             params['k_max'] = beta_k * params['k_max']
     
     elif mutant_type == 'degradeAPC':
         if is_simple:
-            params['k'] = beta_k * params['k']
+            # Simple mechanisms: modify 'k' with beta_k2
+            if beta_k2 is None:
+                raise ValueError("beta_k2 required for simple mechanism 'degradeAPC' mutant")
+            params['k'] = beta_k2 * params['k']
         else:
             if 'tau' in params:
                 params['tau'] = beta_tau * params['tau']
@@ -143,7 +155,10 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau=None, 
     
     elif mutant_type == 'velcade':
         if is_simple:
-            params['k'] = beta_k * params['k']
+             # Simple mechanisms: modify 'k' with beta_k3
+            if beta_k3 is None:
+                raise ValueError("beta_k3 required for simple mechanism 'velcade' mutant")
+            params['k'] = beta_k3 * params['k']
         else:
             if 'tau' in params:
                 params['tau'] = beta_tau2 * params['tau']
@@ -486,6 +501,7 @@ def calculate_likelihood(exp_data, sim_data):
 
 
 
+
 def calculate_emd(exp_data, sim_data):
     """
     Calculate Earth Mover's Distance (Wasserstein Distance) between experimental and simulation data.
@@ -538,6 +554,73 @@ def calculate_emd(exp_data, sim_data):
         return 1e6
 
 
+def calculate_wasserstein_p_value(sample1, sample2, num_permutations=1000, seed=None):
+    """
+    Calculate the p-value for the Wasserstein distance between two samples
+    using a permutation test.
+    
+    The null hypothesis is that the two samples are drawn from the same distribution.
+    A low p-value indicates that the distributions are significantly different.
+    
+    Args:
+        sample1 (array-like): First sample (e.g., experimental data)
+        sample2 (array-like): Second sample (e.g., simulation data)
+        num_permutations (int): Number of permutations to perform (default: 1000)
+        seed (int, optional): Random seed for reproducibility
+        
+    Returns:
+        tuple: (p_value, observed_distance)
+    """
+    rng = np.random.default_rng(seed)
+    
+    # Ensure inputs are 1D numpy arrays and remove NaNs
+    u = np.asarray(sample1).flatten()
+    v = np.asarray(sample2).flatten()
+    u = u[np.isfinite(u)]
+    v = v[np.isfinite(v)]
+    
+    if len(u) == 0 or len(v) == 0:
+        return np.nan, np.nan
+        
+    # 1. Calculate observed Wasserstein distance
+    obs_dist = wasserstein_distance(u, v)
+    
+    if obs_dist == 0:
+        return 1.0, 0.0
+        
+    # 2. Pool the data
+    pooled = np.concatenate([u, v])
+    n = len(u)
+    m = len(v)
+    total_samples = n + m
+    
+    # 3. Permutation test
+    count_geq = 0
+    
+    # Pre-allocate for performance (optional, but good for many perms)
+    # Just loop is fine for 1000-10000
+    
+    for _ in range(num_permutations):
+        # Shuffle the pooled data
+        permuted = rng.permutation(pooled)
+        
+        # Split into two new samples of original sizes
+        perm_u = permuted[:n]
+        perm_v = permuted[n:]
+        
+        # Calculate statistic for permuted data
+        perm_dist = wasserstein_distance(perm_u, perm_v)
+        
+        if perm_dist >= obs_dist:
+            count_geq += 1
+            
+    # Calculate p-value
+    # Add 1 to numerator and denominator to avoid p=0 (standard practice for permutation tests)
+    p_value = (count_geq + 1) / (num_permutations + 1)
+    
+    return p_value, obs_dist
+
+
 def get_parameter_bounds(mechanism):
     """
     Get parameter bounds for optimization.
@@ -582,16 +665,21 @@ def get_parameter_bounds(mechanism):
         bounds.append((1.0, 100.0))  # n_inner
     
     # Add mutant parameter bounds
-    bounds.extend([
-        (0.1, 0.7),       # alpha
-        (0.1, 1.0),       # beta_k
-    ])
+    bounds.append((0.1, 0.7))   # alpha
     
-    # Add time-varying mutant parameters
-    if not is_simple:
+    if is_simple:
+        # Simple mechanisms now have 3 distinct beta_k parameters
         bounds.extend([
-            (2.0, 10.0),   # beta_tau
-            (2.0, 20.0),   # beta_tau2
+            (0.1, 1.0),   # beta_k1
+            (0.1, 1.0),   # beta_k2
+            (0.1, 1.0),   # beta_k3
+        ])
+    else:
+        # Time-varying mechanisms retain original beta_k + beta_tau parameters
+        bounds.extend([
+            (0.1, 1.0),   # beta_k (for k_max)
+            (2.0, 10.0),  # beta_tau
+            (2.0, 20.0),  # beta_tau2
         ])
     
     return bounds
@@ -608,10 +696,10 @@ def get_parameter_names(mechanism):
         list: List of parameter names
     """
     time_varying_params = {
-        'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k'],
-        'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k'],
-        'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k'],
-        'fixed_burst_feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k'],
+        'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+        'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+        'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+        'fixed_burst_feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
         'time_varying_k': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_feedback_onion': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],

@@ -99,9 +99,14 @@ def main():
         base_param_names.append('n_inner')
     
     # Add mutant parameters
-    mutant_params = ['alpha', 'beta_k']
-    if mechanism.startswith('time_varying_k'):
-        mutant_params.extend(['beta_tau', 'beta_tau2'])
+    # Check if mechanism is time-varying to determine which beta parameters to track
+    is_time_varying = mechanism.startswith('time_varying_k')
+    
+    if is_time_varying:
+        mutant_params = ['alpha', 'beta_k', 'beta_tau', 'beta_tau2']
+    else:
+        # Simple mechanisms
+        mutant_params = ['alpha', 'beta_k1', 'beta_k2', 'beta_k3']
     
     base_param_names.extend(mutant_params)
     

@@ -7,8 +7,9 @@ Works with MultiMechanismSimulationTimevary and the new data structure.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
-from simulation_utils import load_experimental_data, apply_mutant_params
+from simulation_utils import load_experimental_data, apply_mutant_params, calculate_emd, calculate_wasserstein_p_value
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -16,30 +17,40 @@ warnings.filterwarnings('ignore')
 def load_optimized_parameters(mechanism, filename=None):
     """
     Load optimized parameters from file and calculate derived parameters.
+    Also extracts Total Validation EMD if available.
     
     Args:
         mechanism (str): Mechanism name
         filename (str): Parameter file name (optional)
     
     Returns:
-        dict: Optimized parameters including both ratio and derived parameters
+        dict: Optimized parameters including both ratio and derived parameters, plus 'total_emd' if found
     """
     if filename is None:
         filename = f"simulation_optimized_parameters_{mechanism}.txt"
     
     try:
         params = {}
+        total_emd = None
+        
         with open(filename, 'r') as f:
             lines = f.readlines()
             
         # Find the parameters section
         param_section = False
         derived_section = False
-        
         mutant_section = False
         
         for line in lines:
             line_stripped = line.strip()
+            
+            # Extract Total Validation EMD
+            if "Total Validation EMD:" in line:
+                try:
+                    total_emd = float(line.split(':')[1].strip())
+                    params['total_emd'] = total_emd
+                except:
+                    pass
             
             # Handle different parameter section headers
             if ("Optimized Parameters (ratio-based):" in line or 
@@ -84,6 +95,8 @@ def load_optimized_parameters(mechanism, filename=None):
             print("Calculated derived parameters from ratios")
         
         print(f"Loaded parameters from {filename}")
+        if total_emd is not None:
+            print(f"Total Validation EMD: {total_emd:.2f}")
         print(f"Available parameters: {list(params.keys())}")
         return params
     
@@ -92,7 +105,7 @@ def load_optimized_parameters(mechanism, filename=None):
         return {}
 
 
-def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, beta_tau2=None, num_simulations=500):
+def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, beta_tau2=None, beta_k1=None, beta_k2=None, beta_k3=None, num_simulations=500):
     """
     Run simulations with given parameters for a specific mutant type.
     
@@ -100,7 +113,12 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         mechanism (str): Mechanism name
         params (dict): Base parameters
         mutant_type (str): Mutant type
+    Args:
+        mechanism (str): Mechanism name
+        params (dict): Base parameters
+        mutant_type (str): Mutant type
         alpha, beta_k, beta_tau (float): Mutant parameters
+        beta_k1, beta_k2, beta_k3 (float): Simple mutant parameters
         beta_tau2 (float): Velcade mutant parameter (optional)
         num_simulations (int): Number of simulations
     
@@ -147,7 +165,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             base_params['burst_size'] = params['burst_size']
         
         # Apply mutant modifications
-        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau, beta_tau2)
+        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2)
         
         # Extract rate parameters
         initial_state = [mutant_params['N1'], mutant_params['N2'], mutant_params['N3']]
@@ -244,7 +262,11 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
     dataset_titles = ['Wildtype', 'Threshold', 'Separase', 'APC', 'Velcade']
     
     alpha = params['alpha']
-    beta_k = params['beta_k']
+    alpha = params['alpha']
+    beta_k = params.get('beta_k', None)
+    beta_k1 = params.get('beta_k1', None)
+    beta_k2 = params.get('beta_k2', None)
+    beta_k3 = params.get('beta_k3', None)
     beta_tau = params.get('beta_tau', None)  # Default to None if not present
     beta_tau2 = params.get('beta_tau2', None)  # Default to None if not present
     
@@ -259,11 +281,30 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         # Run simulations
         print(f"Running simulations for {dataset_name}...")
         sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-            mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, num_simulations
+            mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, beta_k1, beta_k2, beta_k3, num_simulations
         )
         
         if not sim_delta_t12 or not sim_delta_t32:
             continue
+        
+        # Save raw data to CSV
+        csv_data = {
+            'exp_delta_t12': exp_delta_t12,
+            'exp_delta_t32': exp_delta_t32,
+            'sim_delta_t12': sim_delta_t12,
+            'sim_delta_t32': sim_delta_t32
+        }
+        # Create DataFrame with padding for unequal lengths
+        max_len = max(len(exp_delta_t12), len(exp_delta_t32), len(sim_delta_t12), len(sim_delta_t32))
+        csv_df = pd.DataFrame({
+            'exp_delta_t12': pd.Series(exp_delta_t12).reindex(range(max_len)),
+            'exp_delta_t32': pd.Series(exp_delta_t32).reindex(range(max_len)),
+            'sim_delta_t12': pd.Series(sim_delta_t12).reindex(range(max_len)),
+            'sim_delta_t32': pd.Series(sim_delta_t32).reindex(range(max_len))
+        })
+        csv_filename = f'simulation_data_{mechanism}_{dataset_name}.csv'
+        csv_df.to_csv(csv_filename, index=False)
+        print(f"  Saved data to {csv_filename}")
         
         # Set up x_grid for PDF plotting
         x_min, x_max = -140, 140  # Default range for all mechanisms
@@ -284,20 +325,24 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         ax_12.hist(exp_delta_t12, bins=bins_12, alpha=0.6, label='Experimental data', color='lightblue', density=True)
         ax_12.hist(sim_delta_t12, bins=bins_12, alpha=0.6, label='Simulated data', color='orange', density=True)
         ax_12.set_xlim(x_min - 20, x_max + 20)
-        ax_12.set_title(f'{title}\nChrom1-Chrom2')
-        ax_12.set_xlabel('Time Difference')
-        ax_12.set_ylabel('Density')
+        ax_12.set_title(f'{title}')  # Only dataset name
+        ax_12.set_xlabel('Time Difference (T1-T2)')
+        ax_12.set_ylabel('Percentage of cells')
+        ax_12.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
         ax_12.legend(fontsize=8)
         ax_12.grid(True, alpha=0.3)
         
-        # Add statistics
+        # Calculate EMD and Wasserstein p-value for T1-T2
+        p_value_12, emd_12 = calculate_wasserstein_p_value(exp_delta_t12, sim_delta_t12, num_permutations=1000)
+        
+        # Add statistics with EMD and p-value
         exp_mean_12 = np.mean(exp_delta_t12)
         sim_mean_12 = np.mean(sim_delta_t12)
         ax_12.axvline(exp_mean_12, color='blue', linestyle='--', alpha=0.8)
         ax_12.axvline(sim_mean_12, color='red', linestyle='--', alpha=0.8)
-        stats_text12 = f'Exp: μ={exp_mean_12:.1f}, σ={np.std(exp_delta_t12):.1f}\nSim: μ={sim_mean_12:.1f}, σ={np.std(sim_delta_t12):.1f}'
+        stats_text12 = f'Exp: μ={exp_mean_12:.1f}, σ={np.std(exp_delta_t12):.1f}\nSim: μ={sim_mean_12:.1f}, σ={np.std(sim_delta_t12):.1f}\nEMD={emd_12:.2f}, p={p_value_12:.3f}\nN={num_simulations}'
         ax_12.text(0.02, 0.98, stats_text12, transform=ax_12.transAxes, 
-                   verticalalignment='top', fontsize=8,
+                   verticalalignment='top', fontsize=7,
                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
         # Plot T3-T2 (bottom row) - matching TestDataPlot.py style
@@ -311,28 +356,34 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
         ax_32.hist(exp_delta_t32, bins=bins_32, alpha=0.6, label='Experimental data', color='lightblue', density=True)
         ax_32.hist(sim_delta_t32, bins=bins_32, alpha=0.6, label='Simulated data', color='orange', density=True)
         ax_32.set_xlim(x_min- 20, x_max + 20)
-        ax_32.set_title(f'Chrom3-Chrom2')
-        ax_32.set_xlabel('Time Difference')
-        ax_32.set_ylabel('Density')
+        ax_32.set_title('')  # No subtitle for bottom row
+        ax_32.set_xlabel('Time Difference (T3-T2)')
+        ax_32.set_ylabel('Percentage of cells')
+        ax_32.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
         ax_32.legend(fontsize=8)
         ax_32.grid(True, alpha=0.3)
         
-        # Add statistics
+        # Calculate EMD and Wasserstein p-value for T3-T2
+        p_value_32, emd_32 = calculate_wasserstein_p_value(exp_delta_t32, sim_delta_t32, num_permutations=1000)
+        
+        # Add statistics with EMD and p-value
         exp_mean_32 = np.mean(exp_delta_t32)
         sim_mean_32 = np.mean(sim_delta_t32)
         ax_32.axvline(exp_mean_32, color='blue', linestyle='--', alpha=0.8)
         ax_32.axvline(sim_mean_32, color='red', linestyle='--', alpha=0.8)
-        stats_text32 = f'Exp: μ={exp_mean_32:.1f}, σ={np.std(exp_delta_t32):.1f}\nSim: μ={sim_mean_32:.1f}, σ={np.std(sim_delta_t32):.1f}'
+        stats_text32 = f'Exp: μ={exp_mean_32:.1f}, σ={np.std(exp_delta_t32):.1f}\nSim: μ={sim_mean_32:.1f}, σ={np.std(sim_delta_t32):.1f}\nEMD={emd_32:.2f}, p={p_value_32:.3f}\nN={num_simulations}'
         ax_32.text(0.02, 0.98, stats_text32, transform=ax_32.transAxes, 
-                   verticalalignment='top', fontsize=8,
+                   verticalalignment='top', fontsize=7,
                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     plt.tight_layout()
     plt.subplots_adjust(top=0.93)  # Adjusted for title space
     
     # Save plot
-    filename = f'simulation_fit_{mechanism}.png'
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    filename = f'simulation_fit_{mechanism}.pdf'
+    plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
+    filename = f'simulation_fit_{mechanism}.svg'
+    plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
     print(f"Plot saved as: {filename}")
     
     plt.show()
@@ -354,26 +405,41 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
         return
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f'{dataset_name.title()} Dataset - {mechanism.replace("_", " ").title()} Mechanism', fontsize=14)
+    fig.suptitle(f'{dataset_name.title()}', fontsize=14)  # Only dataset name in main title
     
     # Get experimental data
     exp_delta_t12 = experimental_data[dataset_name]['delta_t12']
     exp_delta_t32 = experimental_data[dataset_name]['delta_t32']
     
     alpha = params['alpha']
-    beta_k = params['beta_k']
+    beta_k = params.get('beta_k', None)
+    beta_k1 = params.get('beta_k1', None)
+    beta_k2 = params.get('beta_k2', None)
+    beta_k3 = params.get('beta_k3', None)
     beta_tau = params.get('beta_tau', None)  # Default to None if not present
     beta_tau2 = params.get('beta_tau2', None)  # Default to None if not present
     
     # Run simulations
     print(f"Running {num_simulations} simulations for {dataset_name}...")
     sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-        mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, num_simulations
+        mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, beta_k1, beta_k2, beta_k3, num_simulations
     )
     
     if not sim_delta_t12 or not sim_delta_t32:
         print(f"Failed to generate simulation data for {dataset_name}")
         return
+    
+    # Save raw data to CSV
+    max_len = max(len(exp_delta_t12), len(exp_delta_t32), len(sim_delta_t12), len(sim_delta_t32))
+    csv_df = pd.DataFrame({
+        'exp_delta_t12': pd.Series(exp_delta_t12).reindex(range(max_len)),
+        'exp_delta_t32': pd.Series(exp_delta_t32).reindex(range(max_len)),
+        'sim_delta_t12': pd.Series(sim_delta_t12).reindex(range(max_len)),
+        'sim_delta_t32': pd.Series(sim_delta_t32).reindex(range(max_len))
+    })
+    csv_filename = f'simulation_data_{mechanism}_{dataset_name}.csv'
+    csv_df.to_csv(csv_filename, index=False)
+    print(f"Saved simulation data to {csv_filename}")
     
     # Set up x_grid for PDF plotting
     x_min, x_max = -140, 140  # Default range for all mechanisms
@@ -391,19 +457,24 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
                         bin_width)
     
     # Plot Chrom1 - Chrom2
-    ax1.hist(exp_delta_t12, bins=bins_12, density=True, alpha=0.6, label='Experimental data', color='lightblue')
-    ax1.hist(sim_delta_t12, bins=bins_12, density=True, alpha=0.6, label='Simulated data', color='orange')
+    ax1.hist(exp_delta_t12, bins=bins_12, density=True, alpha=0.85, label='Experimental data', color='lightgrey')
+    ax1.hist(sim_delta_t12, bins=bins_12, density=True, alpha=0.85, label='Simulated data', color='lightskyblue')
     ax1.set_xlim(x_min - 20, x_max + 20)
-    ax1.set_xlabel('Time Difference')
-    ax1.set_ylabel('Density')
-    ax1.set_title(f"Chrom1 - Chrom2 ({dataset_name}, {mechanism.replace('_', ' ').title()})")
+    ax1.set_xlabel(r'$t_{ChrI} - t_{ChrII}$ (sec)')
+    ax1.set_ylabel('Percentage of cells')
+    ax1.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
+    ax1.set_title('chromosome I vs. II')  # No subtitle - dataset name is in main title
     ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
     
-    # Add statistics for Chrom1 - Chrom2
-    stats_text12 = f'Exp: μ={np.mean(exp_delta_t12):.1f}, σ={np.std(exp_delta_t12):.1f}\nSim: μ={np.mean(sim_delta_t12):.1f}, σ={np.std(sim_delta_t12):.1f}'
+    # Calculate EMD and Wasserstein p-value for T1-T2
+    p_value_12, emd_12 = calculate_wasserstein_p_value(exp_delta_t12, sim_delta_t12, num_permutations=1000)
+    
+    # Add statistics for Chrom1 - Chrom2 with EMD and p-value
+    stats_text12 = f'Exp: μ={np.mean(exp_delta_t12):.1f}, σ={np.std(exp_delta_t12):.1f}\nSim: μ={np.mean(sim_delta_t12):.1f}, σ={np.std(sim_delta_t12):.1f}\nEMD={emd_12:.2f}, p={p_value_12:.3f}\nN={num_simulations}'
     ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+             verticalalignment='top', fontsize=9, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     # Calculate bins for 3.5 second intervals for Chrom3 - Chrom2
     all_data_32 = np.concatenate([exp_delta_t32, sim_delta_t32])
@@ -412,26 +483,32 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
                         bin_width)
     
     # Plot Chrom3 - Chrom2
-    ax2.hist(exp_delta_t32, bins=bins_32, density=True, alpha=0.6, label='Experimental data', color='lightblue')
-    ax2.hist(sim_delta_t32, bins=bins_32, density=True, alpha=0.6, label='Simulated data', color='orange')
+    ax2.hist(exp_delta_t32, bins=bins_32, density=True, alpha=0.85, label='Experimental data', color='lightgrey')
+    ax2.hist(sim_delta_t32, bins=bins_32, density=True, alpha=0.85, label='Simulated data', color='lightskyblue')
     ax2.set_xlim(x_min - 20, x_max + 20)
-    ax2.set_xlabel('Time Difference')
-    ax2.set_ylabel('Density')
-    ax2.set_title(f"Chrom3 - Chrom2 ({dataset_name}, {mechanism.replace('_', ' ').title()})")
+    ax2.set_xlabel(r'$t_{ChrI} - t_{ChrII}$ (sec)')
+    ax2.set_ylabel('Percentage of cells')
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
+    ax2.set_title('chromosome II vs. III')  # No subtitle
     ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+
     
-    # Add statistics for Chrom3 - Chrom2
-    stats_text32 = f'Exp: μ={np.mean(exp_delta_t32):.1f}, σ={np.std(exp_delta_t32):.1f}\nSim: μ={np.mean(sim_delta_t32):.1f}, σ={np.std(sim_delta_t32):.1f}'
+    # Calculate EMD and Wasserstein p-value for T3-T2
+    p_value_32, emd_32 = calculate_wasserstein_p_value(exp_delta_t32, sim_delta_t32, num_permutations=1000)
+    
+    # Add statistics for Chrom3 - Chrom2 with EMD and p-value
+    stats_text32 = f'Exp: μ={np.mean(exp_delta_t32):.1f}, σ={np.std(exp_delta_t32):.1f}\nSim: μ={np.mean(sim_delta_t32):.1f}, σ={np.std(sim_delta_t32):.1f}\nEMD={emd_32:.2f}, p={p_value_32:.3f}\nN={num_simulations}'
     ax2.text(0.02, 0.98, stats_text32, transform=ax2.transAxes,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+             verticalalignment='top', fontsize=9, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     plt.tight_layout()
     
-    # # Save plot
-    # filename = f'simulation_fit_{mechanism}_{dataset_name}.png'
-    # plt.savefig(filename, dpi=300, bbox_inches='tight')
-    # print(f"Plot saved as: {filename}")
+    filename = f'simulation_fit_{mechanism}_{dataset_name}.pdf'
+    plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
+    filename = f'simulation_fit_{mechanism}_{dataset_name}.svg'
+    plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
     
     plt.show()
     
@@ -486,7 +563,14 @@ def print_parameter_summary(mechanism, params):
     
     print(f"\nMutant Modifiers:")
     print(f"  Threshold mutant (alpha): {params['alpha']:.3f}")
-    print(f"  Separase mutant (beta_k): {params['beta_k']:.3f}")
+    if 'beta_k' in params:
+        print(f"  Separase mutant (beta_k): {params['beta_k']:.3f}")
+    if 'beta_k1' in params:
+        print(f"  Separase mutant (beta_k1): {params['beta_k1']:.3f}")
+    if 'beta_k2' in params:
+        print(f"  APC mutant (beta_k2): {params['beta_k2']:.3f}")
+    if 'beta_k3' in params:
+        print(f"  Velcade mutant (beta_k3): {params['beta_k3']:.3f}")
     if 'beta_tau' in params:
         print(f"  APC mutant (beta_tau): {params['beta_tau']:.3f}")
     if 'beta_tau2' in params:
@@ -497,10 +581,10 @@ def print_parameter_summary(mechanism, params):
     print(f"  Threshold: n1={params['alpha']*params['n1']:.1f}, n2={params['alpha']*params['n2']:.1f}, n3={params['alpha']*params['n3']:.1f}")
     
     # Handle both k and k_max for Separase mutant
-    if 'k_max' in params:
+    if 'k_max' in params and 'beta_k' in params:
         print(f"  Separase: k_max={params['beta_k']*params['k_max']:.4f}")
-    elif 'k' in params:
-        print(f"  Separase: k={params['beta_k']*params['k']:.4f}")
+    elif 'k' in params and 'beta_k1' in params:
+        print(f"  Separase: k={params['beta_k1']*params['k']:.4f}")
     
     # Calculate effective k_1 or tau for APC mutant (only if beta_tau exists)
     if 'beta_tau' in params:
@@ -512,12 +596,12 @@ def print_parameter_summary(mechanism, params):
         elif 'k_1' in params:
             effective_k1 = beta_tau_value * params['k_1']
             print(f"  APC: k_1={effective_k1:.6f}")
-        elif 'k' in params:
-            # For simple mechanisms, beta_tau affects k directly
-            effective_k = beta_tau_value * params['k']
-            print(f"  APC: k={effective_k:.4f}")
         else:
             print(f"  APC: modifier={beta_tau_value:.3f}")
+    elif 'beta_k2' in params and 'k' in params:
+        # For simple mechanisms, beta_k2 affects k directly
+        effective_k = params['beta_k2'] * params['k']
+        print(f"  APC: k={effective_k:.4f}")
     
     # Calculate effective k_1 or tau for Velcade mutant if beta_tau2 exists
     if 'beta_tau2' in params:
@@ -529,12 +613,12 @@ def print_parameter_summary(mechanism, params):
         elif 'k_1' in params:
             effective_k1_vel = beta_tau2_value * params['k_1']
             print(f"  Velcade: k_1={effective_k1_vel:.6f}")
-        elif 'k' in params:
-            # For simple mechanisms, beta_tau2 affects k directly
-            effective_k_vel = beta_tau2_value * params['k']
-            print(f"  Velcade: k={effective_k_vel:.4f}")
         else:
             print(f"  Velcade: modifier={beta_tau2_value:.3f}")
+    elif 'beta_k3' in params and 'k' in params:
+        # For simple mechanisms, beta_k3 affects k directly
+        effective_k_vel = params['beta_k3'] * params['k']
+        print(f"  Velcade: k={effective_k_vel:.4f}")
 
 
 def main():
@@ -602,6 +686,6 @@ if __name__ == "__main__":
             params = load_optimized_parameters(mechanism, filename)
             if params:
                 print_parameter_summary(mechanism, params)
-                create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=800)
+                create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=500)
             else:
                 print(f"Could not load parameters for {mechanism}") 

@@ -25,11 +25,11 @@ warnings.filterwarnings('ignore')
 
 
 MECHANISM_PARAM_NAMES = {
-    'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k'],
-    'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k'],
-    'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k'],
+    'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+    'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+    'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
     'fixed_burst_feedback_onion': [
-        'n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k'
+        'n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'
     ],
     'time_varying_k': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
@@ -99,10 +99,13 @@ def unpack_mechanism_params(params_vector, mechanism):
     
     alpha = params.get('alpha')
     beta_k = params.get('beta_k')
+    beta_k1 = params.get('beta_k1')
+    beta_k2 = params.get('beta_k2')
+    beta_k3 = params.get('beta_k3')
     beta_tau = params.get('beta_tau')
     beta_tau2 = params.get('beta_tau2')
     
-    return base_params, alpha, beta_k, beta_tau, beta_tau2
+    return base_params, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2
 
 
 def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False, objective_metric='emd'):
@@ -125,7 +128,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
     """
     try:
         # Unpack parameters based on mechanism
-        base_params, alpha, beta_k, beta_tau, beta_tau2 = unpack_mechanism_params(params_vector, mechanism)
+        base_params, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2 = unpack_mechanism_params(params_vector, mechanism)
         
         # Check constraints
         if base_params['n1'] >= base_params['N1'] or \
@@ -142,7 +145,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         for dataset_name, data_dict in datasets.items():
             # Apply mutant modifications using unified helper function (works for both mechanism types)
             params, n0_list = apply_mutant_params(
-                base_params, dataset_name, alpha, beta_k, beta_tau, beta_tau2
+                base_params, dataset_name, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2
             )
             
             # Run simulations
@@ -238,7 +241,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'strategy': 'best1bin',
         #'mutation': (0.7, 1.0),
         #'recombination': 0.7,
-        'tol': 0.001,
+        'tol': 0.01,
         #'atol': 1e-2,
         'disp': True
     }

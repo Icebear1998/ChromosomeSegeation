@@ -54,19 +54,15 @@ def get_parameter_count(mechanism):
     Returns:
         int: Number of parameters
     """
-    param_counts = {
-        'simple': 9,  # n2, N2, k, r21, r23, R21, R23, alpha, beta_k
-        'fixed_burst': 10,  # adds burst_size
-        'feedback_onion': 10,  # adds n_inner
-        'fixed_burst_feedback_onion': 11,  # adds burst_size, n_inner
-        'time_varying_k': 12,  # n2, N2, k_max, tau, r21, r23, R21, R23, alpha, beta_k, beta_tau, beta_tau2
-        'time_varying_k_fixed_burst': 13,  # adds burst_size
-        'time_varying_k_feedback_onion': 13,  # adds n_inner
-        'time_varying_k_combined': 14,  # adds burst_size, n_inner
-        'time_varying_k_burst_onion': 13,  # alternative with burst_size
-    }
-    
-    return param_counts.get(mechanism, 0)
+    try:
+        from simulation_utils import get_parameter_names
+        # Get parameter names and return length
+        # This handles both simple (11 params) and time-varying (12-14 params) automatically
+        names = get_parameter_names(mechanism)
+        return len(names)
+    except Exception as e:
+        print(f"Warning: Could not get parameter count for {mechanism}: {e}")
+        return 0
 
 
 def run_single_cv(mechanism, k_folds=5, n_simulations=2000, max_iter=1000, tol=0.01, run_id=None):
@@ -322,7 +318,7 @@ def main():
     K_FOLDS = 5              # Number of cross-validation folds
     N_SIMULATIONS = 10000     # Number of simulations per evaluation
     MAX_ITER = 1000          # Maximum iterations for optimization
-    TOL = 0.001               # Tolerance for optimization convergence
+    TOL = 0.01               # Tolerance for optimization convergence
     # ===================================================================
     
     # Parse command-line arguments (CLI args override config above)

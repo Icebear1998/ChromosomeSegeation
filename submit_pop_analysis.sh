@@ -2,7 +2,7 @@
 #SBATCH --account=polya
 #SBATCH --partition=normal_q
 #SBATCH --qos=owl_normal_base
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=48
 #SBATCH --output=%j_pop_analysis.out
@@ -24,7 +24,7 @@ echo "CPUs: $SLURM_CPUS_PER_TASK"
 echo "=========================================="
 
 # Run the analysis script
-python SecondVersion/AnalyzePopulationEfficiency.py
+python AnalyzePopulationEfficiency_EMD.py
 
 echo "=========================================="
 echo "Job completed at: $(date)"

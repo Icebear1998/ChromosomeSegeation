@@ -188,7 +188,8 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
         'burst_size',         # Burst
         'n_inner',            # Feedback
         'alpha',              # Mutant parameters
-        'beta_k', 'beta_tau', 'beta_tau2',
+        'beta_k', 'beta_k1', 'beta_k2', 'beta_k3', # New beta params
+        'beta_tau', 'beta_tau2',
         'n1/N1', 'n2/N2', 'n3/N3' # Derived concentrations
     ]
     
@@ -423,12 +424,13 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     
     if save_plots:
         if run_id:
-            filename = f'ModelComparisonEMDResults/parameter_matrix_{run_id}.png'
+            filename = f'ModelComparisonEMDResults/parameter_matrix_{run_id}'
         else:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'ModelComparisonEMDResults/parameter_matrix_{timestamp}.png'
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
+            filename = f'ModelComparisonEMDResults/parameter_matrix_{timestamp}'
+        plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
+        plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
         print(f"\n📊 Parameter matrix saved as: {filename}")
     
     plt.close()
@@ -457,6 +459,7 @@ def create_summary_table_with_runid(all_results, run_id=None, save_table=True):
 def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True):
     """
     Wrapper for create_comparison_plots that uses run_id for filename.
+    Creates two separate plots instead of subplots.
     """
     # Filter out failed mechanisms
     successful_results = [r for r in all_results if r['success']]
@@ -491,12 +494,15 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
     
     df = pd.DataFrame(plot_data)
     
-    # Create comparison plots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle('Model Comparison: Cross-Validation with EMD', fontsize=16, y=0.98)
+    # ========== PLOT 1: Mean Validation EMD - DOT AND WHISKER ==========
+    fig1, ax1 = plt.subplots(1, 1, figsize=(10, 6))
     
-    # 1. Mean Validation EMD comparison (bar plot with error bars)
     mean_data = pd.DataFrame(successful_results)
+    
+    # Calculate SEM (Standard Error of Mean) instead of Std
+    mean_data['sem_val_emd'] = mean_data.apply(
+        lambda row: np.std(row['val_emds']) / np.sqrt(len(row['val_emds'])), axis=1
+    )
     
     # Rename in mean_data as well
     mean_data['mechanism'] = mean_data['mechanism'].apply(lambda x: x.replace('feedback_onion', 'steric_hindrance'))
@@ -508,22 +514,54 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
     
     mean_data = mean_data.sort_values('order')
     
-    bars = ax1.bar(range(len(mean_data)), mean_data['mean_val_emd'], 
-                   yerr=mean_data['std_val_emd'], capsize=5, alpha=0.7, color='steelblue')
+    # DOT AND WHISKER PLOT (no connecting lines, no bars)
+    x_positions = range(len(mean_data))
+    ax1.errorbar(x_positions, mean_data['mean_val_emd'], 
+                 yerr=mean_data['sem_val_emd'], 
+                 fmt='o',  # Dots only, no connecting line
+                 markersize=8,
+                 capsize=5, 
+                 capthick=2,
+                 elinewidth=2,
+                 color='steelblue',
+                 markerfacecolor='steelblue',
+                 markeredgecolor='darkblue',
+                 markeredgewidth=1.5,
+                 alpha=0.8)
+    
     ax1.set_xlabel('Mechanism', fontsize=12)
-    ax1.set_ylabel('Validation EMD (minutes)', fontsize=12)
-    ax1.set_title('Mean Validation EMD Comparison (Lower is Better)', fontsize=13, fontweight='bold')
-    ax1.set_xticks(range(len(mean_data)))
+    ax1.set_ylabel('Total validation EMD (min)', fontsize=12)
+    ax1.set_xticks(x_positions)
     ax1.set_xticklabels(mean_data['mechanism'], rotation=45, ha='right')
-    ax1.grid(True, alpha=0.3, axis='y')
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    
+    # DO NOT start y-axis from 0 - let matplotlib auto-scale
+    ax1.set_ylim(bottom=None)
     
     # Add value labels
-    for i, (bar, val, std) in enumerate(zip(bars, mean_data['mean_val_emd'], mean_data['std_val_emd'])):
-        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + std + 2,
+    for i, (x, val, sem) in enumerate(zip(x_positions, mean_data['mean_val_emd'], mean_data['sem_val_emd'])):
+        ax1.text(x, val + sem + (ax1.get_ylim()[1] - ax1.get_ylim()[0]) * 0.02,
                 f'{val:.1f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
     
-    # 2. Validation EMD distribution boxplot
+    plt.tight_layout()
+    
+    if save_plots:
+        if run_id:
+            filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{run_id}'
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{timestamp}'
+        plt.savefig(filename1, dpi=300, bbox_inches='tight', format='pdf')
+        plt.savefig(filename1, dpi=300, bbox_inches='tight', format='svg')
+        print(f"\n📊 Mean EMD plot saved as: {filename1}")
+    
+    plt.close()
+    
+    # ========== PLOT 2: Validation EMD Distribution Boxplot ==========
     if len(df) > 0:
+        fig2, ax2 = plt.subplots(1, 1, figsize=(10, 6))
+        
         ordered_mechanisms = [m for m in mechanism_order if m in df['mechanism'].unique()]
         # Add any remaining mechanisms not in the order list
         existing_mechs = set(df['mechanism'].unique())
@@ -543,24 +581,25 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
             for patch in bp['boxes']:
                 patch.set_facecolor('lightblue')
         
-        ax2.set_title('Validation EMD Distribution by Mechanism', fontsize=13, fontweight='bold')
         ax2.set_xlabel('Mechanism', fontsize=12)
-        ax2.set_ylabel('Validation EMD (minutes)', fontsize=12)
+        ax2.set_ylabel('Total validation EMD (min)', fontsize=12)
         ax2.tick_params(axis='x', rotation=45)
-        ax2.grid(True, alpha=0.3, axis='y')
-    
-    plt.tight_layout()
-    
-    if save_plots:
-        if run_id:
-            filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{run_id}.png'
-        else:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{timestamp}.png'
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
-        print(f"\n📊 Plot saved as: {filename}")
-    
-    plt.close()
+        ax2.spines['top'].set_visible(False)
+        ax2.spines['right'].set_visible(False)
+        
+        plt.tight_layout()
+        
+        if save_plots:
+            if run_id:
+                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}'
+            else:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}'
+            plt.savefig(filename1, dpi=300, bbox_inches='tight', format='pdf')
+            plt.savefig(filename1, dpi=300, bbox_inches='tight', format='svg')
+            print(f"📊 Boxplot distribution saved as: {filename2}")
+        
+        plt.close()
 
 
 def main():

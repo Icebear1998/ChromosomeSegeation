@@ -342,10 +342,10 @@ def main():
     sys.stdout.flush()
     
     # Configuration
-    mechanism = 'simple'  # Can be changed to test other mechanisms
+    mechanism = 'time_varying_k'  # Can be changed to test other mechanisms
     
     # Test range: 5 to 30
-    popsize_values = [10, 15, 20]
+    popsize_values = [15, 20]
     
     k_folds = 5
     n_simulations = 10000

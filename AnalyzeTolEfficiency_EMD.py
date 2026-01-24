@@ -274,10 +274,9 @@ def create_tol_analysis_plots(mechanism, tol_values, results, save_plots=True):
                        label=f'tol={tol:.3f}', alpha=0.7, s=100)
     
     ax4.set_xlabel('Number of Iterations', fontsize=12)
-    ax4.set_ylabel('Validation EMD (minutes)', fontsize=12)
+    ax4.set_ylabel('Total EMD (sec)', fontsize=12)
     ax4.set_title('Validation EMD vs Iterations (All Folds)', fontsize=13, fontweight='bold')
     ax4.legend()
-    ax4.grid(True, alpha=0.3)
     
     plt.tight_layout()
     
@@ -345,10 +344,10 @@ def main():
     sys.stdout.flush()
     
     # Configuration
-    mechanism = 'time_varying_k'  # Can be changed to test other mechanisms
+    mechanism = 'simple'  # Can be changed to test other mechanisms
     
     # Test range: 0.05 to 0.001
-    tol_values = [0.003, 0.001]
+    tol_values = [0.05, 0.01, 0.005]#, 0.003, 0.001]
     
     k_folds = 5
     n_simulations = 10000

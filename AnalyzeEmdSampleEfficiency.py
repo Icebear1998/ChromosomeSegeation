@@ -30,6 +30,7 @@ from simulation_utils import (
     load_parameters
 )
 
+plt.rcParams.update({'font.size': 14})
 
 def perturb_parameters(params, mechanism, perturbation_factor=0.2):
     """
@@ -113,12 +114,14 @@ def _compute_single_replicate(replicate_idx, seed, mechanism, base_params, param
 
 def analyze_emd_efficiency(mechanism, params_file, simulation_counts_list, replicates=20, n_workers=None):
     """
-    Run analysis for list of simulation counts.
+    Run analysis for list of simulation counts for a single mechanism.
     """
+    print(f"\n{'='*60}")
+    print(f"Analyzing mechanism: {mechanism}")
     print(f"Loading parameters from {params_file}...")
     good_params = load_parameters(params_file)
     if good_params is None:
-        return
+        return None
 
     # Create Bad Parameters
     bad_params = perturb_parameters(good_params, mechanism)
@@ -138,6 +141,7 @@ def analyze_emd_efficiency(mechanism, params_file, simulation_counts_list, repli
     dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']
     
     results = {
+        'mechanism': mechanism,
         'counts': [],
         'good_means': [], 'good_stds': [], 'good_sems': [],
         'bad_means': [], 'bad_stds': [], 'bad_sems': [],
@@ -147,7 +151,7 @@ def analyze_emd_efficiency(mechanism, params_file, simulation_counts_list, repli
     if n_workers is None:
         n_workers = min(cpu_count(), replicates)
         
-    print(f"\nStarting EMD analysis with {replicates} replicates per count...")
+    print(f"Starting EMD analysis with {replicates} replicates per count...")
     print(f"Counts: {simulation_counts_list}")
     
     for count in simulation_counts_list:
@@ -200,73 +204,114 @@ def analyze_emd_efficiency(mechanism, params_file, simulation_counts_list, repli
         print(f"  Good EMD: {np.mean(good_arr):.2f} ± {np.std(good_arr):.2f}")
         print(f"  Bad EMD:  {np.mean(bad_arr):.2f} ± {np.std(bad_arr):.2f}")
 
-    plot_results(results, mechanism)
-    
-    # Save CSV
-    df = pd.DataFrame(results)
-    df.to_csv('emd_sample_efficiency.csv', index=False)
-    print("Results saved to emd_sample_efficiency.csv")
+    return results
 
-def plot_results(results, mechanism):
-    counts = results['counts']
+def plot_results(all_results):
+    """
+    Plot comparison of EMD efficiency across multiple mechanisms.
+    Overlays all mechanisms on the same 2-panel plot.
+    
+    Args:
+        all_results: List of result dictionaries, one per mechanism
+    """
+    if not all_results:
+        print("No results to plot.")
+        return
+    
+    from matplotlib.ticker import ScalarFormatter
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     
-    # Plot 1: Mean EMD (Good vs Bad)
-    ax1.errorbar(counts, results['good_means'], yerr=results['good_stds'], 
-                 fmt='o-', label='Optimized Params', capsize=5, color='blue')
-    ax1.errorbar(counts, results['bad_means'], yerr=results['bad_stds'], 
-                 fmt='s-', label='Perturbed Params', capsize=5, color='red')
+    # Define colors and markers for different mechanisms
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    markers_good = ['o', '^', 's', 'D', 'v', 'p']
+    markers_bad = ['o', '^', 's', 'D', 'v', 'p']
     
-    ax1.set_xlabel('Simulation Count (N)')
-    ax1.set_ylabel('Total EMD (Sum of Wasserstein Distances)')
-    ax1.set_title(f'EMD Stability: Good vs Bad Parameters ({mechanism})')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    for idx, results in enumerate(all_results):
+        mechanism = results['mechanism']
+        counts = results['counts']
+        color = colors[idx % len(colors)]
+        marker_good = markers_good[idx % len(markers_good)]
+        marker_bad = markers_bad[idx % len(markers_bad)]
+        
+        # Plot 1: Mean EMD (Good vs Bad)
+        ax1.errorbar(counts, results['good_means'], yerr=results['good_stds'], 
+                     fmt=f'{marker_good}-', label=f'{mechanism} (Optimized)', 
+                     capsize=5, color=color, alpha=0.8, linewidth=2)
+        ax1.errorbar(counts, results['bad_means'], yerr=results['bad_stds'], 
+                     fmt=f'{marker_bad}--', label=f'{mechanism} (Perturbed)', 
+                     capsize=5, color=color, alpha=0.4, linewidth=1.5)
+        
+        # Plot 2: Noise (Std Dev) vs N
+        ax2.plot(counts, results['good_stds'], f'{marker_good}-', 
+                label=f'{mechanism} (Optimized)', color=color, alpha=0.8, linewidth=2)
+        ax2.plot(counts, results['bad_stds'], f'{marker_bad}--', 
+                label=f'{mechanism} (Perturbed)', color=color, alpha=0.4, linewidth=1.5)
+    
+    # Configure Plot 1
+    ax1.set_xlabel('Simulation sample size')
+    ax1.set_ylabel('Total EMD (sec)')
+    ax1.set_title('EMD Stability: Good vs Bad Parameters', y=1.02)
+    ax1.legend(loc='best', fontsize=10)
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
     ax1.set_xscale('log')
+    ax1.grid(True, alpha=0.3, linestyle=':')
     
-    # Plot 2: Noise (Std Dev) vs N
-    ax2.plot(counts, results['good_stds'], 'o-', label='Good Param Noise', color='blue')
-    ax2.plot(counts, results['bad_stds'], 's-', label='Bad Param Noise', color='red')
-    
-    ax2.set_xlabel('Simulation Count (N)')
-    ax2.set_ylabel('Standard Deviation of EMD')
-    ax2.set_title('EMD Noise Level vs Sample Size')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    # Configure Plot 2
+    ax2.set_xlabel('Simulation sample size')
+    ax2.set_ylabel('Std of total EMD (min)')
+    ax2.set_title('EMD Noise Level vs Sample Size', y=1.02)
+    ax2.legend(loc='best', fontsize=10)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
     ax2.set_xscale('log')
     ax2.set_yscale('log')
+    ax2.grid(True, alpha=0.3, linestyle=':')
     
-    # Add values
-    for i, (cnt, std) in enumerate(zip(counts, results['good_stds'])):
-        ax2.annotate(f'{std:.2f}', (cnt, std), xytext=(0, -15), textcoords='offset points', ha='center', color='blue', fontsize=8)
+    # Improve y-axis tick formatting for second plot
+    ax2.yaxis.set_major_formatter(ScalarFormatter())
+    ax2.ticklabel_format(style='plain', axis='y')
 
     plt.tight_layout()
-    plt.savefig('emd_sample_efficiency_analysis.png')
-    print("Plot saved to emd_sample_efficiency_analysis.png")
+    plt.subplots_adjust(wspace=0.35)  # Increase horizontal spacing between subplots
+    plt.savefig('emd_sample_efficiency_analysis.png', dpi=300, bbox_inches='tight')
+    plt.savefig('emd_sample_efficiency_analysis.svg', format='svg', bbox_inches='tight')
+    print("\nPlot saved to emd_sample_efficiency_analysis.png")
 
 if __name__ == "__main__":
-    # Configuration
-    mechanism = 'simple'
-    params_file = 'simulation_optimized_parameters_simple.txt'
+    # Configuration - Multiple mechanisms
+    mechanisms_to_analyze = [
+        ('simple', 'simulation_optimized_parameters_simple.txt'),
+        ('time_varying_k', 'simulation_optimized_parameters_time_varying_k.txt')
+    ]
     
     # Test range
     counts = [500, 1000, 2000, 5000, 10000, 20000, 50000]
-    replicates = 20
+    replicates = 100
     n_workers = 8
     
-    if not os.path.exists(params_file):
-        print(f"Error: {params_file} not found.")
-        # Try finding any parameter file
-        print("Looking for other parameter files...")
-        import glob
-        files = glob.glob("simulation_optimized_parameters_*.txt")
-        if files:
-            params_file = files[0]
-            if 'fixed_burst' in params_file: mechanism = 'fixed_burst'
-            elif 'simple' in params_file: mechanism = 'simple'
-            print(f"Using found file: {params_file} (mech: {mechanism})")
-        else:
-            sys.exit(1)
+    all_results = []
+    
+    for mechanism, params_file in mechanisms_to_analyze:
+        if not os.path.exists(params_file):
+            print(f"Warning: {params_file} not found. Skipping {mechanism}.")
+            continue
+        
+        result = analyze_emd_efficiency(mechanism, params_file, counts, replicates, n_workers)
+        if result is not None:
+            all_results.append(result)
             
-    analyze_emd_efficiency(mechanism, params_file, counts, replicates, n_workers)
+            # Save mechanism-specific CSV
+            df = pd.DataFrame(result)
+            csv_filename = f'emd_sample_efficiency_{mechanism}.csv'
+            df.to_csv(csv_filename, index=False)
+            print(f"Results for {mechanism} saved to {csv_filename}")
+    
+    # Create combined plot
+    if all_results:
+        print(f"\n{'='*60}")
+        print(f"Creating comparison plot for {len(all_results)} mechanism(s)...")
+        plot_results(all_results)
+    else:
+        print("No results to plot. Please check parameter files.")
