@@ -32,6 +32,7 @@ import sys
 import os
 import argparse
 
+
 # Optional seaborn import
 try:
     import seaborn as sns
@@ -357,7 +358,6 @@ def main():
         print(f"   Optimization tolerance: {tol}")
         sys.stdout.flush()
         
-        from datetime import datetime
         start_time = datetime.now()
         
         # Run CV for single mechanism
