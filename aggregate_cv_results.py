@@ -428,9 +428,9 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
         else:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'ModelComparisonEMDResults/parameter_matrix_{timestamp}'
-        plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
-        plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
+            filename = f'ModelComparisonEMDResults/parameter_matrix_{timestamp}.png'
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        #plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
         print(f"\n📊 Parameter matrix saved as: {filename}")
     
     plt.close()
@@ -548,12 +548,12 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
     
     if save_plots:
         if run_id:
-            filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{run_id}'
+            filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{run_id}.pdf'
         else:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{timestamp}'
+            filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{timestamp}.pdf'
         plt.savefig(filename1, dpi=300, bbox_inches='tight', format='pdf')
-        plt.savefig(filename1, dpi=300, bbox_inches='tight', format='svg')
+        #plt.savefig(filename1, dpi=300, bbox_inches='tight', format='svg')
         print(f"\n📊 Mean EMD plot saved as: {filename1}")
     
     plt.close()
@@ -591,12 +591,12 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
         
         if save_plots:
             if run_id:
-                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}'
+                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}.pdf'
             else:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}'
-            plt.savefig(filename1, dpi=300, bbox_inches='tight', format='pdf')
-            plt.savefig(filename1, dpi=300, bbox_inches='tight', format='svg')
+                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}.pdf'
+            plt.savefig(filename2, dpi=300, bbox_inches='tight', format='pdf')
+            #plt.savefig(filename2, dpi=300, bbox_inches='tight', format='svg')
             print(f"📊 Boxplot distribution saved as: {filename2}")
         
         plt.close()
