@@ -14,6 +14,8 @@ There are three main complementary approaches implemented:
     *   **Beta Sampling Method:** For constant and time-varying rate models without feedback.
     *   **Sum of Waiting Times Method:** For feedback-based models (assuming independent chromosomes).
 
+The project now uses **Earth Mover's Distance (EMD)** as the primary optimization metric and **Cross-Validation** for model selection, replacing the previous NLL/AIC approaches.
+
 The project compares 16 different mechanism variations, including simple, fixed burst, time-varying rates, and feedback loops.
 
 ## Directory Structure & Key Files
@@ -31,9 +33,11 @@ The project compares 16 different mechanism variations, including simple, fixed 
         -   `FastFeedbackSimulation.py`: **[NEW]** Vectorized Sum of Waiting Times for O(1) simulation of feedback.
     -   **Analysis & Optimization:**
         -   `simulation_utils.py`: Central hub for data loading and **automatic dispatch** to the fastest available simulation method.
-        -   `SimulationOptimization_join.py`: Main differential evolution optimization script.
+        -   `SimulationOptimization_join.py`: Main differential evolution optimization script (defaulting to EMD).
+        -   `CrossValidation_EMD.py`: **[NEW]** 5-Fold Cross-Validation script for model validation.
+        -   `AnalyzeEmdSampleEfficiency.py`: **[NEW]** Analysis of how EMD converges with simulation count.
         -   `AnalyzeParameterStabilitySimulation.py`: **[NEW]** Script to analyze parameter stability across multiple optimization runs.
-        -   `model_comparison_aic_bic.py`: Compare all mechanics using AIC/BIC. Now powered by Fast Simulation.
+        -   `model_comparison_cv_emd.py`: Compare all mechanics using CV and EMD.
     -   **Validation:**
         -   `TestBetaVsGillespie.py`: Validates Beta method against Gillespie.
         -   `TestFeedbackVsGillespie.py`: Validates Feedback method against Gillespie.
@@ -81,15 +85,16 @@ python AnalyzeParameterStabilitySimulation.py
 Comparisons are now feasible on standard timeframe due to Fast Simulation.
 
 ```bash
-# Runs optimization for all mechanisms
-sbatch submit_model_comparison.sh
+
+# Runs CV for all mechanisms
+sbatch submit_model_comparison_cv.sh
 # OR locally:
-python model_comparison_aic_bic.py
+python model_comparison_cv_emd.py
 ```
 
 ## Development Conventions
 
--   **Pipeline Separation:** MoM (`SecondVersion/`) logic is kept separate from Simulation logic, though `model_comparison_aic_bic.py` bridges them.
+-   **Pipeline Separation:** MoM (`SecondVersion/`) logic is kept separate from Simulation logic.
 -   **Simulation Dispatch:** `simulation_utils.py` contains the logic to choose `FastBetaSimulation`, `FastFeedbackSimulation`, or fallback to `MultiMechanismSimulationTimevary` (Gillespie) based on the mechanism name.
--   **Likelihood:** Uses Kernel Density Estimation (KDE) on simulation outputs.
+-   **Objective Function:** Primary metric is now Earth Mover's Distance (EMD) for robustness, with NLL/KDE available as legacy/fallback.
 -   **Mechanism Testing:** When adding new mechanisms, ensure they are added to `simulation_utils.py` dispatch and tested via `Test*VsGillespie.py` scripts.

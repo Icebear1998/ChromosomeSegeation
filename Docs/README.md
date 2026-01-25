@@ -23,8 +23,8 @@
 This project implements a comprehensive mathematical and computational framework for modeling chromosome segregation timing during cell division. The core approach involves:
 
 1. **Mathematical Modeling**: Using Method of Moments (MoM) approximations and stochastic simulations
-2. **Parameter Optimization**: Fitting model parameters to experimental data from multiple mutant strains
-3. **Model Comparison**: Evaluating 8 different biological mechanisms using AIC/BIC criteria
+2. **Parameter Optimization**: Fitting model parameters to experimental data using Earth Mover's Distance (EMD) minimization
+3. **Cross-Validation**: 5-Fold Cross-Validation to ensure model generalization
 4. **Validation**: Parameter recovery studies and diagnostic analyses
 
 ### Biological Context
@@ -47,8 +47,8 @@ The project models how cohesin proteins are degraded during cell division, allow
 #### 2. Stochastic Simulation - Computational Approach
 
 - **Accurate**: Captures full distribution via Gillespie algorithm
-- **Flexible**: Uses Kernel Density Estimation (KDE) instead of assuming normality
-- **Use case**: Final parameter fitting, validation, publication-quality results
+- **Flexible**: Uses Earth Mover's Distance (EMD) as the primary robust metric, with fallbacks to Kernel Density Estimation (KDE)
+- **Robust**: EMD avoids binning/bandwidth issues and provides a stable gradient for optimization
 
 ---
 
@@ -76,11 +76,13 @@ ChromosomeSegeation/
 │   └── Chromosomes_Theory.py         # Core theoretical calculations (MoM)
 │
 ├── Root Directory/                    # Simulation-based optimization pipeline
-│   ├── SimulationOptimization_join.py         # Joint simulation optimization
+│   ├── SimulationOptimization_join.py         # Joint simulation optimization (EMD/NLL)
+│   ├── CrossValidation_EMD.py                # 5-Fold Cross-Validation script
 │   ├── SimulationOptimization_independent.py  # Independent simulation optimization
 │   ├── MultiMechanismSimulationTimevary.py   # Gillespie simulation (time-varying)
-│   ├── simulation_utils.py                    # Shared simulation utilities
+│   ├── simulation_utils.py                    # Shared simulation utilities (EMD, KDE)
 │   ├── TestDataPlotSimulation.py             # Visualization for simulation results
+│   ├── AnalyzeEmdSampleEfficiency.py         # Analysis of EMD sample efficiency
 │   ├── Chromosomes_Theory.py                 # Core theoretical calculations
 │   │
 │   ├── model_comparison_aic_bic.py           # Model comparison framework
@@ -368,20 +370,33 @@ def get_parameter_bounds(mechanism)
     """Get optimization bounds for each mechanism (handles both simple and time-varying)"""
 ```
 
-**KDE Implementation**:
+
+**Key Functions**:
 
 ```python
-# Uses sklearn KernelDensity with Scott's rule (automatic bandwidth)
-kde = KernelDensity(kernel='gaussian', bandwidth='scott')
-kde.fit(sim_data.reshape(-1, 1))
-log_densities = kde.score_samples(exp_data.reshape(-1, 1))
-nll = -np.sum(log_densities)
+def load_experimental_data()
+    """Load experimental data from Excel file"""
+
+def apply_mutant_params(base_params, mutant_type, ...)
+    """Apply mutant-specific modifications to parameters"""
+
+def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500)
+    """Run multiple simulations (Fast/Gillespie) and return time differences"""
+
+def calculate_emd(exp_data, sim_data)
+    """Calculate Earth Mover's Distance (Wasserstein) between datasets"""
+
+def calculate_likelihood(experimental_data, simulated_data)
+    """Calculate NLL using Kernel Density Estimation (KDE)"""
+
+def get_parameter_bounds(mechanism)
+    """Get optimization bounds for each mechanism"""
 ```
 
 **Key Features**:
-- Handles both simple and time-varying mechanisms
-- `get_parameter_bounds()` automatically detects mechanism type and returns appropriate bounds
-- Simplified code structure with reduced logging
+- **Automatic Dispatch**: Routes to `FastBetaSimulation` or `FastFeedbackSimulation` when possible for O(1) performance
+- **Dual Metrics**: Supports both EMD (robust, default) and NLL/KDE (legacy)
+- **Unified Parameter Handling**: Consistent interface for mutation operators across all mechanisms
 
 **Called by**: All `SimulationOptimization_*.py` scripts
 
@@ -393,13 +408,14 @@ nll = -np.sum(log_densities)
 
 **Key Features**:
 
-- Uses KDE with Scott's rule (automatic bandwidth) instead of normal approximation
-- More accurate but computationally expensive (2-8 hours)
-- 500 simulations per parameter evaluation (configurable)
-- Supports strain selection (can optimize on subset of strains)
-- Initial guess capability for warm starts
-- Clean, simplified code structure with minimal logging
-- Unified parameter unpacking via `MECHANISM_PARAM_NAMES` dictionary
+**Key Features**:
+
+- **Default Metric**: Uses Earth Mover's Distance (EMD) for robust optimization
+- **Fast Simulation**: Leverages vectorized sampling for 100x speedup
+- **Flexible**: Can switch back to NLL/KDE via `objective_metric='nll'` argument
+- **Strain Selection**: Can optimize on specific subsets of strains
+- **Unified**: Handles all mechanism types (simple, burst, feedback, time-varying) seamlessly
+- **Clean Output**: Simplified logging and unified parameter unpacking
 
 **Workflow**:
 
@@ -428,6 +444,28 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500)
 
 ```python
 python SimulationOptimization_join.py
+```
+
+---
+
+
+---
+
+#### `CrossValidation_EMD.py`
+
+**Purpose**: Rigorous model validation using 5-Fold Cross-Validation
+
+**Workflow**:
+1. Splits experimental data into 5 stratified folds
+2. For each fold:
+   - **Train**: Optimize parameters on 80% of data (minimizing EMD)
+   - **Validate**: Calculate EMD on held-out 20%
+3. Reports average Train EMD and Validation EMD
+4. Saves fold-specific parameters and scores
+
+**Usage**:
+```bash
+python CrossValidation_EMD.py
 ```
 
 ---
@@ -678,10 +716,10 @@ sbatch submit_model_comparison.sh
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. MODEL COMPARISON                                         │
-│    - Compare all mechanisms: python model_comparison_*.py  │
-│    - Or on cluster: sbatch submit_model_comparison.sh     │
-│    - Generates AIC/BIC rankings                           │
+│ 5. VALIDATION & COMPARISON                                  │
+│    - Run Cross-Validation: python CrossValidation_EMD.py    │
+│    - Compare mechanisms: python model_comparison_cv_emd.py  │
+│    - Assess generalization and sample efficiency           │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -787,7 +825,13 @@ sbatch submit_model_comparison.sh
 
 ### 5. Raw NLL (No Normalization)
 
-**Why**: Preserves true model differences for AIC/BIC comparison; normalized NLL compressed differences too much
+### 5. EMD vs NLL (Wasserstein Distance)
+
+**Why**: 
+- **Robustness**: EMD doesn't require bandwidth tuning like KDE
+- **Stability**: Provides meaningful gradients even when distributions don't overlap
+- **Interpretability**: Units are in minutes (average shift needed), unlike abstract NLL values
+- **Efficiency**: Converges faster with fewer simulations for many mechanisms
 
 ---
 
