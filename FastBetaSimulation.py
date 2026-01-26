@@ -160,7 +160,7 @@ def simulate_fixed_burst_beta_single(N: float, n: float, k: float, burst_size: f
     # Transform to "super-cohesin" representation
     N_prime = int(np.ceil(N / burst_size))
     # Corrected formula for n_prime to handle residual cohesins
-    n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
+    n_prime = int(N_prime - np.ceil((N - n) / burst_size))
     k_prime = k * burst_size
     
     # Use simple Beta sampling on transformed parameters
@@ -248,7 +248,7 @@ def simulate_time_varying_k_fixed_burst_beta_single(N: float, n: float, k_1: flo
     # Transform to "super-cohesin" representation
     N_prime = int(np.ceil(N / burst_size))
     # Corrected formula for n_prime to handle residual cohesins
-    n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
+    n_prime = int(N_prime - np.ceil((N - n) / burst_size))
     k_1_prime = k_1 * burst_size
     k_max_prime = k_max * burst_size
     
@@ -360,7 +360,7 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
         elif mechanism == 'fixed_burst':
             N_prime = int(np.ceil(N / burst_size))
             # Corrected formula for n_prime
-            n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
+            n_prime = int(N_prime - np.ceil((N - n) / burst_size))
             k_prime = k * burst_size
             num_events = N_prime - n_prime
             
@@ -392,7 +392,7 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
         elif mechanism == 'time_varying_k_fixed_burst':
             N_prime = int(np.ceil(N / burst_size))
             # Corrected formula for n_prime
-            n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
+            n_prime = int(N_prime - np.ceil((N - n) / burst_size))
             k_1_prime = k_1 * burst_size
             k_max_prime = k_max * burst_size
             num_events = N_prime - n_prime

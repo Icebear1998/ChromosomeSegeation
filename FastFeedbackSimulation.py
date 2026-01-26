@@ -197,8 +197,9 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
                 rates = k * states * weights
                 
                 random_exps = np.random.exponential(1.0, size=(num_simulations, num_steps))
-                time_increments = random_exps / rates
-                results[:, i] = np.sum(time_increments, axis=1)
+                # Optimization: Use dot product instead of creating intermediate array
+                # equivalent to np.sum(random_exps / rates, axis=1)
+                results[:, i] = random_exps @ (1.0 / rates)
         
         elif mechanism == 'fixed_burst_feedback_onion':
             # Constant k + feedback onion + fixed bursts
@@ -213,8 +214,8 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
                 rates = k * states * weights
                 
                 random_exps = np.random.exponential(1.0, size=(num_simulations, num_steps))
-                time_increments = random_exps / rates
-                results[:, i] = np.sum(time_increments, axis=1)
+                # Optimization: Use dot product instead of creating intermediate array
+                results[:, i] = random_exps @ (1.0 / rates)
                 
         elif mechanism == 'time_varying_k_feedback_onion':
             states = np.arange(int(N), int(n), -1)
