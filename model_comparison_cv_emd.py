@@ -18,7 +18,6 @@ Mechanisms can include:
    - time_varying_k_fixed_burst: Time-varying rate with fixed bursts
    - time_varying_k_feedback_onion: Time-varying rate with onion feedback
    - time_varying_k_combined: Time-varying rate with fixed bursts and onion feedback
-   - time_varying_k_burst_onion: Time-varying rate with burst and onion (alternative)
 """
 
 import numpy as np
@@ -237,8 +236,8 @@ def create_comparison_plots(all_results, save_plots=True):
     
     if save_plots:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{timestamp}.png'
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{timestamp}.pdf'
+        plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
         print(f"\n📊 Plot saved as: {filename}")
     
     plt.close()
@@ -417,14 +416,14 @@ def main():
         # Constant rate mechanisms
         'simple',
         'fixed_burst',
-        'feedback_onion',
-        'fixed_burst_feedback_onion',
+        # 'feedback_onion',
+        # 'fixed_burst_feedback_onion',
         
         # Time-varying rate mechanisms
         'time_varying_k',
         'time_varying_k_fixed_burst',
-        'time_varying_k_feedback_onion',
-        'time_varying_k_combined',
+        # 'time_varying_k_feedback_onion',
+        # 'time_varying_k_combined',
     ]
     
     print(f"\n🔬 Comparing {len(mechanisms)} mechanisms:")

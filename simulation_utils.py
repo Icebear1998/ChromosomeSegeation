@@ -12,9 +12,7 @@ import sys
 import os
 
 warnings.filterwarnings('ignore')
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'SecondVersion'))
-from MultiMechanismSimulation import MultiMechanismSimulation
-from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
+
 
 
 def load_experimental_data():
@@ -218,7 +216,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         tuple: (delta_t12_array, delta_t32_array) as numpy arrays, or (None, None) on failure
     """
     # Check if we can use the fast Beta method
-    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_burst_onion']
+    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
     
     if use_beta_method:
         # Import the fast Beta simulation method
@@ -242,6 +240,10 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
                 k_max = params['k_max']
             
             # Use the ultra-fast vectorized method
+            # RUN INDEPENDENT SIMULATIONS FOR T12 AND T32
+            # We need 2 * num_simulations total samples
+            total_sims = 2 * num_simulations
+            
             results = simulate_batch(
                 mechanism=mechanism,
                 initial_states=initial_states,
@@ -250,24 +252,32 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
                 burst_size=burst_size,
                 k_1=k_1,
                 k_max=k_max,
-                num_simulations=num_simulations
+                num_simulations=total_sims
             )
             
+            # Split results for independent sampling
+            # First half for T12, Second half for T32
             # Extract segregation times (columns are chromosomes 1, 2, 3)
-            t1_array = results[:, 0]
-            t2_array = results[:, 1]
-            t3_array = results[:, 2]
             
-            # Calculate time differences (matches Gillespie output format)
-            delta_t12_array = t1_array - t2_array
-            delta_t32_array = t3_array - t2_array
+            # Dataset A (for T12)
+            t1_A = results[:num_simulations, 0]
+            t2_A = results[:num_simulations, 1]
+            # Dataset A T3 is irrelevant
+            
+            # Dataset B (for T32)
+            # Dataset B T1 is irrelevant
+            t2_B = results[num_simulations:, 1]
+            t3_B = results[num_simulations:, 2]
+            
+            # Calculate time differences independently
+            delta_t12_array = t1_A - t2_A
+            delta_t32_array = t3_B - t2_B
             
             return delta_t12_array, delta_t32_array
             
-        except ImportError:
-            # Fall back to Gillespie if FastBetaSimulation is not available
-            warnings.warn("FastBetaSimulation not found, falling back to Gillespie method")
-            use_beta_method = False
+        except ImportError as e:
+            print(f"!!! FastBetaSimulation import failed: {e}")
+            raise ImportError(f"FastBetaSimulation module not found. Gillespie fallback is disabled. Error: {e}")
 
     # Check if we can use the fast Feedback method (Vectorized Sum of Exponentials)
     use_feedback_method = mechanism in ['feedback_onion', 'fixed_burst_feedback_onion', 
@@ -295,6 +305,9 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             elif mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
                 k_1 = calculate_k1_from_params(params)
                 k_max = params['k_max']
+            
+            # RUN INDEPENDENT SIMULATIONS FOR T12 AND T32
+            total_sims = 2 * num_simulations
                 
             results = simulate_batch_feedback(
                 mechanism=mechanism,
@@ -305,62 +318,35 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
                 k_1=k_1,
                 k_max=k_max,
                 burst_size=burst_size,
-                num_simulations=num_simulations
+                num_simulations=total_sims
             )
             
-            t1_array = results[:, 0]
-            t2_array = results[:, 1]
-            t3_array = results[:, 2]
+            # Split results for independent sampling
+            # Dataset A (for T12)
+            t1_A = results[:num_simulations, 0]
+            t2_A = results[:num_simulations, 1]
             
-            delta_t12_array = t1_array - t2_array
-            delta_t32_array = t3_array - t2_array
+            # Dataset B (for T32)
+            t2_B = results[num_simulations:, 1]
+            t3_B = results[num_simulations:, 2]
+            
+            delta_t12_array = t1_A - t2_A
+            delta_t32_array = t3_B - t2_B
             
             return delta_t12_array, delta_t32_array
             
-        except ImportError:
-            warnings.warn("FastFeedbackSimulation not found, falling back to Gillespie")
-            use_feedback_method = False
+        except ImportError as e:
+            print(f"\n!!!!!!!!!!!!!!!!! CRITICAL ERROR !!!!!!!!!!!!!!!!!")
+            print(f"FastFeedbackSimulation import failed: {e}")
+            print(f"Falling back to SLOW Gillespie simulation.")
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+            warnings.warn("FastFeedbackSimulation not found")
+            raise ImportError(f"FastFeedbackSimulation module not found. Gillespie fallback is disabled. Error: {e}")
 
     
-    # Fall back to standard Gillespie simulation for complex mechanisms
-    is_simple = mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']
-    
-    # Prepare rate parameters
-    if is_simple:
-        rate_params = {'k': params['k']}
-        if 'burst_size' in params:
-            rate_params['burst_size'] = params['burst_size']
-        if 'n_inner' in params:
-            rate_params['n_inner'] = params['n_inner']
-    else:
-        rate_params = {
-            'k_1': calculate_k1_from_params(params),
-            'k_max': params['k_max']
-        }
-        if 'burst_size' in params:
-            rate_params['burst_size'] = params['burst_size']
-        if 'n_inner' in params:
-            rate_params['n_inner'] = params['n_inner']
-    
-    initial_state = [params['N1'], params['N2'], params['N3']]
-    delta_t12_list = []
-    delta_t32_list = []
-    
-    for _ in range(num_simulations):
-        sim_class = MultiMechanismSimulation if is_simple else MultiMechanismSimulationTimevary
-        sim = sim_class(
-            mechanism=mechanism,
-            initial_state_list=initial_state,
-            rate_params=rate_params,
-            n0_list=n0_list,
-            max_time=10000.0  # Reduced from 10000.0 to improve performance, 2000 is sufficient for observed data range
-        )
-        
-        _, _, sep_times = sim.simulate()
-        delta_t12_list.append(sep_times[0] - sep_times[1])
-        delta_t32_list.append(sep_times[2] - sep_times[1])
-    
-    return np.array(delta_t12_list), np.array(delta_t32_list)
+    # If neither method was used, raise an error
+    raise ValueError(f"No fast simulation method available for mechanism '{mechanism}'. "
+                   f"Standard Gillespie simulation has been disabled.")
 
 
 
@@ -634,31 +620,20 @@ def get_parameter_bounds(mechanism):
     is_simple = mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']
     
     # Base bounds: n2, N2, rate param(s), r21, r23, R21, R23
-    if is_simple:
-        bounds = [
-            (1.0, 50.0),      # n2
-            (50.0, 1000.0),   # N2
-            (0.001, 0.1),      # k
-            (0.25, 4.0),      # r21
-            (0.25, 4.0),      # r23
-            (0.4, 2),       # R21
-            (0.5, 5.0),       # R23
-        ]
-    else:
-        bounds = [
-            (1.0, 50.0),      # n2
-            (50.0, 1000.0),   # N2
-            (0.001, 0.1),      # k_max
-            (2.0, 240.0),       # tau
-            (0.25, 4.0),      # r21
-            (0.25, 4.0),      # r23
-            (0.4, 2.0),        # R21
-            (0.5, 5.0),       # R23
-        ]
+    bounds = [
+        (0.0, 50.0),      # n2
+        (50.0, 1000.0),   # N2
+        (0.001, 0.1),      # k_max
+        (2.0, 240.0),       # tau
+        (0.25, 4.0),      # r21
+        (0.25, 4.0),      # r23
+        (0.4, 2.0),        # R21
+        (0.5, 5.0),       # R23
+    ]
     
     # Add mechanism-specific optional parameters
     if mechanism in ['fixed_burst', 'fixed_burst_feedback_onion', 
-                      'time_varying_k_fixed_burst', 'time_varying_k_combined', 'time_varying_k_burst_onion']:
+                      'time_varying_k_fixed_burst', 'time_varying_k_combined']:
         bounds.append((1.0, 50.0))  # burst_size
     if mechanism in ['feedback_onion', 'fixed_burst_feedback_onion',
                       'time_varying_k_feedback_onion', 'time_varying_k_combined']:
@@ -704,7 +679,6 @@ def get_parameter_names(mechanism):
         'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_feedback_onion': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_combined': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
-        'time_varying_k_burst_onion': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
     }
     
     if mechanism not in time_varying_params:

@@ -73,23 +73,19 @@ def main():
     params_tv_fb = {**params_tv, 'burst_size': 5.0}
     test_mechanism_support('time_varying_k_fixed_burst', params_tv_fb, n0_list, num_sims)
     
-    # 5. Time Varying K Burst Onion (NEWLY IMPLEMENTED)
-    params_tv_bo = {**params_tv, 'burst_size': 5.0}
-    test_mechanism_support('time_varying_k_burst_onion', params_tv_bo, n0_list, num_sims)
-    
-    # 6. Feedback Onion
+    # 5. Feedback Onion
     params_fo = {**params_simple, 'n_inner': 50.0}
     test_mechanism_support('feedback_onion', params_fo, n0_list, num_sims)
     
-    # 7. Fixed Burst Feedback Onion
+    # 6. Fixed Burst Feedback Onion
     params_fb_fo = {**params_fb, 'n_inner': 50.0}
     test_mechanism_support('fixed_burst_feedback_onion', params_fb_fo, n0_list, num_sims)
     
-    # 8. Time Varying K Feedback Onion
+    # 7. Time Varying K Feedback Onion
     params_tv_fo = {**params_tv, 'n_inner': 50.0}
     test_mechanism_support('time_varying_k_feedback_onion', params_tv_fo, n0_list, num_sims)
     
-    # 9. Time Varying K Combined
+    # 8. Time Varying K Combined
     params_tv_comb = {**params_tv, 'burst_size': 5.0, 'n_inner': 50.0}
     test_mechanism_support('time_varying_k_combined', params_tv_comb, n0_list, num_sims)
 

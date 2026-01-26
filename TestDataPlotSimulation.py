@@ -161,8 +161,6 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         elif mechanism == 'time_varying_k_combined':
             base_params['burst_size'] = params['burst_size']
             base_params['n_inner'] = params['n_inner']
-        elif mechanism == 'time_varying_k_burst_onion':
-            base_params['burst_size'] = params['burst_size']
         
         # Apply mutant modifications
         mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2)
@@ -214,12 +212,6 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
                 'k_max': mutant_params['k_max'],
                 'burst_size': mutant_params['burst_size'],
                 'n_inner': mutant_params['n_inner']
-            }
-        elif mechanism == 'time_varying_k_burst_onion':
-            rate_params = {
-                'k_1': mutant_params['k_1'],
-                'k_max': mutant_params['k_max'],
-                'burst_size': mutant_params['burst_size']
             }
         
         
@@ -635,7 +627,7 @@ def main():
         return
     
     # Test available mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
     
     for mechanism in mechanisms:
         print(f"\n{'-' * 50}")

@@ -17,13 +17,12 @@ class MultiMechanismSimulationTimevary:
         Initialize the simulation.
 
         Args:
-            mechanism (str): 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_burst_onion', 'time_varying_k_combined'
+            mechanism (str): 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined'
             initial_state_list (list): Initial cohesin counts [N1, N2, N3].
             rate_params (dict): 
                 For 'time_varying_k': {'k_1': k_1, 'k_max': k_max} (optional k_max for maximum rate).
                 For 'time_varying_k_fixed_burst': {'k_1': k_1, 'k_max': k_max, 'burst_size': b}.
                 For 'time_varying_k_feedback_onion': {'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner}.
-                For 'time_varying_k_burst_onion': {'k_1': k_1, 'k_max': k_max, 'burst_size': b}.
                 For 'time_varying_k_combined': {'k_1': k_1, 'k_max': k_max, 'burst_size': b, 'n_inner': n_inner}.
             n0_list (list): Threshold counts [n01, n02, n03].
             max_time (float): Maximum expected simulation time.
@@ -43,7 +42,7 @@ class MultiMechanismSimulationTimevary:
     
     def _validate_parameters(self):
         """Check that all required parameters are present."""
-        valid_mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_burst_onion', 'time_varying_k_combined']
+        valid_mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
         if self.mechanism not in valid_mechanisms:
             raise ValueError(f"Mechanism must be one of: {valid_mechanisms}")
         
@@ -56,9 +55,6 @@ class MultiMechanismSimulationTimevary:
         
         if self.mechanism == 'time_varying_k_feedback_onion' and 'n_inner' not in self.rate_params:
             raise ValueError("time_varying_k_feedback_onion mechanism requires 'n_inner' in rate_params.")
-        
-        if self.mechanism == 'time_varying_k_burst_onion' and 'burst_size' not in self.rate_params:
-            raise ValueError("time_varying_k_burst_onion mechanism requires 'burst_size' in rate_params.")
         
         if self.mechanism == 'time_varying_k_combined':
             if 'burst_size' not in self.rate_params:
@@ -74,7 +70,7 @@ class MultiMechanismSimulationTimevary:
                 return 1.0
             return single_cohesin
         
-        elif self.mechanism in ['time_varying_k_fixed_burst', 'time_varying_k_burst_onion', 'time_varying_k_combined']:
+        elif self.mechanism in ['time_varying_k_fixed_burst', 'time_varying_k_combined']:
             def fixed_burst():
                 return self.rate_params['burst_size']
             return fixed_burst
@@ -90,7 +86,7 @@ class MultiMechanismSimulationTimevary:
     def _get_propensity_calculator(self):
         """Return the propensity calculation function for the current mechanism."""
         
-        if self.mechanism in ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_burst_onion']:
+        if self.mechanism in ['time_varying_k', 'time_varying_k_fixed_burst']:
             # Standard propensities: k(t) * state[i]
             def standard_propensities(k_t, states):
                 return [k_t * max(state, 0) for state in states]
@@ -299,7 +295,6 @@ class MultiMechanismSimulationTimevary:
             'time_varying_k', 
             'time_varying_k_fixed_burst', 
             'time_varying_k_feedback_onion', 
-            'time_varying_k_burst_onion', 
             'time_varying_k_combined'
         ]
     
@@ -321,11 +316,6 @@ class MultiMechanismSimulationTimevary:
                 'name': 'Time-Varying k + Onion Feedback',
                 'description': 'Single cohesin with time-varying rate and onion feedback',
                 'parameters': 'k_1 (initial rate), k_max (max rate), n_inner (inner threshold)'
-            },
-            'time_varying_k_burst_onion': {
-                'name': 'Time-Varying k + Burst (No Feedback)',
-                'description': 'Fixed bursts with time-varying rate (no feedback despite name)',
-                'parameters': 'k_1 (initial rate), k_max (max rate), burst_size (burst size)'
             },
             'time_varying_k_combined': {
                 'name': 'Time-Varying k + Burst + Onion Feedback',

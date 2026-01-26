@@ -90,7 +90,7 @@ def main():
     
     # Add mechanism-specific params
     if mechanism in ['fixed_burst', 'fixed_burst_simulation', 'time_varying_k_fixed_burst', 
-                     'time_varying_k_combined', 'time_varying_k_burst_onion']:
+                     'time_varying_k_combined']:
         base_param_names.append('burst_size')
     
     if mechanism in ['feedback_onion', 'feedback_onion_simulation', 'fixed_burst_feedback_onion',

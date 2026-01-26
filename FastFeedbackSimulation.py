@@ -37,6 +37,10 @@ def simulate_feedback_onion_single(N: float, n: float, k: float, n_inner: float)
     Method: Vectorized Sum of Exponentials.
     Rate at state i: λ_i = k * i * W(i)
     """
+    # Round inputs
+    N = int(round(N))
+    n = int(round(n))
+    
     # Create array of all states from N down to n+1
     states = np.arange(int(N), int(n), -1)
     
@@ -72,6 +76,10 @@ def simulate_fixed_burst_feedback_onion_single(N: float, n: float, k: float, n_i
     Path is deterministic: N -> N-b -> N-2b ...
     Waiting time at each step: t_i ~ Exp(k * state * W(state))
     """
+    # Round inputs
+    N = int(round(N))
+    n = int(round(n))
+    
     # States iteration handles the bursts
     # We iterate down by burst_size
     states = np.arange(int(N), int(n), -int(burst_size))
@@ -108,6 +116,10 @@ def simulate_time_varying_combined_single(N: float, n: float, k_1: float, k_max:
     Waiting time at each step depends on current state via:
     Rate = k(t) * state * W(state)
     """
+    # Round inputs
+    N = int(round(N))
+    n = int(round(n))
+    
     current_time = 0.0
     tau = k_max / k_1
     
@@ -165,6 +177,10 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
         ... params ...
     """
     results = np.zeros((num_simulations, 3))
+    
+    # Round inputs
+    initial_states = np.round(initial_states).astype(int)
+    n0_lists = np.round(n0_lists).astype(int)
     
     for i in range(3):
         N = initial_states[i]

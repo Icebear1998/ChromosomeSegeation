@@ -46,8 +46,12 @@ def simulate_simple_beta_single(N: float, n: float, k: float) -> float:
     Returns:
         float: Time of chromosome separation
     """
+    # Round inputs to nearest integer to avoid truncation issues
+    N = int(round(N))
+    n = int(round(n))
+    
     # Number of degradation events needed
-    num_events = int(N - n)
+    num_events = N - n
     
     # Handle edge cases
     if num_events <= 0:
@@ -56,7 +60,7 @@ def simulate_simple_beta_single(N: float, n: float, k: float) -> float:
     # Sample from Beta distribution (order statistic)
     # For the k-th smallest of N samples: Beta(k, N-k+1)
     alpha = num_events
-    beta = int(N) - num_events + 1
+    beta = N - num_events + 1
     
     u = np.random.beta(alpha, beta)
     
@@ -91,8 +95,12 @@ def simulate_simple_beta_vectorized(N: np.ndarray, n: np.ndarray, k: np.ndarray,
     n = np.atleast_1d(n)
     k = np.atleast_1d(k)
     
+    # Round inputs to nearest integer
+    N = np.round(N)
+    n = np.round(n)
+    
     # Calculate number of events needed
-    num_events = (N - n).astype(int)
+    num_events = N - n
     
     # Prepare output shape
     if num_simulations > 1:
@@ -145,12 +153,18 @@ def simulate_fixed_burst_beta_single(N: float, n: float, k: float, burst_size: f
     Returns:
         float: Time of chromosome separation
     """
+    # Round inputs to nearest integer
+    N = int(round(N))
+    n = int(round(n))
+    
     # Transform to "super-cohesin" representation
     N_prime = int(np.ceil(N / burst_size))
-    n_prime = int(np.floor(n / burst_size))
+    # Corrected formula for n_prime to handle residual cohesins
+    n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
     k_prime = k * burst_size
     
     # Use simple Beta sampling on transformed parameters
+    # Note: N_prime, n_prime are already integers, but function will round them again (no-op)
     return simulate_simple_beta_single(N_prime, n_prime, k_prime)
 
 
@@ -174,8 +188,12 @@ def simulate_time_varying_k_beta_single(N: float, n: float, k_1: float, k_max: f
     Returns:
         float: Time of chromosome separation
     """
+    # Round inputs to nearest integer
+    N = int(round(N))
+    n = int(round(n))
+    
     # Number of degradation events needed
-    num_events = int(N - n)
+    num_events = N - n
     
     # Handle edge cases
     if num_events <= 0:
@@ -223,9 +241,14 @@ def simulate_time_varying_k_fixed_burst_beta_single(N: float, n: float, k_1: flo
     Returns:
         float: Time of chromosome separation
     """
+    # Round inputs to nearest integer
+    N = int(round(N))
+    n = int(round(n))
+    
     # Transform to "super-cohesin" representation
     N_prime = int(np.ceil(N / burst_size))
-    n_prime = int(np.floor(n / burst_size))
+    # Corrected formula for n_prime to handle residual cohesins
+    n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
     k_1_prime = k_1 * burst_size
     k_max_prime = k_max * burst_size
     
@@ -237,8 +260,6 @@ def simulate_time_varying_k_fixed_burst_beta_single(N: float, n: float, k_1: flo
 class FastBetaSimulator:
     """
     Class wrapper to match the interface of MultiMechanismSimulation.
-    
-    This allows drop-in replacement in existing code pipelines.
     """
     
     def __init__(self, mechanism: str, initial_state_list: list, 
@@ -257,8 +278,10 @@ class FastBetaSimulator:
             raise ValueError(f"FastBetaSimulator only supports 'simple' and 'fixed_burst', got '{mechanism}'")
         
         self.mechanism = mechanism
-        self.initial_state = np.array(initial_state_list, dtype=float)
-        self.n0_list = np.array(n0_list, dtype=float)
+        # ROUND inputs here
+        self.initial_state = np.round(np.array(initial_state_list, dtype=float))
+        self.n0_list = np.round(np.array(n0_list, dtype=float))
+        
         self.k = rate_params['k']
         self.burst_size = rate_params.get('burst_size', 1.0)
         self.max_time = max_time
@@ -317,6 +340,10 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
     """
     results = np.zeros((num_simulations, 3))
     
+    # Round inputs for consistent integer handling
+    initial_states = np.round(initial_states).astype(int)
+    n0_lists = np.round(n0_lists).astype(int)
+    
     for i in range(3):
         N = initial_states[i]
         n = n0_lists[i]
@@ -332,7 +359,8 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
                 
         elif mechanism == 'fixed_burst':
             N_prime = int(np.ceil(N / burst_size))
-            n_prime = int(np.floor(n / burst_size))
+            # Corrected formula for n_prime
+            n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
             k_prime = k * burst_size
             num_events = N_prime - n_prime
             
@@ -361,9 +389,10 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
                 results[linear_phase, i] = np.sqrt(2 * y[linear_phase] / k_1)
                 results[~linear_phase, i] = tau + (y[~linear_phase] - y_critical) / k_max
                 
-        elif mechanism in ['time_varying_k_fixed_burst', 'time_varying_k_burst_onion']:
+        elif mechanism == 'time_varying_k_fixed_burst':
             N_prime = int(np.ceil(N / burst_size))
-            n_prime = int(np.floor(n / burst_size))
+            # Corrected formula for n_prime
+            n_prime = int(np.ceil((n - N + (N_prime - 1) * burst_size + 1) / burst_size))
             k_1_prime = k_1 * burst_size
             k_max_prime = k_max * burst_size
             num_events = N_prime - n_prime

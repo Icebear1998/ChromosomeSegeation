@@ -259,8 +259,6 @@ def get_parameter_bounds(mechanism):
     elif mechanism == 'time_varying_k_combined':
         bounds.append((1.0, 50.0))    # burst_size
         bounds.append((1.0, 100.0))   # n_inner
-    elif mechanism == 'time_varying_k_burst_onion':
-        bounds.append((1.0, 50.0))    # burst_size
     
     # Add mutant parameter bounds
     bounds.extend([
@@ -290,8 +288,6 @@ def get_parameter_names(mechanism):
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau']
     elif mechanism == 'time_varying_k_combined':
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau']
-    elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau']
     else:
         raise ValueError(f"Unknown mechanism: {mechanism}")
     

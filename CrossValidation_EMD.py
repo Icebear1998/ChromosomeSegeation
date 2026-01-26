@@ -44,22 +44,16 @@ def create_folds(data_dict, k_folds=5, seed=42):
         t12 = data_dict[name]['delta_t12']
         t32 = data_dict[name]['delta_t32']
         
-        # Use consistent shuffling to maintain paired observations
-        # Create a single index array based on the minimum length
-        min_len = min(len(t12), len(t32)) if len(t32) > 0 else len(t12)
-        shared_indices = np.random.permutation(min_len)
-        fold_shared_indices = np.array_split(shared_indices, k_folds)
+        # Split t12
+        indices_12 = np.random.permutation(len(t12))
+        fold_indices_12 = np.array_split(indices_12, k_folds)
         
-        # For t12: use shared indices + any extra indices beyond min_len
-        extra_t12_indices = np.random.permutation(np.arange(min_len, len(t12))) if len(t12) > min_len else np.array([])
-        fold_indices_12 = [np.concatenate([fold_shared_indices[i], extra_t12_indices[i*len(extra_t12_indices)//k_folds:(i+1)*len(extra_t12_indices)//k_folds]]) if len(extra_t12_indices) > 0 else fold_shared_indices[i] for i in range(k_folds)]
-        
-        # For t32: use the same shared indices
+        # Split t32
         if len(t32) > 0:
-            extra_t32_indices = np.random.permutation(np.arange(min_len, len(t32))) if len(t32) > min_len else np.array([])
-            fold_indices_32 = [np.concatenate([fold_shared_indices[i], extra_t32_indices[i*len(extra_t32_indices)//k_folds:(i+1)*len(extra_t32_indices)//k_folds]]) if len(extra_t32_indices) > 0 else fold_shared_indices[i] for i in range(k_folds)]
+            indices_32 = np.random.permutation(len(t32))
+            fold_indices_32 = np.array_split(indices_32, k_folds)
         else:
-            fold_indices_32 = [np.array([], dtype=int) for _ in range(k_folds)]
+            fold_indices_32 = [[] for _ in range(k_folds)]
         
         for k in range(k_folds):
             # Validation indices for this fold
@@ -198,7 +192,7 @@ def run_cross_validation(mechanism, k_folds=5, n_simulations=2000, max_iter=1000
     df.to_csv(f'ModelComparisonEMDResults/cv_results_{mechanism}.csv', index=False)
 
 if __name__ == "__main__":
-    mechanism = 'time_varying_k_combined' # Default to simple for next run
+    mechanism = 'simple' # Default to simple for next run
     n_simulations=10000
     max_iter=1000
     tol=0.01

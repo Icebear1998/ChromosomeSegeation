@@ -211,24 +211,6 @@ def wildtype_objective(params_vector, mechanism, wildtype_data, num_simulations=
                 'N1': N1, 'N2': N2, 'N3': N3,
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
             }
-        elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size = params_vector
-            # Calculate k_1 from k_max and tau
-            k_1 = k_max / tau
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                return 1e6
-            
-            base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
-            }
         else:
             return 1e6
         
@@ -361,8 +343,6 @@ def get_wildtype_parameter_bounds(mechanism):
     elif mechanism == 'time_varying_k_combined':
         bounds.append((1, 20))   # burst_size
         bounds.append((10, 50))  # n_inner
-    elif mechanism == 'time_varying_k_burst_onion':
-        bounds.append((1, 20))   # burst_size
     
     return bounds
 
@@ -434,8 +414,6 @@ def optimize_wildtype(mechanism, wildtype_data, max_iterations=200, num_simulati
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner']
     elif mechanism == 'time_varying_k_combined':
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner']
-    elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size']
     
     param_dict = dict(zip(param_names, params))
     
@@ -775,7 +753,7 @@ def main():
         return
     
     # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
     mechanism = mechanisms[1]  # Test fixed_burst mechanism
     
     print(f"\nRunning independent optimization for {mechanism} with ALL strains")

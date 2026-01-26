@@ -46,10 +46,6 @@ MECHANISM_PARAM_NAMES = {
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
         'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
-    'time_varying_k_burst_onion': [
-        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
-    ],
 }
 
 

@@ -134,24 +134,6 @@ def joint_objective_with_bootstrapping(params_vector, mechanism, datasets,
                 'N1': N1, 'N2': N2, 'N3': N3,
                 'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size, 'n_inner': n_inner
             }
-        elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_1, k_max, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau = params_vector
-            # Calculate derived parameters from ratios
-            n1 = max(r21 * n2, 1)
-            n3 = max(r23 * n2, 1)
-            N1 = max(R21 * N2, 1)
-            N3 = max(R23 * N2, 1)
-            
-            # Add constraint checks similar to MoM optimization
-            if n1 >= N1 or n2 >= N2 or n3 >= N3:
-                print(f"Constraint violation: n >= N. n1={n1:.1f}, N1={N1:.1f}, n2={n2:.1f}, N2={N2:.1f}, n3={n3:.1f}, N3={N3:.1f}")
-                return 1e6
-            
-            base_params = {
-                'n1': n1, 'n2': n2, 'n3': n3,
-                'N1': N1, 'N2': N2, 'N3': N3,
-                'k_1': k_1, 'k_max': k_max, 'burst_size': burst_size
-            }
         else:
             return 1e6
         
@@ -255,14 +237,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                 'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
                 'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
                 'k_1': k_1, 'k_max': k_max, 'tau': tau, 'burst_size': burst_size, 'n_inner': n_inner
-            }
-        elif mechanism == 'time_varying_k_burst_onion':
-            n2, N2, k_max, tau, r21, r23, R21, R23, burst_size, alpha, beta_k, beta_tau = params_vector
-            k_1 = k_max / tau
-            base_params = {
-                'n1': max(r21 * n2, 1), 'n2': n2, 'n3': max(r23 * n2, 1),
-                'N1': max(R21 * N2, 1), 'N2': N2, 'N3': max(R23 * N2, 1),
-                'k_1': k_1, 'k_max': k_max, 'tau': tau, 'burst_size': burst_size
             }
         else:
             return 1e6
@@ -409,8 +383,6 @@ def run_optimization(mechanism, datasets, max_iterations=300, num_simulations=50
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau']
     elif mechanism == 'time_varying_k_combined':
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau']
-    elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau']
     
     param_dict = dict(zip(param_names, params))
     
@@ -531,8 +503,6 @@ def run_optimization_with_bootstrapping(mechanism, datasets,
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau']
     elif mechanism == 'time_varying_k_combined':
         param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau']
-    elif mechanism == 'time_varying_k_burst_onion':
-        param_names = ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau']
     
     param_dict = dict(zip(param_names, params))
     
@@ -655,7 +625,7 @@ def main():
         return
     
     # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
     mechanism = mechanisms[3]  # Test the burst_onion mechanism
     
     print(f"\nOptimizing {mechanism} for ALL strains")
@@ -703,7 +673,7 @@ def main_simple():
         return
     
     # Test mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined', 'time_varying_k_burst_onion']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
     mechanism = mechanisms[0]  # Test time_varying_k
     
     try:
