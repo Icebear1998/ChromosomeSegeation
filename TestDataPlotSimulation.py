@@ -7,102 +7,48 @@ Works with MultiMechanismSimulationTimevary and the new data structure.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, MultipleLocator
 from MultiMechanismSimulationTimevary import MultiMechanismSimulationTimevary
-from simulation_utils import load_experimental_data, apply_mutant_params, calculate_emd, calculate_wasserstein_p_value
+from simulation_utils import load_experimental_data, apply_mutant_params, calculate_emd, calculate_wasserstein_p_value, load_optimized_parameters
 import warnings
 warnings.filterwarnings('ignore')
 
 
-def load_optimized_parameters(mechanism, filename=None):
+def create_centered_bins(data, bin_width=7.0):
     """
-    Load optimized parameters from file and calculate derived parameters.
-    Also extracts Total Validation EMD if available.
+    Create bins centered on 0 with specified width.
+    Bins have edges at ±3.5, ±10.5, ±17.5, etc. for bin_width=7.
     
     Args:
-        mechanism (str): Mechanism name
-        filename (str): Parameter file name (optional)
+        data: Data to determine bin range
+        bin_width: Width of each bin (default: 7.0)
     
     Returns:
-        dict: Optimized parameters including both ratio and derived parameters, plus 'total_emd' if found
+        np.array: Bin edges
     """
-    if filename is None:
-        filename = f"simulation_optimized_parameters_{mechanism}.txt"
+    data_min = np.min(data)
+    data_max = np.max(data)
     
-    try:
-        params = {}
-        total_emd = None
-        
-        with open(filename, 'r') as f:
-            lines = f.readlines()
-            
-        # Find the parameters section
-        param_section = False
-        derived_section = False
-        mutant_section = False
-        
-        for line in lines:
-            line_stripped = line.strip()
-            
-            # Extract Total Validation EMD
-            if "Total Validation EMD:" in line:
-                try:
-                    total_emd = float(line.split(':')[1].strip())
-                    params['total_emd'] = total_emd
-                except:
-                    pass
-            
-            # Handle different parameter section headers
-            if ("Optimized Parameters (ratio-based):" in line or 
-                "Wildtype Parameters (ratio-based):" in line):
-                param_section = True
-                derived_section = False
-                mutant_section = False
-                continue
-            elif ("Derived Parameters:" in line or 
-                  "Derived Wildtype Parameters:" in line):
-                param_section = False
-                derived_section = True
-                mutant_section = False
-                continue
-            elif ("=== MUTANT PARAMETERS ===" in line or 
-                  line_stripped.endswith("Mutant:") and not line_stripped.startswith("=")):
-                param_section = False
-                derived_section = False
-                mutant_section = True
-                continue
-            elif line_stripped.startswith("===") or line_stripped.startswith("---"):
-                param_section = False
-                derived_section = False
-                mutant_section = False
-                continue
-            
-            # Parse parameter lines
-            if "=" in line_stripped and not line_stripped.startswith("#"):
-                if param_section or derived_section or mutant_section:
-                    try:
-                        key, value = line_stripped.split(" = ", 1)
-                        params[key.strip()] = float(value.strip())
-                    except ValueError:
-                        continue
-        
-        # If we have ratio parameters but not derived ones, calculate them
-        if 'r21' in params:
-            params['n1'] = max(params['r21'] * params['n2'], 1)
-            params['n3'] = max(params['r23'] * params['n2'], 1)
-            params['N1'] = max(params['R21'] * params['N2'], 1)
-            params['N3'] = max(params['R23'] * params['N2'], 1)
-            print("Calculated derived parameters from ratios")
-        
-        print(f"Loaded parameters from {filename}")
-        if total_emd is not None:
-            print(f"Total Validation EMD: {total_emd:.2f}")
-        print(f"Available parameters: {list(params.keys())}")
-        return params
+    # Calculate how many bins we need on each side of 0
+    # Bins are centered on 0, so edges are at ±3.5, ±10.5, ±17.5, etc.
+    half_width = bin_width / 2.0
     
-    except Exception as e:
-        print(f"Error loading parameters: {e}")
-        return {}
+    # Find the number of bins needed on the negative side
+    n_bins_neg = int(np.ceil((abs(data_min) - half_width) / bin_width)) + 1
+    # Find the number of bins needed on the positive side  
+    n_bins_pos = int(np.ceil((data_max - half_width) / bin_width)) + 1
+    
+    # Create bin edges
+    neg_edges = np.arange(-half_width, -(n_bins_neg * bin_width + half_width), -bin_width)[::-1]
+    pos_edges = np.arange(half_width, n_bins_pos * bin_width + half_width, bin_width)
+    
+    bins = np.concatenate([neg_edges, pos_edges])
+    bins = np.sort(np.unique(bins))
+    
+    return bins
+
+
+
 
 
 def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, beta_tau2=None, beta_k1=None, beta_k2=None, beta_k3=None, num_simulations=500):
@@ -146,19 +92,22 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         
         # k_1 calculation is now handled by simulation_utils.calculate_k1_from_params
         
+        # Strip _wfeedback suffix for mechanism type checks (suffix only affects bounds, not logic)
+        base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
+        
         # Add mechanism-specific parameters
-        if mechanism == 'fixed_burst':
+        if base_mechanism == 'fixed_burst':
             base_params['burst_size'] = params['burst_size']
-        elif mechanism == 'feedback_onion':
+        elif base_mechanism == 'steric_hindrance':
             base_params['n_inner'] = params['n_inner']
-        elif mechanism == 'fixed_burst_feedback_onion':
+        elif base_mechanism == 'fixed_burst_steric_hindrance':
             base_params['burst_size'] = params['burst_size']
             base_params['n_inner'] = params['n_inner']
-        elif mechanism == 'time_varying_k_fixed_burst':
+        elif base_mechanism == 'time_varying_k_fixed_burst':
             base_params['burst_size'] = params['burst_size']
-        elif mechanism == 'time_varying_k_feedback_onion':
+        elif base_mechanism == 'time_varying_k_steric_hindrance':
             base_params['n_inner'] = params['n_inner']
-        elif mechanism == 'time_varying_k_combined':
+        elif base_mechanism == 'time_varying_k_combined':
             base_params['burst_size'] = params['burst_size']
             base_params['n_inner'] = params['n_inner']
         
@@ -169,44 +118,44 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         initial_state = [mutant_params['N1'], mutant_params['N2'], mutant_params['N3']]
         
         # Build rate_params based on mechanism type
-        if mechanism == 'simple':
+        if base_mechanism == 'simple':
             rate_params = {
                 'k': mutant_params['k']
             }
-        elif mechanism == 'fixed_burst':
+        elif base_mechanism == 'fixed_burst':
             rate_params = {
                 'k': mutant_params['k'],
                 'burst_size': mutant_params['burst_size']
             }
-        elif mechanism == 'feedback_onion':
+        elif base_mechanism == 'steric_hindrance':
             rate_params = {
                 'k': mutant_params['k'],
                 'n_inner': mutant_params['n_inner']
             }
-        elif mechanism == 'fixed_burst_feedback_onion':
+        elif base_mechanism == 'fixed_burst_steric_hindrance':
             rate_params = {
                 'k': mutant_params['k'],
                 'burst_size': mutant_params['burst_size'],
                 'n_inner': mutant_params['n_inner']
             }
-        elif mechanism == 'time_varying_k':
+        elif base_mechanism == 'time_varying_k':
             rate_params = {
                 'k_1': mutant_params['k_1'],
                 'k_max': mutant_params['k_max']
             }
-        elif mechanism == 'time_varying_k_fixed_burst':
+        elif base_mechanism == 'time_varying_k_fixed_burst':
             rate_params = {
                 'k_1': mutant_params['k_1'],
                 'k_max': mutant_params['k_max'],
                 'burst_size': mutant_params['burst_size']
             }
-        elif mechanism == 'time_varying_k_feedback_onion':
+        elif base_mechanism == 'time_varying_k_steric_hindrance':
             rate_params = {
                 'k_1': mutant_params['k_1'],
                 'k_max': mutant_params['k_max'],
                 'n_inner': mutant_params['n_inner']
             }
-        elif mechanism == 'time_varying_k_combined':
+        elif base_mechanism == 'time_varying_k_combined':
             rate_params = {
                 'k_1': mutant_params['k_1'],
                 'k_max': mutant_params['k_max'],
@@ -306,21 +255,25 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
             x_min, x_max = -100, 100    
         x_grid = np.linspace(x_min, x_max, 401)
         # Plot T1-T2 (top row) - matching TestDataPlot.py style
-        # Calculate bins for 7 second intervals
+        # Calculate bins centered on 0 (edges at ±3.5, ±10.5, etc.)
         bin_width = 7.0
         all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
-        bins_12 = np.arange(np.floor(all_data_12.min() / bin_width) * bin_width, 
-                            np.ceil(all_data_12.max() / bin_width) * bin_width + bin_width, 
-                            bin_width)
+        bins_12 = create_centered_bins(all_data_12, bin_width=bin_width)
         
         ax_12 = axes[0, i]
-        ax_12.hist(exp_delta_t12, bins=bins_12, alpha=0.6, label='Experimental data', color='lightblue', density=True)
-        ax_12.hist(sim_delta_t12, bins=bins_12, alpha=0.6, label='Simulated data', color='orange', density=True)
+        ax_12.hist(exp_delta_t12, bins=bins_12, alpha=0.7, label='Experimental data', color='lightblue', density=True, rwidth=0.9)
+        ax_12.hist(sim_delta_t12, bins=bins_12, alpha=0.4, label='Simulated data', color='orange', density=True, rwidth=0.9)
         ax_12.set_xlim(x_min - 20, x_max + 20)
         ax_12.set_title(f'{title}')  # Only dataset name
         ax_12.set_xlabel('Time Difference (T1-T2)')
         ax_12.set_ylabel('Percentage of cells')
         ax_12.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
+        
+        # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
+        # Use larger interval for Velcade due to wider range
+        tick_interval = 56 if dataset_name == 'velcade' else 28
+        ax_12.xaxis.set_major_locator(MultipleLocator(tick_interval))
+        
         ax_12.legend(fontsize=8)
         ax_12.grid(True, alpha=0.3)
         
@@ -338,20 +291,23 @@ def create_comparison_plot(mechanism, params, experimental_data, num_simulations
                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
         # Plot T3-T2 (bottom row) - matching TestDataPlot.py style
-        # Calculate bins for 3.5 second intervals
+        # Calculate bins centered on 0 (same width as T1-T2)
         all_data_32 = np.concatenate([exp_delta_t32, sim_delta_t32])
-        bins_32 = np.arange(np.floor(all_data_32.min() / bin_width) * bin_width, 
-                            np.ceil(all_data_32.max() / bin_width) * bin_width + bin_width, 
-                            bin_width)
+        bins_32 = create_centered_bins(all_data_32, bin_width=bin_width)
         
         ax_32 = axes[1, i]
-        ax_32.hist(exp_delta_t32, bins=bins_32, alpha=0.6, label='Experimental data', color='lightblue', density=True)
-        ax_32.hist(sim_delta_t32, bins=bins_32, alpha=0.6, label='Simulated data', color='orange', density=True)
+        ax_32.hist(exp_delta_t32, bins=bins_32, alpha=0.7, label='Experimental data', color='lightblue', density=True, rwidth=0.9)
+        ax_32.hist(sim_delta_t32, bins=bins_32, alpha=0.4, label='Simulated data', color='orange', density=True, rwidth=0.9)
         ax_32.set_xlim(x_min- 20, x_max + 20)
         ax_32.set_title('')  # No subtitle for bottom row
         ax_32.set_xlabel('Time Difference (T3-T2)')
         ax_32.set_ylabel('Percentage of cells')
         ax_32.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
+        
+        # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
+        tick_interval = 56 if dataset_name == 'velcade' else 28
+        ax_32.xaxis.set_major_locator(MultipleLocator(tick_interval))
+        
         ax_32.legend(fontsize=8)
         ax_32.grid(True, alpha=0.3)
         
@@ -441,21 +397,25 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
         x_min, x_max = -100, 100    
     x_grid = np.linspace(x_min, x_max, 401)
     
-    # Calculate bins for 7 second intervals
+    # Calculate bins centered on 0 (edges at ±3.5, ±10.5, etc.)
     bin_width = 7.0
     all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
-    bins_12 = np.arange(np.floor(all_data_12.min() / bin_width) * bin_width, 
-                        np.ceil(all_data_12.max() / bin_width) * bin_width + bin_width, 
-                        bin_width)
+    bins_12 = create_centered_bins(all_data_12, bin_width=bin_width)
     
     # Plot Chrom1 - Chrom2
-    ax1.hist(exp_delta_t12, bins=bins_12, density=True, alpha=0.85, label='Experimental data', color='lightgrey')
-    ax1.hist(sim_delta_t12, bins=bins_12, density=True, alpha=0.85, label='Simulated data', color='lightskyblue')
+    ax1.hist(exp_delta_t12, bins=bins_12, density=True, alpha=0.9, label='Experimental data', color='lightgrey', rwidth=0.9)
+    ax1.hist(sim_delta_t12, bins=bins_12, density=True, alpha=0.6, label='Simulated data', color='lightskyblue', rwidth=0.9)
     ax1.set_xlim(x_min - 20, x_max + 20)
     ax1.set_xlabel(r'$t_{ChrI} - t_{ChrII}$ (sec)')
     ax1.set_ylabel('Percentage of cells')
     ax1.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
     ax1.set_title('chromosome I vs. II')  # No subtitle - dataset name is in main title
+    
+    # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
+    # Use larger interval for Velcade due to wider range
+    tick_interval = 56 if dataset == 'velcade' else 28
+    ax1.xaxis.set_major_locator(MultipleLocator(tick_interval))
+    
     ax1.legend()
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
@@ -468,20 +428,23 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
              verticalalignment='top', fontsize=9, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
-    # Calculate bins for 3.5 second intervals for Chrom3 - Chrom2
+    # Calculate bins centered on 0 (same width as T1-T2)
     all_data_32 = np.concatenate([exp_delta_t32, sim_delta_t32])
-    bins_32 = np.arange(np.floor(all_data_32.min() / bin_width) * bin_width, 
-                        np.ceil(all_data_32.max() / bin_width) * bin_width + bin_width, 
-                        bin_width)
+    bins_32 = create_centered_bins(all_data_32, bin_width=bin_width)
     
     # Plot Chrom3 - Chrom2
-    ax2.hist(exp_delta_t32, bins=bins_32, density=True, alpha=0.85, label='Experimental data', color='lightgrey')
-    ax2.hist(sim_delta_t32, bins=bins_32, density=True, alpha=0.85, label='Simulated data', color='lightskyblue')
+    ax2.hist(exp_delta_t32, bins=bins_32, density=True, alpha=0.9, label='Experimental data', color='lightgrey', rwidth=0.9)
+    ax2.hist(sim_delta_t32, bins=bins_32, density=True, alpha=0.6, label='Simulated data', color='lightskyblue', rwidth=0.9)
     ax2.set_xlim(x_min - 20, x_max + 20)
-    ax2.set_xlabel(r'$t_{ChrI} - t_{ChrII}$ (sec)')
+    ax2.set_xlabel(r'$t_{ChrIII} - t_{ChrII}$ (sec)')
     ax2.set_ylabel('Percentage of cells')
     ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
     ax2.set_title('chromosome II vs. III')  # No subtitle
+    
+    # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
+    tick_interval = 56 if dataset == 'velcade' else 28
+    ax2.xaxis.set_major_locator(MultipleLocator(tick_interval))
+    
     ax2.legend()
     ax2.spines['top'].set_visible(False)
     ax2.spines['right'].set_visible(False)
@@ -627,7 +590,7 @@ def main():
         return
     
     # Test available mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
+    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_steric_hindrance', 'time_varying_k_combined']
     
     for mechanism in mechanisms:
         print(f"\n{'-' * 50}")
@@ -659,9 +622,9 @@ if __name__ == "__main__":
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'simple'  # Choose mechanism to test
-    filename = 'simulation_optimized_parameters_simple.txt'
-    dataset = 'velcade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
+    mechanism = 'time_varying_k_wfeedback'  # Choose mechanism to test
+    filename = 'simulation_optimized_parameters_time_varying_k_wfeedback.txt'
+    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
     
     if run_all_mechanisms:
         main()

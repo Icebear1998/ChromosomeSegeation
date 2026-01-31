@@ -10,14 +10,14 @@ Mechanisms can include:
 1. Constant rate mechanisms:
    - simple: Constant degradation rate
    - fixed_burst: Constant rate with fixed burst sizes
-   - feedback_onion: Constant rate with onion feedback
-   - fixed_burst_feedback_onion: Constant rate with fixed bursts and onion feedback
+   - steric_hindrance: Constant rate with steric hindrance
+   - fixed_burst_steric_hindrance: Constant rate with fixed bursts and steric hindrance
 
 2. Time-varying rate mechanisms:
    - time_varying_k: Time-varying degradation rate
    - time_varying_k_fixed_burst: Time-varying rate with fixed bursts
-   - time_varying_k_feedback_onion: Time-varying rate with onion feedback
-   - time_varying_k_combined: Time-varying rate with fixed bursts and onion feedback
+   - time_varying_k_steric_hindrance: Time-varying rate with steric hindrance
+   - time_varying_k_combined: Time-varying rate with fixed bursts and steric hindrance
 """
 
 import numpy as np
@@ -164,12 +164,12 @@ def create_comparison_plots(all_results, save_plots=True):
         'simple',  # Base model
         # One additional mechanism
         'fixed_burst',
-        'feedback_onion', 
+        'steric_hindrance', 
         'time_varying_k',
         # Two additional mechanisms
-        'fixed_burst_feedback_onion',
+        'fixed_burst_steric_hindrance',
         'time_varying_k_fixed_burst',
-        'time_varying_k_feedback_onion',
+        'time_varying_k_steric_hindrance',
         # All three additional mechanisms
         'time_varying_k_combined'
     ]
@@ -316,8 +316,8 @@ def main():
     """
     # ========== CONFIGURATION (Edit these for different runs) ==========
     K_FOLDS = 5              # Number of cross-validation folds
-    N_SIMULATIONS = 10000     # Number of simulations per evaluation
-    MAX_ITER = 1000          # Maximum iterations for optimization
+    N_SIMULATIONS = 5000     # Number of simulations per evaluation
+    MAX_ITER = 2000          # Maximum iterations for optimization
     TOL = 0.01               # Tolerance for optimization convergence
     # ===================================================================
     
@@ -414,16 +414,22 @@ def main():
     # Define mechanisms to compare
     mechanisms = [
         # Constant rate mechanisms
-        'simple',
-        'fixed_burst',
-        # 'feedback_onion',
-        # 'fixed_burst_feedback_onion',
+        # 'simple',
+        # 'fixed_burst',
+       # 'steric_hindrance',
+        # 'fixed_burst_steric_hindrance',
         
         # Time-varying rate mechanisms
-        'time_varying_k',
-        'time_varying_k_fixed_burst',
-        # 'time_varying_k_feedback_onion',
+        # 'time_varying_k',
+        # 'time_varying_k_fixed_burst',
         # 'time_varying_k_combined',
+        # 'time_varying_k_steric_hindrance',
+
+        # Time-varying with feedback mechanisms
+        'time_varying_k_wfeedback',
+        'time_varying_k_fixed_burst_wfeedback',
+        'time_varying_k_combined_wfeedback',
+        'time_varying_k_steric_hindrance_wfeedback'
     ]
     
     print(f"\n🔬 Comparing {len(mechanisms)} mechanisms:")

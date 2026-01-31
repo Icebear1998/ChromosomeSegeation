@@ -89,6 +89,117 @@ def load_experimental_data():
         return {}
 
 
+def load_optimized_parameters(mechanism, filename=None):
+    """
+    Load optimized parameters from file and calculate derived parameters.
+    Also extracts Total Validation EMD if available.
+    
+    Supports both old and new output formats.
+    
+    Args:
+        mechanism (str): Mechanism name
+        filename (str): Parameter file name (optional)
+    
+    Returns:
+        dict: Optimized parameters including both ratio and derived parameters, plus 'total_emd' if found
+    """
+    if filename is None:
+        filename = f"simulation_optimized_parameters_{mechanism}.txt"
+    
+    try:
+        params = {}
+        total_emd = None
+        
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+            
+        # Find the parameters section
+        param_section = False
+        derived_section = False
+        mutant_section = False
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Extract Total EMD (both old and new formats)
+            if "Total Validation EMD:" in line or "Total EMD:" in line:
+                try:
+                    total_emd = float(line.split(':')[1].strip())
+                    params['total_emd'] = total_emd
+                except:
+                    pass
+            
+            # Handle different parameter section headers
+            # New format: "OPTIMIZED PARAMETERS" or "Derived Parameters:"
+            # Old format: "Optimized Parameters (ratio-based):" or "Wildtype Parameters (ratio-based):"
+            if ("OPTIMIZED PARAMETERS" in line or 
+                "Optimized Parameters (ratio-based):" in line or 
+                "Wildtype Parameters (ratio-based):" in line):
+                param_section = True
+                derived_section = False
+                mutant_section = False
+                continue
+            elif ("Derived Parameters:" in line or 
+                  "Derived Wildtype Parameters:" in line):
+                param_section = False
+                derived_section = True
+                mutant_section = False
+                continue
+            elif ("=== MUTANT PARAMETERS ===" in line or 
+                  (line_stripped.endswith("Mutant:") and not line_stripped.startswith("="))):
+                param_section = False
+                derived_section = False
+                mutant_section = True
+                continue
+            elif line_stripped.startswith("===") or line_stripped.startswith("---"):
+                # Don't turn off sections for just any separator - check if it's ending a section
+                if param_section or derived_section or mutant_section:
+                    # Only end section if this is a major separator (followed by new section)
+                    if "===" in line:
+                        param_section = False
+                        derived_section = False
+                        mutant_section = False
+                continue
+            
+            # Parse parameter lines
+            if "=" in line_stripped and not line_stripped.startswith("#"):
+                if param_section or derived_section or mutant_section:
+                    try:
+                        # Handle both formats: "key = value" and "key             = value"
+                        parts = line_stripped.split("=", 1)
+                        if len(parts) == 2:
+                            key = parts[0].strip()
+                            value = parts[1].strip()
+                            params[key] = float(value)
+                    except (ValueError, IndexError):
+                        continue
+        
+        # If we have ratio parameters but not derived ones, calculate them
+        if 'r21' in params and 'n2' in params:
+            if 'n1' not in params:
+                params['n1'] = max(params['r21'] * params['n2'], 1)
+            if 'n3' not in params:
+                params['n3'] = max(params['r23'] * params['n2'], 1)
+            if 'N1' not in params:
+                params['N1'] = max(params['R21'] * params['N2'], 1)
+            if 'N3' not in params:
+                params['N3'] = max(params['R23'] * params['N2'], 1)
+            print("Calculated derived parameters from ratios")
+        
+        print(f"Loaded parameters from {filename}")
+        if total_emd is not None:
+            print(f"Total EMD: {total_emd:.2f}")
+        print(f"Available parameters: {list(params.keys())}")
+        return params
+    
+    except Exception as e:
+        print(f"Error loading parameters: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
+
+
+
 def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_k1=None, beta_k2=None, beta_k3=None, beta_tau=None, beta_tau2=None):
     """
     Apply mutant-specific parameter modifications for both simple and time-varying mechanisms.
@@ -199,15 +310,17 @@ def calculate_k1_from_params(params):
 def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     """
     Run simulations for a given mechanism and parameters.
-    Handles both simple mechanisms (simple, fixed_burst, feedback_onion, fixed_burst_feedback_onion)
+    Handles both simple mechanisms (simple, fixed_burst, steric_hindrance, fixed_burst_steric_hindrance)
     and time-varying mechanisms (time_varying_k, time_varying_k_fixed_burst, etc.)
+    
+    Supports mechanism variants with _wfeedback suffix (e.g., time_varying_k_wfeedback).
     
     OPTIMIZATION: Uses O(1) Beta sampling for 'simple', 'fixed_burst', 'time_varying_k', 
     and 'time_varying_k_fixed_burst' mechanisms, falling back to Gillespie for complex 
     mechanisms (feedback, time-varying feedback).
     
     Args:
-        mechanism (str): Mechanism name
+        mechanism (str): Mechanism name (may include _wfeedback suffix)
         params (dict): Parameter dictionary
         n0_list (list): List of threshold values [n01, n02, n03]
         num_simulations (int): Number of simulations to run
@@ -215,8 +328,12 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     Returns:
         tuple: (delta_t12_array, delta_t32_array) as numpy arrays, or (None, None) on failure
     """
+    # Strip _wfeedback suffix to get base mechanism for dispatch logic
+    # (The suffix only affects parameter bounds, not the simulation logic)
+    base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
+    
     # Check if we can use the fast Beta method
-    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
+    use_beta_method = base_mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
     
     if use_beta_method:
         # Import the fast Beta simulation method
@@ -228,7 +345,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             n0_array = np.array(n0_list)
             
             # Prepare mechanism-specific parameters
-            if mechanism in ['simple', 'fixed_burst']:
+            if base_mechanism in ['simple', 'fixed_burst']:
                 k = params['k']
                 burst_size = params.get('burst_size', 1.0)
                 k_1 = None
@@ -245,7 +362,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             total_sims = 2 * num_simulations
             
             results = simulate_batch(
-                mechanism=mechanism,
+                mechanism=base_mechanism,  # Pass base mechanism to simulator
                 initial_states=initial_states,
                 n0_lists=n0_array,
                 k=k,
@@ -280,8 +397,8 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             raise ImportError(f"FastBetaSimulation module not found. Gillespie fallback is disabled. Error: {e}")
 
     # Check if we can use the fast Feedback method (Vectorized Sum of Exponentials)
-    use_feedback_method = mechanism in ['feedback_onion', 'fixed_burst_feedback_onion', 
-                                        'time_varying_k_feedback_onion', 'time_varying_k_combined']
+    use_feedback_method = base_mechanism in ['steric_hindrance', 'fixed_burst_steric_hindrance', 
+                                        'time_varying_k_steric_hindrance', 'time_varying_k_combined']
     
     if use_feedback_method:
         try:
@@ -297,12 +414,12 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             k_max = None
             burst_size = params.get('burst_size', 1.0)
             
-            if mechanism == 'feedback_onion':
+            if base_mechanism == 'steric_hindrance':
                 k = params['k']
-            elif mechanism == 'fixed_burst_feedback_onion':
+            elif base_mechanism == 'fixed_burst_steric_hindrance':
                 k = params['k']
                 # burst_size already extracted above
-            elif mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
+            elif base_mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
                 k_1 = calculate_k1_from_params(params)
                 k_max = params['k_max']
             
@@ -310,7 +427,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
             total_sims = 2 * num_simulations
                 
             results = simulate_batch_feedback(
-                mechanism=mechanism,
+                mechanism=base_mechanism,  # Pass base mechanism to simulator
                 initial_states=initial_states,
                 n0_lists=n0_array,
                 k=k,
@@ -345,7 +462,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
 
     
     # If neither method was used, raise an error
-    raise ValueError(f"No fast simulation method available for mechanism '{mechanism}'. "
+    raise ValueError(f"No fast simulation method available for mechanism '{mechanism}' (base: '{base_mechanism}'). "
                    f"Standard Gillespie simulation has been disabled.")
 
 
@@ -611,32 +728,62 @@ def get_parameter_bounds(mechanism):
     """
     Get parameter bounds for optimization.
     
+    Mechanism variants for time-varying models:
+    - Base mechanisms (e.g., time_varying_k): wide bounds for tau/beta_tau
+    - *_wfeedback: tight bounds for tau/beta_tau (with feedback constraint)
+    
     Args:
         mechanism (str): Mechanism name
     
     Returns:
         list: List of (min, max) tuples for each parameter
     """
-    is_simple = mechanism in ['simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion']
+    # Detect if this is a feedback variant
+    has_feedback_suffix = mechanism.endswith('_wfeedback')
     
-    # Base bounds: n2, N2, rate param(s), r21, r23, R21, R23
+    # Strip suffix to get base mechanism for classification
+    base_mechanism = mechanism.replace('_wfeedback', '') if has_feedback_suffix else mechanism
+    
+    is_simple = base_mechanism in ['simple', 'fixed_burst', 'steric_hindrance', 'fixed_burst_steric_hindrance']
+    is_time_varying = base_mechanism.startswith('time_varying_k')
+    
+    # Determine tau and beta bounds based on feedback variant
+    if is_time_varying:
+        if has_feedback_suffix:
+            # Tight bounds for feedback models
+            tau_bounds = (0.5, 5.0)
+            beta_tau_bounds = (1.0, 3.0)
+            beta_tau2_bounds = (1.0, 3.0)
+        else:
+            # Wide bounds for normal models (default)
+            tau_bounds = (2, 240)
+            beta_tau_bounds = (1.0, 10.0)
+            beta_tau2_bounds = (1.0, 20.0)
+    
+    # Base bounds: n2, N2, rate param, r21, r23, R21, R23
     bounds = [
         (0.0, 50.0),      # n2
         (50.0, 1000.0),   # N2
-        (0.001, 0.1),      # k_max
-        (2.0, 240.0),       # tau
+        (0.001, 0.1),      # k or k_max
+    ]
+    
+    # Add tau for time-varying mechanisms (simple mechanisms don't have tau)
+    if is_time_varying:
+        bounds.append(tau_bounds)  # tau
+    
+    bounds.extend([
         (0.25, 4.0),      # r21
         (0.25, 4.0),      # r23
         (0.4, 2.0),        # R21
         (0.5, 5.0),       # R23
-    ]
+    ])
     
-    # Add mechanism-specific optional parameters
-    if mechanism in ['fixed_burst', 'fixed_burst_feedback_onion', 
+    # Add mechanism-specific optional parameters (use base_mechanism for checks)
+    if base_mechanism in ['fixed_burst', 'fixed_burst_steric_hindrance', 
                       'time_varying_k_fixed_burst', 'time_varying_k_combined']:
         bounds.append((1.0, 50.0))  # burst_size
-    if mechanism in ['feedback_onion', 'fixed_burst_feedback_onion',
-                      'time_varying_k_feedback_onion', 'time_varying_k_combined']:
+    if base_mechanism in ['steric_hindrance', 'fixed_burst_steric_hindrance',
+                      'time_varying_k_steric_hindrance', 'time_varying_k_combined']:
         bounds.append((1.0, 100.0))  # n_inner
     
     # Add mutant parameter bounds
@@ -653,8 +800,8 @@ def get_parameter_bounds(mechanism):
         # Time-varying mechanisms retain original beta_k + beta_tau parameters
         bounds.extend([
             (0.1, 1.0),   # beta_k (for k_max)
-            (2.0, 10.0),  # beta_tau
-            (2.0, 20.0),  # beta_tau2
+            beta_tau_bounds,  # beta_tau
+            beta_tau2_bounds,  # beta_tau2
         ])
     
     return bounds
@@ -664,27 +811,32 @@ def get_parameter_names(mechanism):
     """
     Get parameter names for a given mechanism (time-varying mechanisms only).
     
+    Handles mechanism variants with _wfeedback suffix.
+    
     Args:
         mechanism (str): Mechanism name (must be time-varying)
     
     Returns:
         list: List of parameter names
     """
+    # Strip _wfeedback suffix to get base mechanism
+    base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
+    
     time_varying_params = {
         'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
         'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-        'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-        'fixed_burst_feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+        'steric_hindrance': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+        'fixed_burst_steric_hindrance': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
         'time_varying_k': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
-        'time_varying_k_feedback_onion': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
+        'time_varying_k_steric_hindrance': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_combined': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
     }
     
-    if mechanism not in time_varying_params:
-        raise ValueError(f"Unknown mechanism: {mechanism}")
+    if base_mechanism not in time_varying_params:
+        raise ValueError(f"Unknown mechanism: {mechanism} (base: {base_mechanism})")
     
-    return time_varying_params[mechanism]
+    return time_varying_params[base_mechanism]
 
 
 def parse_parameters(params_vector, mechanism):

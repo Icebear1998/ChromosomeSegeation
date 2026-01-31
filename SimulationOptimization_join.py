@@ -24,13 +24,16 @@ warnings.filterwarnings('ignore')
 
 
 
+
+
 MECHANISM_PARAM_NAMES = {
     'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
     'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-    'feedback_onion': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-    'fixed_burst_feedback_onion': [
+    'steric_hindrance': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
+    'fixed_burst_steric_hindrance': [
         'n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'
     ],
+    # Base time-varying mechanisms (wide bounds)
     'time_varying_k': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
@@ -38,7 +41,7 @@ MECHANISM_PARAM_NAMES = {
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
         'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
-    'time_varying_k_feedback_onion': [
+    'time_varying_k_steric_hindrance': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
         'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
@@ -46,7 +49,25 @@ MECHANISM_PARAM_NAMES = {
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
         'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
+    # Feedback variants (tight bounds for tau/beta)
+    'time_varying_k_wfeedback': [
+        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+    ],
+    'time_varying_k_fixed_burst_wfeedback': [
+        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
+        'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+    ],
+    'time_varying_k_steric_hindrance_wfeedback': [
+        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
+        'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+    ],
+    'time_varying_k_combined_wfeedback': [
+        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
+        'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+    ],
 }
+
+
 
 
 def unpack_mechanism_params(params_vector, mechanism):
@@ -205,7 +226,7 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
     """
     Run joint optimization for all mechanism types.
     
-    Handles both simple mechanisms ('simple', 'fixed_burst', 'feedback_onion', 'fixed_burst_feedback_onion')
+    Handles both simple mechanisms ('simple', 'fixed_burst', 'steric_hindrance', 'fixed_burst_steric_hindrance')
     and time-varying mechanisms ('time_varying_k' and variants).
     
     Args:
@@ -217,8 +238,10 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         objective_metric (str): 'nll' or 'emd' (default: 'nll')
         
     Returns:
-        dict: Optimization results
+        dict: Optimization results with comprehensive metadata
     """
+    start_time = time.time()
+    
     try:
         param_names = MECHANISM_PARAM_NAMES[mechanism]
     except KeyError:
@@ -258,6 +281,8 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         **de_settings
     )
     
+    optimization_time = time.time() - start_time
+    
     params = result.x
     param_dict = dict(zip(param_names, params))
     
@@ -284,16 +309,28 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'success': True,  # Always treat as success to save results
         'converged': result.success,  # Track actual convergence status
         'params': param_dict,
-        'nll': result.fun,
-        'per_dataset_score': per_dataset_score,  # Add per-dataset breakdown
+        'nll': result.fun,  # Keep for backwards compatibility
+        'score': result.fun,  # Generic score value
+        'per_dataset_score': per_dataset_score,  # Per-dataset breakdown
         'result': result,
-        'message': result.message if not result.success else "Converged successfully"
+        'message': result.message if not result.success else "Converged successfully",
+        # Optimization settings metadata
+        'optimization_settings': {
+            'method': 'Differential Evolution',
+            'objective_metric': objective_metric,
+            'num_simulations': num_simulations,
+            'selected_strains': selected_strains if selected_strains else 'all',
+            'de_settings': de_settings,
+            'bounds': dict(zip(param_names, bounds)),
+            'optimization_time_seconds': optimization_time,
+            'n_iterations': result.nit if hasattr(result, 'nit') else 'unknown',
+        }
     }
 
 
 def save_results(mechanism, results, filename=None, selected_strains=None, objective_metric='emd'):
     """
-    Save optimization results to file.
+    Save optimization results to file with comprehensive metadata.
     
     Args:
         mechanism (str): Mechanism name
@@ -314,31 +351,90 @@ def save_results(mechanism, results, filename=None, selected_strains=None, objec
         
         filename = f"simulation_optimized_parameters_{mechanism}{strain_suffix}.txt"
     
-    metric_label = "Earth Mover's Distance" if objective_metric == 'emd' else "Negative Log-Likelihood"
-    val_key = 'nll' if 'nll' in results else 'emd' # Fallback check
-    if 'emd' in results: val_key = 'emd' # Explicit check if added later
+    metric_label = "EMD" if objective_metric == 'emd' else "NLL"
+    metric_full_name = "Earth Mover's Distance" if objective_metric == 'emd' else "Negative Log-Likelihood"
     
-    # Use generic 'score' or fun from result object if available
-    metric_value = results.get('nll', results['result'].fun)
+    # Extract settings
+    opt_settings = results.get('optimization_settings', {})
+    per_dataset_score = results.get('per_dataset_score', {})
     
     with open(filename, 'w') as f:
-        f.write(f"Simulation-based Optimization Results ({metric_label})\n")
+        # ===== HEADER =====
+        f.write("="*80 + "\n")
+        f.write(f"SIMULATION-BASED OPTIMIZATION RESULTS\n")
+        f.write("="*80 + "\n\n")
+        
+        # ===== OPTIMIZATION OVERVIEW =====
+        f.write("OPTIMIZATION OVERVIEW\n")
+        f.write("-"*80 + "\n")
         f.write(f"Mechanism: {mechanism}\n")
-        
-        # Add strain selection information
-        if selected_strains is not None:
-            f.write(f"Selected Strains: {', '.join(selected_strains)}\n")
-        else:
-            f.write(f"Selected Strains: all datasets\n")
-        
-        f.write(f"{metric_label}: {metric_value:.6f}\n")
+        f.write(f"Optimization Method: {opt_settings.get('method', 'Differential Evolution')}\n")
+        f.write(f"Objective Metric: {metric_full_name} ({metric_label})\n")
         f.write(f"Converged: {results.get('converged', 'Unknown')}\n")
         f.write(f"Status: {results.get('message', 'No message')}\n")
-        f.write(f"Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade\n\n")
         
-        f.write("Optimized Parameters (ratio-based):\n")
+        # Timing info
+        opt_time = opt_settings.get('optimization_time_seconds', 0)
+        if opt_time > 0:
+            hours = int(opt_time // 3600)
+            minutes = int((opt_time % 3600) // 60)
+            seconds = opt_time % 60
+            f.write(f"Optimization Time: {hours:02d}:{minutes:02d}:{seconds:06.3f} ({opt_time:.2f} seconds)\n")
+        
+        n_iters = opt_settings.get('n_iterations', 'unknown')
+        f.write(f"Iterations Used: {n_iters}\n")
+        f.write("\n")
+        
+        # ===== OBJECTIVE SCORES =====
+        f.write("OBJECTIVE SCORES\n")
+        f.write("-"*80 + "\n")
+        total_score = results.get('score', results.get('nll', 0))
+        f.write(f"Total {metric_label}: {total_score:.6f}\n")
+        f.write(f"\nPer-Dataset {metric_label} Breakdown:\n")
+        
+        if per_dataset_score:
+            for dataset_name, score_val in sorted(per_dataset_score.items()):
+                f.write(f"  {dataset_name}: {score_val:.4f}\n")
+        else:
+            f.write("  (No per-dataset breakdown available)\n")
+        f.write("\n")
+        
+        # ===== OPTIMIZATION SETTINGS =====
+        f.write("OPTIMIZATION SETTINGS\n")
+        f.write("-"*80 + "\n")
+        f.write(f"Number of Simulations per Evaluation: {opt_settings.get('num_simulations', 'N/A')}\n")
+        
+        selected = opt_settings.get('selected_strains', 'all')
+        if selected == 'all':
+            f.write(f"Selected Strains: all datasets\n")
+            f.write(f"Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade\n")
+        else:
+            f.write(f"Selected Strains: {', '.join(selected) if isinstance(selected, list) else selected}\n")
+        
+        # DE Settings
+        de_settings = opt_settings.get('de_settings', {})
+        if de_settings:
+            f.write(f"\nDifferential Evolution Settings:\n")
+            for key, val in de_settings.items():
+                f.write(f"  {key}: {val}\n")
+        f.write("\n")
+        
+        # ===== PARAMETER BOUNDS =====
+        f.write("PARAMETER BOUNDS\n")
+        f.write("-"*80 + "\n")
+        bounds_dict = opt_settings.get('bounds', {})
+        if bounds_dict:
+            for param_name, bound in bounds_dict.items():
+                f.write(f"{param_name:15s}: [{bound[0]:12.6f}, {bound[1]:12.6f}]\n")
+        else:
+            f.write("(No bounds information available)\n")
+        f.write("\n")
+        
+        # ===== OPTIMIZED PARAMETERS =====
+        f.write("OPTIMIZED PARAMETERS\n")
+        f.write("-"*80 + "\n")
         for param, value in results['params'].items():
-            f.write(f"{param} = {value:.6f}\n")
+            f.write(f"{param:15s} = {value:.6f}\n")
         
         # Calculate and save derived parameters
         if 'r21' in results['params']:
@@ -348,10 +444,15 @@ def save_results(mechanism, results, filename=None, selected_strains=None, objec
             N3_derived = max(results['params']['R23'] * results['params']['N2'], 1)
             
             f.write(f"\nDerived Parameters:\n")
-            f.write(f"n1 = {n1_derived:.6f}\n")
-            f.write(f"n3 = {n3_derived:.6f}\n")
-            f.write(f"N1 = {N1_derived:.6f}\n")
-            f.write(f"N3 = {N3_derived:.6f}\n")
+            f.write(f"{'n1':15s} = {n1_derived:.6f}\n")
+            f.write(f"{'n3':15s} = {n3_derived:.6f}\n")
+            f.write(f"{'N1':15s} = {N1_derived:.6f}\n")
+            f.write(f"{'N3':15s} = {N3_derived:.6f}\n")
+        
+        f.write("\n")
+        f.write("="*80 + "\n")
+    
+    print(f"\nResults saved to: {filename}")
 
 
 def main():
@@ -359,7 +460,7 @@ def main():
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
     # Mechanism to optimize
-    mechanism = 'simple'  # Default mechanism
+    mechanism = 'time_varying_k_fixed_burst'  # Default mechanism
     
     # Objective Metric: 'nll' or 'emd'
     objective_metric = 'emd'      # Switch to EMD by default

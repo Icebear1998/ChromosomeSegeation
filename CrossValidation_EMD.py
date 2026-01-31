@@ -8,6 +8,7 @@ import pandas as pd
 import sys
 import os
 import time
+import json
 from scipy.optimize import differential_evolution
 from multiprocessing import Pool, cpu_count
 from functools import partial
@@ -173,11 +174,16 @@ def run_cross_validation(mechanism, k_folds=5, n_simulations=2000, max_iter=1000
         
         print(f"Fold {k+1} Results: Train EMD={train_emd:.2f}, Val EMD={val_emd:.2f}")
         
+        # Convert params to dictionary
+        param_names = get_parameter_names(mechanism)
+        param_dict = {name: float(val) for name, val in zip(param_names, best_params_vec)}
+        param_json = json.dumps(param_dict)
+        
         cv_results.append({
             'fold': k+1,
             'train_emd': train_emd,
             'val_emd': val_emd,
-            'params': best_params_vec.tolist()
+            'params': param_json
         })
         
     # Average

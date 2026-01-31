@@ -16,7 +16,7 @@ There are three main complementary approaches implemented:
 
 The project now uses **Earth Mover's Distance (EMD)** as the primary optimization metric and **Cross-Validation** for model selection, replacing the previous NLL/AIC approaches.
 
-The project compares 16 different mechanism variations, including simple, fixed burst, time-varying rates, and feedback loops.
+The project compares 8 different mechanism variations, including simple, fixed burst, time-varying rates, and feedback loops.
 
 ## Directory Structure & Key Files
 

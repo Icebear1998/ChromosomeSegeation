@@ -6,8 +6,8 @@ This module implements an exact Monte Carlo method for simulating feedback mecha
 where chromosome degradation is independent but rates depend on the current state.
 
 Mechanisms supported:
-- 'feedback_onion': Constant k, state-dependent feedback
-- 'time_varying_k_feedback_onion': Time-varying k, state-dependent feedback
+- 'steric_hindrance': Constant k, state-dependent feedback
+- 'time_varying_k_steric_hindrance': Time-varying k, state-dependent feedback
 
 Methodology:
 1. Decoupling: Each chromosome is simulated independently as a pure death process.
@@ -30,9 +30,9 @@ def get_onion_weight(state: int, n_inner: float) -> float:
     else:
         return 1.0
 
-def simulate_feedback_onion_single(N: float, n: float, k: float, n_inner: float) -> float:
+def simulate_steric_hindrance_single(N: float, n: float, k: float, n_inner: float) -> float:
     """
-    Simulate 'feedback_onion' for a single chromosome.
+    Simulate 'steric_hindrance' for a single chromosome.
     
     Method: Vectorized Sum of Exponentials.
     Rate at state i: λ_i = k * i * W(i)
@@ -64,9 +64,9 @@ def simulate_feedback_onion_single(N: float, n: float, k: float, n_inner: float)
     # Total time is sum of waiting times
     return np.sum(waiting_times)
 
-def simulate_fixed_burst_feedback_onion_single(N: float, n: float, k: float, n_inner: float, burst_size: float) -> float:
+def simulate_fixed_burst_steric_hindrance_single(N: float, n: float, k: float, n_inner: float, burst_size: float) -> float:
     """
-    Simulate 'fixed_burst_feedback_onion' for a single chromosome.
+    Simulate 'fixed_burst_steric_hindrance' for a single chromosome.
     
     Combines:
     1. Constant rate k
@@ -173,7 +173,7 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
     Batch simulation for feedback mechanisms.
     
     Args:
-        mechanism: 'feedback_onion', 'time_varying_k_feedback_onion', 'time_varying_k_combined'
+        mechanism: 'steric_hindrance', 'time_varying_k_steric_hindrance', 'time_varying_k_combined'
         ... params ...
     """
     results = np.zeros((num_simulations, 3))
@@ -186,7 +186,7 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
         N = initial_states[i]
         n = n0_lists[i]
         
-        if mechanism == 'feedback_onion':
+        if mechanism == 'steric_hindrance':
             states = np.arange(int(N), int(n), -1)
             num_steps = len(states)
             
@@ -201,7 +201,7 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
                 # equivalent to np.sum(random_exps / rates, axis=1)
                 results[:, i] = random_exps @ (1.0 / rates)
         
-        elif mechanism == 'fixed_burst_feedback_onion':
+        elif mechanism == 'fixed_burst_steric_hindrance':
             # Constant k + feedback onion + fixed bursts
             step = int(burst_size) if burst_size else 1
             states = np.arange(int(N), int(n), -step)
@@ -217,7 +217,7 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
                 # Optimization: Use dot product instead of creating intermediate array
                 results[:, i] = random_exps @ (1.0 / rates)
                 
-        elif mechanism == 'time_varying_k_feedback_onion':
+        elif mechanism == 'time_varying_k_steric_hindrance':
             states = np.arange(int(N), int(n), -1)
             if len(states) == 0:
                 continue
@@ -252,7 +252,7 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
             results[:, i] = current_times
 
         elif mechanism == 'time_varying_k_combined':
-            # Similar to time_varying_k_feedback_onion but with burst steps
+            # Similar to time_varying_k_steric_hindrance but with burst steps
             step = int(burst_size) if burst_size else 1
             states = np.arange(int(N), int(n), -step)
             

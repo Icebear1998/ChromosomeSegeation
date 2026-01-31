@@ -21,7 +21,7 @@ def run_simulation_and_get_times(mechanism, params, num_simulations=1000):
     n0_array = np.array(n0_list)
 
     # Dispatch based on mechanism
-    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_burst_onion']
+    use_beta_method = mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
     use_feedback_method = mechanism in ['feedback_onion', 'fixed_burst_feedback_onion', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
 
     results = None
