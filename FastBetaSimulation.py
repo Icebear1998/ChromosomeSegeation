@@ -371,6 +371,8 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
                 results[:, i] = -np.log(1 - u) / k_prime
                 
         elif mechanism == 'time_varying_k':
+            N = round(N)
+            n = round(n)
             num_events = int(N - n)
             if num_events > 0:
                 alpha = num_events
