@@ -157,12 +157,7 @@ def run_cross_validation(mechanism, k_folds=5, n_simulations=2000, max_iter=1000
             mutation=(0.5, 1),
             recombination=0.7,
             disp=False,
-            workers=-1 # Use 1 worker here if internal sim is not parallel, but sim IS parallel? 
-                      # Actually run_simulation_for_dataset is serial unless it calls fast methods which are numpy vectorized.
-                      # Ideally we parallelize DE.
-                      # But fast methods are single-threaded numpy usually (unless BLAS).
-                      # Let's use workers=-1 (all cores) for DE if simulations are fast.
-            # actually better to use updating='deferred' and workers=-1
+            workers=-1
         )
         
         best_params_vec = result.x
@@ -198,7 +193,7 @@ def run_cross_validation(mechanism, k_folds=5, n_simulations=2000, max_iter=1000
     df.to_csv(f'ModelComparisonEMDResults/cv_results_{mechanism}.csv', index=False)
 
 if __name__ == "__main__":
-    mechanism = 'simple' # Default to simple for next run
+    mechanism = 'time_varying_k' # Default to simple for next run
     n_simulations=10000
     max_iter=1000
     tol=0.01

@@ -55,7 +55,7 @@ def run_single_fold_with_popsize(mechanism, train_data, val_data, popsize, n_sim
             popsize=popsize,
             tol=tol,
             disp=False,
-            workers=-1,  # Use all available CPUs for DE optimization
+            workers=-1, 
             polish=True
         )
         
@@ -283,7 +283,7 @@ def create_popsize_analysis_plots(mechanism, popsize_values, results, save_plots
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f'popsize_efficiency_emd_{mechanism}_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
-        print(f"\n📊 Plot saved as: {filename}")
+        print(f"\n Plot saved as: {filename}")
     
     plt.close()
 
@@ -327,24 +327,18 @@ def create_summary_table(mechanism, popsize_values, results, save_table=True):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f'popsize_efficiency_summary_{mechanism}_{timestamp}.csv'
         df.to_csv(filename, index=False)
-        print(f"\n💾 Summary table saved as: {filename}")
+        print(f"\n Summary table saved as: {filename}")
     
     return df
 
 
 def main():
-    """
-    Main function to run population size analysis.
-    """
-    print("="*80)
     print("POPULATION SIZE EFFICIENCY ANALYSIS - EMD OPTIMIZATION")
     print("="*80)
     sys.stdout.flush()
     
-    # Configuration
-    mechanism = 'time_varying_k'  # Can be changed to test other mechanisms
+    mechanism = 'time_varying_k' 
     
-    # Test range: 5 to 30
     popsize_values = [5, 10, 15, 20]
     
     k_folds = 5
@@ -372,15 +366,15 @@ def main():
     end_time = datetime.now()
     duration = end_time - start_time
     
-    print(f"\n⏱️  Total analysis time: {duration}")
+    print(f"\n  Total analysis time: {duration}")
     
     # Create summary and visualizations
-    print(f"\n📊 Creating summary and visualizations...")
+    print(f"\n Creating summary and visualizations...")
     summary_df = create_summary_table(mechanism, popsize_values, results, save_table=True)
     create_popsize_analysis_plots(mechanism, popsize_values, results, save_plots=True)
     
-    print(f"\n🎉 Population size analysis complete!")
-    print(f"\n💡 Recommendations:")
+    print(f"\n Population size analysis complete!")
+    print(f"\n Recommendations:")
     
     # Find best population size
     valid_popsizes = [(popsize, results[popsize]['mean_val_emd']) for popsize in popsize_values 
@@ -389,14 +383,14 @@ def main():
     if valid_popsizes:
         # Best = lowest Validation EMD among fully converged
         best_popsize, best_val_emd = min(valid_popsizes, key=lambda x: x[1])
-        print(f"   🏆 Best population size: {best_popsize} (Val EMD={best_val_emd:.2f}, 100% convergence)")
+        print(f"   Best population size: {best_popsize} (Val EMD={best_val_emd:.2f}, 100% convergence)")
         
         # Fastest = fewest iterations among fully converged
         fastest_popsize = min([popsize for popsize, _ in valid_popsizes], 
                              key=lambda p: results[p]['mean_iterations'])
-        print(f"   ⚡ Fastest population size: {fastest_popsize} (Avg {results[fastest_popsize]['mean_iterations']:.0f} iterations)")
+        print(f"   Fastest population size: {fastest_popsize} (Avg {results[fastest_popsize]['mean_iterations']:.0f} iterations)")
     else:
-        print(f"   ⚠️  No population size achieved 100% convergence rate")
+        print(f"   No population size achieved 100% convergence rate")
 
 
 if __name__ == "__main__":

@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""
-Fast Feedback Simulation - Optimized "Sum of Waiting Times" method.
-
-This module implements an exact Monte Carlo method for simulating feedback mechanisms
-where chromosome degradation is independent but rates depend on the current state.
-
-Mechanisms supported:
-- 'steric_hindrance': Constant k, state-dependent feedback
-- 'time_varying_k_steric_hindrance': Time-varying k, state-dependent feedback
-
-Methodology:
-1. Decoupling: Each chromosome is simulated independently as a pure death process.
-2. Sum of Waiting Times:
-   - Instead of Gillespie steps, we generate the waiting time for each degradation event.
-   - For constant k: T = sum(Exponential(rate_i))
-   - For time-varying k: We solve for the time interval Δt such that ∫k(t)dt * weight = Exp(1)
-
-Performance:
-- Expected speedup: 50-100x compared to standard Gillespie.
-"""
-
 import numpy as np
 from typing import Tuple, Optional
 
@@ -57,7 +36,6 @@ def simulate_steric_hindrance_single(N: float, n: float, k: float, n_inner: floa
     rates = k * states * weights
     
     # Sample waiting times: t_i ~ Exp(λ_i) = -ln(U) / λ_i
-    # We can generate all random numbers at once
     u = np.random.random(len(states))
     waiting_times = -np.log(u) / rates
     
@@ -81,7 +59,6 @@ def simulate_fixed_burst_steric_hindrance_single(N: float, n: float, k: float, n
     n = int(round(n))
     
     # States iteration handles the bursts
-    # We iterate down by burst_size
     states = np.arange(int(N), int(n), -int(burst_size))
     
     if len(states) == 0:
@@ -133,7 +110,6 @@ def simulate_time_varying_combined_single(N: float, n: float, k_1: float, k_max:
     current_H = 0.0
     
     # States iteration handles the bursts
-    # We iterate down by burst_size
     states = np.arange(int(N), int(n), -int(burst_size))
     
     if len(states) == 0:
@@ -197,8 +173,6 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
                 rates = k * states * weights
                 
                 random_exps = np.random.exponential(1.0, size=(num_simulations, num_steps))
-                # Optimization: Use dot product instead of creating intermediate array
-                # equivalent to np.sum(random_exps / rates, axis=1)
                 results[:, i] = random_exps @ (1.0 / rates)
         
         elif mechanism == 'fixed_burst_steric_hindrance':
@@ -221,11 +195,6 @@ def simulate_batch_feedback(mechanism: str, initial_states: np.ndarray, n0_lists
             states = np.arange(int(N), int(n), -1)
             if len(states) == 0:
                 continue
-            
-            # ... identical logic to single function but properly vectorized here ...
-            # To avoid code duplication, we assume this logic works and reuse.
-            # But wait, simulate_time_varying_feedback_single was a pure loop.
-            # We should duplicate the vectorized logic here for speed.
             
             current_times = np.zeros(num_simulations)
             current_H = np.zeros(num_simulations)

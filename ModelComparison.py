@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""
-Model Comparison using Cross-Validation and Earth Mover's Distance (EMD).
-
-This script compares different chromosome segregation mechanisms using 
-5-Fold Cross-Validation with EMD as the scoring metric. Unlike AIC/BIC,
-this approach does not require multiple optimization runs per mechanism.
-
-Mechanisms can include:
-1. Constant rate mechanisms:
-   - simple: Constant degradation rate
-   - fixed_burst: Constant rate with fixed burst sizes
-   - steric_hindrance: Constant rate with steric hindrance
-   - fixed_burst_steric_hindrance: Constant rate with fixed bursts and steric hindrance
-
-2. Time-varying rate mechanisms:
-   - time_varying_k: Time-varying degradation rate
-   - time_varying_k_fixed_burst: Time-varying rate with fixed bursts
-   - time_varying_k_steric_hindrance: Time-varying rate with steric hindrance
-   - time_varying_k_combined: Time-varying rate with fixed bursts and steric hindrance
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -57,7 +36,6 @@ def get_parameter_count(mechanism):
     try:
         from simulation_utils import get_parameter_names
         # Get parameter names and return length
-        # This handles both simple (11 params) and time-varying (12-14 params) automatically
         names = get_parameter_names(mechanism)
         return len(names)
     except Exception as e:
@@ -117,7 +95,7 @@ def run_single_cv(mechanism, k_folds=5, n_simulations=2000, max_iter=1000, tol=0
                 'csv_file': csv_file
             }
             
-            print(f"\n✅ Cross-Validation Complete for {mechanism}")
+            print(f"\n Cross-Validation Complete for {mechanism}")
             print(f"   Mean Validation EMD: {result['mean_val_emd']:.2f} ± {result['std_val_emd']:.2f}")
             print(f"   Mean Training EMD: {result['mean_train_emd']:.2f} ± {result['std_train_emd']:.2f}")
             print(f"   Results saved to: {csv_file}")
@@ -128,7 +106,7 @@ def run_single_cv(mechanism, k_folds=5, n_simulations=2000, max_iter=1000, tol=0
             raise FileNotFoundError(f"CV results file not found: {csv_file}")
             
     except Exception as e:
-        print(f"❌ Error with {mechanism}: {e}")
+        print(f" Error with {mechanism}: {e}")
         sys.stdout.flush()
         return {
             'mechanism': mechanism,
@@ -310,10 +288,6 @@ def create_summary_table(all_results, save_table=True):
 
 
 def main():
-    """
-    Main function to run the complete cross-validation model comparison.
-    Supports both single-mechanism mode (for SLURM job arrays) and full comparison mode.
-    """
     # ========== CONFIGURATION (Edit these for different runs) ==========
     K_FOLDS = 5              # Number of cross-validation folds
     N_SIMULATIONS = 5000     # Number of simulations per evaluation
@@ -350,7 +324,7 @@ def main():
         print(f"CROSS-VALIDATION FOR SINGLE MECHANISM: {args.mechanism}")
         print("="*80)
         print(f"Run ID: {args.run_id if args.run_id else 'Not specified'}")
-        print(f"\n⚙️  Cross-Validation Configuration:")
+        print(f"\n  Cross-Validation Configuration:")
         print(f"   K-Folds: {k_folds}")
         print(f"   Simulations per evaluation: {n_simulations}")
         print(f"   Optimization iterations per fold: {max_iter}")
@@ -372,9 +346,9 @@ def main():
         end_time = datetime.now()
         duration = end_time - start_time
         
-        print(f"\n⏱️  Completed in: {duration}")
-        print(f"✅ Single-mechanism cross-validation complete")
-        print(f"📁 Results saved to: {result.get('csv_file', 'cv_results_*.csv')}")
+        print(f"\n  Completed in: {duration}")
+        print(f" Single-mechanism cross-validation complete")
+        print(f" Results saved to: {result.get('csv_file', 'cv_results_*.csv')}")
         
         return
     
@@ -387,12 +361,12 @@ def main():
     
     # Display system information
     n_cpus = cpu_count()
-    print(f"\n💻 System Information:")
+    print(f"\n System Information:")
     print(f"   Available CPUs: {n_cpus}")
     sys.stdout.flush()
     
     # Load experimental data
-    print("\n📊 Loading experimental data...")
+    print("\n Loading experimental data...")
     sys.stdout.flush()
     datasets = load_experimental_data()
     if not datasets:
@@ -400,10 +374,10 @@ def main():
         sys.stdout.flush()
         return
     
-    print(f"✅ Loaded {len(datasets)} datasets: {list(datasets.keys())}")
+    print(f" Loaded {len(datasets)} datasets: {list(datasets.keys())}")
     
     # Display dataset breakdown
-    print(f"\n📈 Dataset breakdown:")
+    print(f"\n Dataset breakdown:")
     for name, data in datasets.items():
         t12_points = len(data['delta_t12'])
         t32_points = len(data['delta_t32'])
@@ -413,17 +387,11 @@ def main():
     
     # Define mechanisms to compare
     mechanisms = [
-        # Constant rate mechanisms
-        # 'simple',
-        # 'fixed_burst',
-       # 'steric_hindrance',
-        # 'fixed_burst_steric_hindrance',
-        
         # Time-varying rate mechanisms
-        # 'time_varying_k',
-        # 'time_varying_k_fixed_burst',
-        # 'time_varying_k_combined',
-        # 'time_varying_k_steric_hindrance',
+        'time_varying_k',
+        'time_varying_k_fixed_burst',
+        'time_varying_k_combined',
+        'time_varying_k_steric_hindrance',
 
         # Time-varying with feedback mechanisms
         'time_varying_k_wfeedback',
@@ -438,7 +406,7 @@ def main():
         print(f"  {i}. {mech} ({param_count} parameters)")
     sys.stdout.flush()
     
-    print(f"\n⚙️  Cross-Validation Configuration:")
+    print(f"\n  Cross-Validation Configuration:")
     print(f"   K-Folds: {k_folds}")
     print(f"   Simulations per evaluation: {n_simulations}")
     print(f"   Optimization iterations per fold: {max_iter}")
@@ -453,8 +421,8 @@ def main():
     
     for i, mechanism in enumerate(mechanisms, 1):
         mechanism_start = datetime.now()
-        print(f"\n🚀 Progress: {i}/{len(mechanisms)} mechanisms")
-        print(f"⏰ Started at: {mechanism_start.strftime('%H:%M:%S')}")
+        print(f"\n Progress: {i}/{len(mechanisms)} mechanisms")
+        print(f" Started at: {mechanism_start.strftime('%H:%M:%S')}")
         sys.stdout.flush()
         
         try:
@@ -463,7 +431,7 @@ def main():
             
             mechanism_end = datetime.now()
             mechanism_duration = mechanism_end - mechanism_start
-            print(f"⏱️  Mechanism {mechanism} completed in: {mechanism_duration}")
+            print(f"⏱  Mechanism {mechanism} completed in: {mechanism_duration}")
             
             # Estimate remaining time
             avg_time_per_mechanism = (mechanism_end - start_time) / i
@@ -472,11 +440,11 @@ def main():
             estimated_completion = mechanism_end + estimated_remaining
             
             if remaining_mechanisms > 0:
-                print(f"📅 Estimated completion: {estimated_completion.strftime('%H:%M:%S')} "
+                print(f" Estimated completion: {estimated_completion.strftime('%H:%M:%S')} "
                       f"(~{estimated_remaining} remaining)")
             
         except Exception as e:
-            print(f"❌ Error with {mechanism}: {e}")
+            print(f" Error with {mechanism}: {e}")
             all_results.append({
                 'mechanism': mechanism,
                 'n_params': get_parameter_count(mechanism),
@@ -493,25 +461,25 @@ def main():
     end_time = datetime.now()
     duration = end_time - start_time
     
-    print(f"\n⏱️  Total analysis time: {duration}")
+    print(f"\n  Total analysis time: {duration}")
     
     # Calculate statistics
     successful_mechanisms = sum(1 for r in all_results if r['success'])
     success_rate = (successful_mechanisms / len(mechanisms)) * 100
     
-    print(f"\n📈 Overall Statistics:")
+    print(f"\n Overall Statistics:")
     print(f"   Total mechanisms tested: {len(mechanisms)}")
     print(f"   Successful: {successful_mechanisms}")
     print(f"   Success rate: {success_rate:.1f}%")
     
     # Create summary table and plots
-    print(f"\n📊 Creating summary and visualizations...")
+    print(f"\n Creating summary and visualizations...")
     summary_df = create_summary_table(all_results, save_table=True)
     create_comparison_plots(all_results, save_plots=True)
     
-    print(f"\n🎉 Cross-validation model comparison complete!")
-    print(f"📁 Results saved with timestamp: {datetime.now().strftime('%Y%m%d_%H%M%S')}")
-    print(f"\n💡 Interpretation:")
+    print(f"\n Cross-validation model comparison complete!")
+    print(f" Results saved with timestamp: {datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    print(f"\n Interpretation:")
     print(f"   - Lower Validation EMD indicates better model fit to unseen data")
     print(f"   - Lower Std EMD indicates more stable/robust predictions")
     print(f"   - CV eliminates the need for multiple optimization runs")

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-Test and plot simulation results using optimized parameters from simulation-based optimization.
-Works with MultiMechanismSimulationTimevary and the new data structure.
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -29,8 +24,6 @@ def create_centered_bins(data, bin_width=7.0):
     data_min = np.min(data)
     data_max = np.max(data)
     
-    # Calculate how many bins we need on each side of 0
-    # Bins are centered on 0, so edges are at ±3.5, ±10.5, ±17.5, etc.
     half_width = bin_width / 2.0
     
     # Find the number of bins needed on the negative side
@@ -164,8 +157,6 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             }
         
         
-        # Run simulations using simulation_utils which handles all mechanism types
-        # This will automatically dispatch to the appropriate simulator (Gillespie, FastBeta, or FastFeedback)
         from simulation_utils import run_simulation_for_dataset
         
         delta_t12_array, delta_t32_array = run_simulation_for_dataset(
@@ -618,7 +609,6 @@ def main():
 
 if __name__ == "__main__":
     # ========== CONFIGURATION ==========
-    # Choose what to run
     run_all_mechanisms = False  # Set to True to test all mechanisms
     
     # Single dataset configuration (only used if run_single_dataset = True)

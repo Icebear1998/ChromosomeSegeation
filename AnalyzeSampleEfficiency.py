@@ -46,8 +46,6 @@ def perturb_parameters(params, mechanism, perturbation_factor=0.2):
     """
     bad_params = params.copy()
     
-    # Keys to perturb (avoid perturbing integers like n_inner if possible, or round them)
-    # We focus on the core rate/threshold parameters that drive the distribution
     keys_to_perturb = ['n2', 'N2', 'k', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23']
     
     np.random.seed(42) # Fixed seed for reproducible 'bad' params

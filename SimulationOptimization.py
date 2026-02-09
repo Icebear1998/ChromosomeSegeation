@@ -1,23 +1,10 @@
 #!/usr/bin/env python3
-"""
-Simulation-based optimization for chromosome segregation timing models.
-Uses MultiMechanismSimulationTimevary for time-varying mechanisms.
-Uses MultiMechanismSimulation (SecondVersion) for simple and fixed_burst mechanisms.
-Joint optimization strategy: optimizes all parameters simultaneously across all datasets.
-
-Key differences from MoM-based optimization:
-- Uses simulation instead of analytical approximations
-- Separase mutant affects k_max (beta * k_max)
-- APC mutant affects k_1 (beta_APC * k_1)
-- Other mutants follow the same pattern as before
-"""
 
 import numpy as np
 import sys
 import time
 from scipy.optimize import differential_evolution
 from simulation_utils import *
-from Chromosomes_Theory import *
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -27,13 +14,7 @@ warnings.filterwarnings('ignore')
 
 
 MECHANISM_PARAM_NAMES = {
-    'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-    'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-    'steric_hindrance': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-    'fixed_burst_steric_hindrance': [
-        'n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'
-    ],
-    # Base time-varying mechanisms (wide bounds)
+    # Time-varying mechanisms (wide bounds)
     'time_varying_k': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
@@ -72,7 +53,7 @@ MECHANISM_PARAM_NAMES = {
 
 def unpack_mechanism_params(params_vector, mechanism):
     """
-    Unpack parameter vector based on mechanism type.
+    Unpack parameter vector for time-varying mechanisms.
     
     Returns:
         tuple: (base_params, alpha, beta_k, beta_tau, beta_tau2)
@@ -99,37 +80,30 @@ def unpack_mechanism_params(params_vector, mechanism):
         'N3': max(params['R23'] * params['N2'], 1),
     }
     
-    if 'k' in params:
-        base_params['k'] = params['k']
-    else:
-        k_max = params['k_max']
-        tau = params['tau']
-        base_params.update({
-            'k_max': k_max,
-            'tau': tau,
-            'k_1': k_max / tau,
-        })
+    # All mechanisms are time-varying, so always expect k_max and tau
+    k_max = params['k_max']
+    tau = params['tau']
+    base_params.update({
+        'k_max': k_max,
+        'tau': tau,
+        'k_1': k_max / tau,
+    })
     
+    # Add optional parameters (burst_size, n_inner)
     for optional_key in ('burst_size', 'n_inner'):
         if optional_key in params:
             base_params[optional_key] = params[optional_key]
     
     alpha = params.get('alpha')
     beta_k = params.get('beta_k')
-    beta_k1 = params.get('beta_k1')
-    beta_k2 = params.get('beta_k2')
-    beta_k3 = params.get('beta_k3')
     beta_tau = params.get('beta_tau')
     beta_tau2 = params.get('beta_tau2')
     
-    return base_params, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2
+    return base_params, alpha, beta_k, beta_tau, beta_tau2
 
 
 def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False, objective_metric='emd'):
     """
-    Joint objective function that handles both simple and time-varying mechanisms.
-    Supports both NLL (Negative Log-Likelihood) and EMD (Earth Mover's Distance).
-    
     Args:
         params_vector: Parameter vector (mechanism-specific)
         mechanism: Mechanism name
@@ -145,7 +119,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
     """
     try:
         # Unpack parameters based on mechanism
-        base_params, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2 = unpack_mechanism_params(params_vector, mechanism)
+        base_params, alpha, beta_k, beta_tau, beta_tau2 = unpack_mechanism_params(params_vector, mechanism)
         
         # Check constraints
         if base_params['n1'] >= base_params['N1'] or \
@@ -160,9 +134,9 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         
         # Loop over all datasets
         for dataset_name, data_dict in datasets.items():
-            # Apply mutant modifications using unified helper function (works for both mechanism types)
+            # Apply mutant modifications for time-varying mechanisms
             params, n0_list = apply_mutant_params(
-                base_params, dataset_name, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2
+                base_params, dataset_name, alpha, beta_k, beta_tau, beta_tau2
             )
             
             # Run simulations
@@ -203,23 +177,6 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         if return_breakdown:
             return {'total': 1e6, 'per_dataset': {}}
         return 1e6
-
-
-def get_per_dataset_nll(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None):
-    """
-    Calculate per-dataset NLL breakdown for given parameters.
-    
-    Args:
-        params_vector: Parameter vector
-        mechanism: Mechanism name
-        datasets: Experimental datasets
-        num_simulations: Number of simulations per evaluation
-        selected_strains: Optional list of strain names
-        
-    Returns:
-        dict: {'total': float, 'per_dataset': dict} with per-dataset NLLs
-    """
-    return joint_objective(params_vector, mechanism, datasets, num_simulations, selected_strains, return_breakdown=True)
 
 
 def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, objective_metric='emd'):
@@ -459,21 +416,10 @@ def main():
     Main optimization routine - now supports both simple and time-varying mechanisms.
     """
     # Mechanism to optimize
-    mechanism = 'time_varying_k_fixed_burst'  # Default mechanism
-    
-    # Objective Metric: 'nll' or 'emd'
-    objective_metric = 'emd'      # Switch to EMD by default
+    mechanism = 'time_varying_k'  # Default mechanism
 
     max_iterations = 1000
     num_simulations = 10000
-    
-    # KDE Bandwidth configuration
-    # Options: 'scott' (adaptive, h = std * n^(-1/5)) or 'fixed' (constant bandwidth)
-    bandwidth_method = 'fixed'     # 'scott' or 'fixed'
-    fixed_bandwidth = 10.0         # Used when bandwidth_method='fixed'
-    
-    # Set bandwidth configuration
-    set_kde_bandwidth(method=bandwidth_method, fixed_value=fixed_bandwidth)
     
     datasets = load_experimental_data()
     if not datasets:
@@ -487,10 +433,9 @@ def main():
             max_iterations=max_iterations,
             num_simulations=num_simulations,
             selected_strains=None,
-            objective_metric=objective_metric
         )
 
-        save_results(mechanism, results, selected_strains=None, objective_metric=objective_metric)
+        save_results(mechanism, results, selected_strains=None)
     except Exception as e:
         print(f"Error during optimization: {e}")
         import traceback

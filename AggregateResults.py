@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Aggregate Cross-Validation Results from SLURM Job Array.
 
@@ -60,7 +59,7 @@ def find_cv_result_files(run_id=None):
         # Find files with specific run_id
         pattern = f'{search_dir}/cv_results_*_{run_id}.csv'
     else:
-        # Find all cv_results files (dangerous! may mix runs)
+        # Find all cv_results files
         pattern = f'{search_dir}/cv_results_*.csv'
     
     files = glob.glob(pattern)
@@ -91,14 +90,14 @@ def load_cv_results(csv_files):
                 # cv_results_{mechanism}_{run_id}.csv
                 mechanism = '_'.join(parts[2:-1]) if len(parts) > 4 else parts[2]
             else:
-                print(f"⚠️  Warning: Unexpected filename format: {csv_file}")
+                print(f"  Warning: Unexpected filename format: {csv_file}")
                 continue
             
             # Load CSV
             df = pd.read_csv(csv_file)
             
             if len(df) == 0:
-                print(f"⚠️  Warning: Empty CSV file: {csv_file}")
+                print(f"  Warning: Empty CSV file: {csv_file}")
                 continue
             
             val_emds = df['val_emd'].values
@@ -129,7 +128,7 @@ def load_cv_results(csv_files):
             }
             
             all_results.append(result)
-            print(f"✅ Loaded: {mechanism} (n={len(df)} folds, Val EMD={result['mean_val_emd']:.2f})")
+            print(f" Loaded: {mechanism} (n={len(df)} folds, Val EMD={result['mean_val_emd']:.2f})")
             
         except Exception as e:
             print(f"❌ Error loading {csv_file}: {e}")
@@ -152,7 +151,7 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     results_with_params = [r for r in all_results if r.get('params') and any(p is not None for p in r['params'])]
     
     if not results_with_params:
-        print("⚠️  No parameter data available for any mechanism")
+        print("  No parameter data available for any mechanism")
         return
         
     # User-specified mechanism order
@@ -234,14 +233,11 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     n_params = len(all_param_names)
     
     # Create figure with one row per parameter
-    # IMPORTANT: sharex=False to prevent matplotlib from enforcing numeric formatting
-    # We will manually align x-limits.
     fig, axes = plt.subplots(n_params, 1, 
                             figsize=(max(12, 1.5 * n_mechanisms), 2.0 * n_params),
                             sharex=False,
                             squeeze=False)
     
-    # Global Title
     fig.suptitle('Parameter Distributions Across Mechanisms', fontsize=18, fontweight='bold', y=0.99)
     
     # Iterate through parameters (rows)
@@ -304,10 +300,6 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
                             param_values = n3_vals / N3_vals
                         else:
                             param_values = None
-                
-                # For derived parameters, param_bound will be handled dynamically later
-                # We can set a placeholder or just leave it None for now.
-                # param_bound = (0, 0.1) # Concentration is usually small
                 
             else:
                 # Regular Parameters
@@ -409,8 +401,6 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
         ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
         ax.set_xticklabels([])
 
-    # NOW setup the Top Labels on the first subplot
-    # Do this LAST to ensure nothing overwrites it
     ax_top = axes[0, 0]
     ax_top.xaxis.set_label_position('top')
     ax_top.xaxis.tick_top()
@@ -431,7 +421,7 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
             filename = f'ModelComparisonEMDResults/parameter_matrix_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         #plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
-        print(f"\n📊 Parameter matrix saved as: {filename}")
+        print(f"\n Parameter matrix saved as: {filename}")
     
     plt.close()
 
@@ -451,7 +441,7 @@ def create_summary_table_with_runid(all_results, run_id=None, save_table=True):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f'ModelComparisonEMDResults/model_comparison_cv_summary_{timestamp}.csv'
         df_summary.to_csv(filename, index=False)
-        print(f"\n💾 Summary table saved as: {filename}")
+        print(f"\n Summary table saved as: {filename}")
     
     return df_summary
 
@@ -554,7 +544,7 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
             filename1 = f'ModelComparisonEMDResults/model_comparison_mean_emd_{timestamp}.pdf'
         plt.savefig(filename1, dpi=300, bbox_inches='tight', format='pdf')
         #plt.savefig(filename1, dpi=300, bbox_inches='tight', format='svg')
-        print(f"\n📊 Mean EMD plot saved as: {filename1}")
+        print(f"\n Mean EMD plot saved as: {filename1}")
     
     plt.close()
     
@@ -597,7 +587,7 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
                 filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}.pdf'
             plt.savefig(filename2, dpi=300, bbox_inches='tight', format='pdf')
             #plt.savefig(filename2, dpi=300, bbox_inches='tight', format='svg')
-            print(f"📊 Boxplot distribution saved as: {filename2}")
+            print(f" Boxplot distribution saved as: {filename2}")
         
         plt.close()
 
@@ -622,13 +612,13 @@ def main():
     
     # Find CV result files
     if args.pattern:
-        print(f"\n📁 Using custom pattern: {args.pattern}")
+        print(f"\n Using custom pattern: {args.pattern}")
         csv_files = glob.glob(args.pattern)
     elif args.run_id:
-        print(f"\n📁 Finding results for Run ID: {args.run_id}")
+        print(f"\n Finding results for Run ID: {args.run_id}")
         csv_files = find_cv_result_files(args.run_id)
     else:
-        print("\n⚠️  WARNING: No run ID specified!")
+        print("\n  WARNING: No run ID specified!")
         print("   This will aggregate ALL cv_results_*.csv files in the directory.")
         print("   Results from different runs may be mixed.")
         response = input("   Continue anyway? (y/n): ")
@@ -638,44 +628,44 @@ def main():
         csv_files = find_cv_result_files(None)
     
     if not csv_files:
-        print(f"\n❌ No CV result files found!")
+        print(f"\n No CV result files found!")
         if args.run_id:
             print(f"   Searched for: ModelComparisonEMDResults/cv_results_*_{args.run_id}.csv")
-        print("\n💡 Make sure the SLURM job array has completed successfully.")
+        print("\n Make sure the SLURM job array has completed successfully.")
         return
     
-    print(f"\n📊 Found {len(csv_files)} CV result files:")
+    print(f"\n Found {len(csv_files)} CV result files:")
     for f in csv_files:
         print(f"   - {f}")
     
     # Load and aggregate results
-    print(f"\n🔄 Loading and aggregating results...")
+    print(f"\n Loading and aggregating results...")
     all_results = load_cv_results(csv_files)
     
     if not all_results:
         print(f"\n❌ No results could be loaded!")
         return
     
-    print(f"\n✅ Successfully loaded {len(all_results)} mechanism results")
+    print(f"\n Successfully loaded {len(all_results)} mechanism results")
     
     # Generate summary table and plots
-    print(f"\n📊 Generating summary and visualizations...")
+    print(f"\n Generating summary and visualizations...")
     
     summary_df = create_summary_table_with_runid(all_results, run_id=args.run_id, save_table=True)
     create_comparison_plots_with_runid(all_results, run_id=args.run_id, save_plots=True)
     
     # Generate parameter matrix plot (all mechanisms in one plot)
-    print(f"\n📊 Generating parameter matrix plot...")
+    print(f"\n Generating parameter matrix plot...")
     plot_parameter_matrix(all_results, run_id=args.run_id, save_plots=True)
     
-    print(f"\n🎉 Aggregation complete!")
+    print(f"\n Aggregation complete!")
     if args.run_id:
-        print(f"📁 Results saved with run ID: {args.run_id}")
+        print(f" Results saved with run ID: {args.run_id}")
     
     if args.run_id:
-        print(f"📋 Run ID: {args.run_id}")
+        print(f" Run ID: {args.run_id}")
     
-    print(f"\n💡 Interpretation:")
+    print(f"\n Interpretation:")
     print(f"   - Lower Validation EMD indicates better model fit to unseen data")
     print(f"   - Use the summary table to identify the best mechanism(s)")
     print(f"   - Individual fold results are in the original CSV files")

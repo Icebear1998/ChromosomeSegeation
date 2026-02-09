@@ -1,24 +1,4 @@
 #!/usr/bin/env python3
-"""
-Fast Beta Sampling Simulation - O(1) replacement for Gillespie algorithm.
-
-This module implements an exact analytical method for simulating the 'simple' and 
-'fixed_burst' mechanisms using order statistics and the Beta distribution.
-
-Mathematical Basis:
-- For independent exponential degradation events, the time to the k-th event 
-  follows a specific distribution that can be computed directly.
-- Instead of simulating N events sequentially (Gillespie), we use the fact that
-  the k-th order statistic of N uniform(0,1) samples follows Beta(k, N-k+1).
-- This reduces complexity from O(N) to O(1) per simulation.
-
-Performance:
-- Expected speedup: 100-300x compared to Gillespie for typical N values.
-- Fully vectorized using NumPy for batch simulation.
-
-Author: Generated for Chromosome Segregation Modeling Project
-"""
-
 import numpy as np
 from typing import Tuple, Optional
 import warnings
@@ -156,28 +136,18 @@ def simulate_fixed_burst_beta_single(N: float, n: float, k: float, burst_size: f
     # Round inputs to nearest integer
     N = int(round(N))
     n = int(round(n))
-    
-    # Transform to "super-cohesin" representation
+
     N_prime = int(np.ceil(N / burst_size))
-    # Corrected formula for n_prime to handle residual cohesins
     n_prime = int(N_prime - np.ceil((N - n) / burst_size))
     k_prime = k * burst_size
     
     # Use simple Beta sampling on transformed parameters
-    # Note: N_prime, n_prime are already integers, but function will round them again (no-op)
     return simulate_simple_beta_single(N_prime, n_prime, k_prime)
 
 
 def simulate_time_varying_k_beta_single(N: float, n: float, k_1: float, k_max: float) -> float:
     """
     Simulate time_varying_k mechanism using Beta sampling.
-    
-    For k(t) = min(k_1 * t, k_max), we can analytically invert the cumulative hazard:
-    
-    H(t) = ∫₀ᵗ k(s) ds = { k_1 * t²/2           if t < tau
-                          { k_max²/(2k_1) + k_max*(t - tau)  if t >= tau
-    
-    where tau = k_max / k_1 is the transition time.
     
     Args:
         N: Initial number of cohesins
@@ -229,8 +199,6 @@ def simulate_time_varying_k_fixed_burst_beta_single(N: float, n: float, k_1: flo
     """
     Simulate time_varying_k_fixed_burst mechanism using Beta sampling.
     
-    Combines the "super-cohesin" transform with time-varying rate inversion.
-    
     Args:
         N: Initial number of cohesins
         n: Threshold number
@@ -241,18 +209,14 @@ def simulate_time_varying_k_fixed_burst_beta_single(N: float, n: float, k_1: flo
     Returns:
         float: Time of chromosome separation
     """
-    # Round inputs to nearest integer
     N = int(round(N))
     n = int(round(n))
     
-    # Transform to "super-cohesin" representation
     N_prime = int(np.ceil(N / burst_size))
-    # Corrected formula for n_prime to handle residual cohesins
     n_prime = int(N_prime - np.ceil((N - n) / burst_size))
     k_1_prime = k_1 * burst_size
     k_max_prime = k_max * burst_size
     
-    # Use time-varying k sampling on transformed parameters
     return simulate_time_varying_k_beta_single(N_prime, n_prime, k_1_prime, k_max_prime)
 
 
@@ -278,7 +242,6 @@ class FastBetaSimulator:
             raise ValueError(f"FastBetaSimulator only supports 'simple' and 'fixed_burst', got '{mechanism}'")
         
         self.mechanism = mechanism
-        # ROUND inputs here
         self.initial_state = np.round(np.array(initial_state_list, dtype=float))
         self.n0_list = np.round(np.array(n0_list, dtype=float))
         
@@ -340,7 +303,6 @@ def simulate_batch(mechanism: str, initial_states: np.ndarray, n0_lists: np.ndar
     """
     results = np.zeros((num_simulations, 3))
     
-    # Round inputs for consistent integer handling
     initial_states = np.round(initial_states).astype(int)
     n0_lists = np.round(n0_lists).astype(int)
     

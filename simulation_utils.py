@@ -202,18 +202,15 @@ def load_optimized_parameters(mechanism, filename=None):
 
 def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_tau=None, beta_tau2=None):
     """
-    Apply mutant-specific parameter modifications for both simple and time-varying mechanisms.
+    Apply mutant-specific parameter modifications for time-varying mechanisms.
     
     Args:
         base_params (dict): Base wildtype parameters
         mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade')
         alpha (float): Multiplier for threshold counts (threshold mutant)
-        beta_k (float): Multiplier for k_max (time-varying) - degradation rate
-        beta_k1 (float): Multiplier for k (simple) - separase mutant (degrade)
-        beta_k2 (float): Multiplier for k (simple) - APC mutant (degradeAPC)
-        beta_k3 (float): Multiplier for k (simple) - velcade mutant (velcade)
-        beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger (time-varying only)
-        beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter (time-varying only)
+        beta_k (float): Multiplier for k_max - degradation rate (degrade mutant)
+        beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger
+        beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter
     
     Returns:
         tuple: (modified_params, modified_n0_list)
@@ -223,57 +220,42 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_tau=N
     # Base parameters - always present
     n1, n2, n3 = params['n1'], params['n2'], params['n3']
     N1, N2, N3 = params['N1'], params['N2'], params['N3']
-    
-    # Determine if this is a simple mechanism or time-varying
-    is_simple = 'k' in params  # Simple mechanisms have 'k', time-varying have 'k_max' and 'tau'
-    # Note: 'beta_k' is now exclusively for time-varying k_max modification.
-    # Simple mechanisms use beta_k1, beta_k2, beta_k3.
 
     if mutant_type == 'threshold':
-        # Threshold mutant: reduce threshold counts (small n)
-        # FIX: Enforce n >= 1 to match MoM logic
         n1 = max(alpha * n1, 1.0)
         n2 = max(alpha * n2, 1.0)
         n3 = max(alpha * n3, 1.0)
     
+    
     elif mutant_type == 'degrade':
-        # Degradation mutant: reduce degradation rate
-        if is_simple:
-            # Simple mechanisms: modify 'k' with beta_k1
-            if beta_k1 is None:
-                raise ValueError("beta_k1 required for simple mechanism 'degrade' mutant")
-            params['k'] = beta_k1 * params['k']
-        else:
-            # Time-varying mechanisms: modify 'k_max' with beta_k
-            if beta_k is None:
-                 raise ValueError("beta_k required for time-varying mechanism 'degrade' mutant")
-            params['k_max'] = beta_k * params['k_max']
+        # Degradation mutant: reduce degradation rate by modifying k_max
+        if beta_k is None:
+            raise ValueError("beta_k required for 'degrade' mutant")
+        params['k_max'] = beta_k * params['k_max']
     
     elif mutant_type == 'degradeAPC':
-        if is_simple:
-            # Simple mechanisms: modify 'k' with beta_k2
-            if beta_k2 is None:
-                raise ValueError("beta_k2 required for simple mechanism 'degradeAPC' mutant")
-            params['k'] = beta_k2 * params['k']
-        else:
-            if 'tau' in params:
-                params['tau'] = beta_tau * params['tau']
-            elif 'k_1' in params and 'k_max' in params:
-                current_tau = params['k_max'] / params['k_1']
-                params['k_1'] = params['k_max'] / (beta_tau * current_tau)
+        # APC mutant: increase time scale by modifying tau
+        if beta_tau is None:
+            raise ValueError("beta_tau required for 'degradeAPC' mutant")
+        
+        if 'tau' in params:
+            params['tau'] = beta_tau * params['tau']
+        elif 'k_1' in params and 'k_max' in params:
+            # Modify k_1 to achieve the tau scaling
+            current_tau = params['k_max'] / params['k_1']
+            params['k_1'] = params['k_max'] / (beta_tau * current_tau)
     
     elif mutant_type == 'velcade':
-        if is_simple:
-             # Simple mechanisms: modify 'k' with beta_k3
-            if beta_k3 is None:
-                raise ValueError("beta_k3 required for simple mechanism 'velcade' mutant")
-            params['k'] = beta_k3 * params['k']
-        else:
-            if 'tau' in params:
-                params['tau'] = beta_tau2 * params['tau']
-            elif 'k_1' in params and 'k_max' in params:
-                current_tau = params['k_max'] / params['k_1']
-                params['k_1'] = params['k_max'] / (beta_tau2 * current_tau)
+        # Velcade mutant: increase time scale (stronger than APC) by modifying tau
+        if beta_tau2 is None:
+            raise ValueError("beta_tau2 required for 'velcade' mutant")
+        
+        if 'tau' in params:
+            params['tau'] = beta_tau2 * params['tau']
+        elif 'k_1' in params and 'k_max' in params:
+            # Modify k_1 to achieve the tau scaling
+            current_tau = params['k_max'] / params['k_1']
+            params['k_1'] = params['k_max'] / (beta_tau2 * current_tau)
     
     # Update the modified parameters
     params['n1'], params['n2'], params['n3'] = n1, n2, n3
@@ -309,16 +291,6 @@ def calculate_k1_from_params(params):
 
 def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     """
-    Run simulations for a given mechanism and parameters.
-    Handles both simple mechanisms (simple, fixed_burst, steric_hindrance, fixed_burst_steric_hindrance)
-    and time-varying mechanisms (time_varying_k, time_varying_k_fixed_burst, etc.)
-    
-    Supports mechanism variants with _wfeedback suffix (e.g., time_varying_k_wfeedback).
-    
-    OPTIMIZATION: Uses O(1) Beta sampling for 'simple', 'fixed_burst', 'time_varying_k', 
-    and 'time_varying_k_fixed_burst' mechanisms, falling back to Gillespie for complex 
-    mechanisms (feedback, time-varying feedback).
-    
     Args:
         mechanism (str): Mechanism name (may include _wfeedback suffix)
         params (dict): Parameter dictionary
@@ -328,281 +300,107 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     Returns:
         tuple: (delta_t12_array, delta_t32_array) as numpy arrays, or (None, None) on failure
     """
-    # Strip _wfeedback suffix to get base mechanism for dispatch logic
-    # (The suffix only affects parameter bounds, not the simulation logic)
     base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
     
     # Check if we can use the fast Beta method
     use_beta_method = base_mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
     
     if use_beta_method:
-        # Import the fast Beta simulation method
-        try:
-            from FastBetaSimulation import simulate_batch
-            
-            # Prepare parameters for Beta method
-            initial_states = np.array([params['N1'], params['N2'], params['N3']])
-            n0_array = np.array(n0_list)
-            
-            # Prepare mechanism-specific parameters
-            if base_mechanism in ['simple', 'fixed_burst']:
-                k = params['k']
-                burst_size = params.get('burst_size', 1.0)
-                k_1 = None
-                k_max = None
-            else:  # time_varying_k mechanisms
-                k = None
-                burst_size = params.get('burst_size', 1.0)
-                k_1 = calculate_k1_from_params(params)
-                k_max = params['k_max']
-            
-            # Use the ultra-fast vectorized method
-            # RUN INDEPENDENT SIMULATIONS FOR T12 AND T32
-            # We need 2 * num_simulations total samples
-            total_sims = 2 * num_simulations
-            
-            results = simulate_batch(
-                mechanism=base_mechanism,  # Pass base mechanism to simulator
-                initial_states=initial_states,
-                n0_lists=n0_array,
-                k=k,
-                burst_size=burst_size,
-                k_1=k_1,
-                k_max=k_max,
-                num_simulations=total_sims
-            )
-            
-            # Split results for independent sampling
-            # First half for T12, Second half for T32
-            # Extract segregation times (columns are chromosomes 1, 2, 3)
-            
-            # Dataset A (for T12)
-            t1_A = results[:num_simulations, 0]
-            t2_A = results[:num_simulations, 1]
-            # Dataset A T3 is irrelevant
-            
-            # Dataset B (for T32)
-            # Dataset B T1 is irrelevant
-            t2_B = results[num_simulations:, 1]
-            t3_B = results[num_simulations:, 2]
-            
-            # Calculate time differences independently
-            delta_t12_array = t1_A - t2_A
-            delta_t32_array = t3_B - t2_B
-            
-            return delta_t12_array, delta_t32_array
-            
-        except ImportError as e:
-            print(f"!!! FastBetaSimulation import failed: {e}")
-            raise ImportError(f"FastBetaSimulation module not found. Gillespie fallback is disabled. Error: {e}")
+        from FastBetaSimulation import simulate_batch
+        
+        # Prepare parameters for Beta method
+        initial_states = np.array([params['N1'], params['N2'], params['N3']])
+        n0_array = np.array(n0_list)
+        
+        k = None
+        burst_size = params.get('burst_size', 1.0)
+        k_1 = calculate_k1_from_params(params)
+        k_max = params['k_max']
+        
+        total_sims = 2 * num_simulations
+        
+        results = simulate_batch(
+            mechanism=base_mechanism,  # Pass base mechanism to simulator
+            initial_states=initial_states,
+            n0_lists=n0_array,
+            k=k,
+            burst_size=burst_size,
+            k_1=k_1,
+            k_max=k_max,
+            num_simulations=total_sims
+        )
+    
+        
+        # Dataset A (for T12)
+        t1_A = results[:num_simulations, 0]
+        t2_A = results[:num_simulations, 1]
+        # Dataset A T3 is irrelevant
+        
+        # Dataset B (for T32)
+        # Dataset B T1 is irrelevant
+        t2_B = results[num_simulations:, 1]
+        t3_B = results[num_simulations:, 2]
+        
+        # Calculate time differences independently
+        delta_t12_array = t1_A - t2_A
+        delta_t32_array = t3_B - t2_B
+        
+        return delta_t12_array, delta_t32_array
 
     # Check if we can use the fast Feedback method (Vectorized Sum of Exponentials)
     use_feedback_method = base_mechanism in ['steric_hindrance', 'fixed_burst_steric_hindrance', 
                                         'time_varying_k_steric_hindrance', 'time_varying_k_combined']
     
     if use_feedback_method:
-        try:
-            from FastFeedbackSimulation import simulate_batch_feedback
-            
-            initial_states = np.array([params['N1'], params['N2'], params['N3']])
-            n0_array = np.array(n0_list)
-            
-            # Default optional params
-            k = None
-            n_inner = params['n_inner']
-            k_1 = None
-            k_max = None
-            burst_size = params.get('burst_size', 1.0)
-            
-            if base_mechanism == 'steric_hindrance':
-                k = params['k']
-            elif base_mechanism == 'fixed_burst_steric_hindrance':
-                k = params['k']
-                # burst_size already extracted above
-            elif base_mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
-                k_1 = calculate_k1_from_params(params)
-                k_max = params['k_max']
-            
-            # RUN INDEPENDENT SIMULATIONS FOR T12 AND T32
-            total_sims = 2 * num_simulations
-                
-            results = simulate_batch_feedback(
-                mechanism=base_mechanism,  # Pass base mechanism to simulator
-                initial_states=initial_states,
-                n0_lists=n0_array,
-                k=k,
-                n_inner=n_inner,
-                k_1=k_1,
-                k_max=k_max,
-                burst_size=burst_size,
-                num_simulations=total_sims
-            )
-            
-            # Split results for independent sampling
-            # Dataset A (for T12)
-            t1_A = results[:num_simulations, 0]
-            t2_A = results[:num_simulations, 1]
-            
-            # Dataset B (for T32)
-            t2_B = results[num_simulations:, 1]
-            t3_B = results[num_simulations:, 2]
-            
-            delta_t12_array = t1_A - t2_A
-            delta_t32_array = t3_B - t2_B
-            
-            return delta_t12_array, delta_t32_array
-            
-        except ImportError as e:
-            print(f"\n!!!!!!!!!!!!!!!!! CRITICAL ERROR !!!!!!!!!!!!!!!!!")
-            print(f"FastFeedbackSimulation import failed: {e}")
-            print(f"Falling back to SLOW Gillespie simulation.")
-            print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
-            warnings.warn("FastFeedbackSimulation not found")
-            raise ImportError(f"FastFeedbackSimulation module not found. Gillespie fallback is disabled. Error: {e}")
-
-    
-    # If neither method was used, raise an error
-    raise ValueError(f"No fast simulation method available for mechanism '{mechanism}' (base: '{base_mechanism}'). "
-                   f"Standard Gillespie simulation has been disabled.")
-
-
-
-# ======================== KDE BANDWIDTH CONFIGURATION ========================
-# Global configuration for KDE bandwidth selection
-# Options:
-#   method='scott': Use Scott's rule (h = std * n^(-1/5)) - adaptive to sample size
-#   method='fixed': Use a fixed bandwidth value
-KDE_BANDWIDTH_CONFIG = {
-    'method': 'scott',      # 'scott' or 'fixed'
-    'fixed_value': 10.0     # Used when method='fixed'
-}
-
-def set_kde_bandwidth(method='scott', fixed_value=10.0):
-    """
-    Set the KDE bandwidth configuration globally.
-    
-    Args:
-        method: 'scott' for Scott's rule (adaptive) or 'fixed' for fixed bandwidth
-        fixed_value: Bandwidth value when method='fixed'
-    
-    Example:
-        set_kde_bandwidth(method='fixed', fixed_value=15.0)
-        set_kde_bandwidth(method='scott')
-    """
-    global KDE_BANDWIDTH_CONFIG
-    if method not in ['scott', 'fixed']:
-        raise ValueError("method must be 'scott' or 'fixed'")
-    KDE_BANDWIDTH_CONFIG['method'] = method
-    KDE_BANDWIDTH_CONFIG['fixed_value'] = fixed_value
-    print(f"KDE bandwidth set to: method='{method}'" + 
-          (f", fixed_value={fixed_value}" if method == 'fixed' else " (adaptive)"))
-
-def get_kde_bandwidth():
-    """Get current KDE bandwidth configuration."""
-    return KDE_BANDWIDTH_CONFIG.copy()
-
-# =============================================================================
-
-
-def calculate_likelihood(exp_data, sim_data):
-    """
-    Calculate negative log-likelihood using KDE.
-    
-    Bandwidth selection is controlled by global KDE_BANDWIDTH_CONFIG:
-    - 'scott': Scott's rule (h = std * n^(-1/5)) - adaptive to sample size
-    - 'fixed': Use fixed bandwidth value
-    
-    Use set_kde_bandwidth() to change the configuration.
-    
-    Args:
-        exp_data: Dictionary or array of experimental data
-        sim_data: Dictionary or array of simulation data
+        from FastFeedbackSimulation import simulate_batch_feedback
         
-    Returns:
-        float: Negative log-likelihood
-    """
-    try:
-        # Handle dictionary input
-        if isinstance(exp_data, dict) and isinstance(sim_data, dict):
-            nll_total = 0
-            
-            for key in ['delta_t12', 'delta_t32']:
-                if key in exp_data and key in sim_data:
-                    exp_values = np.asarray(exp_data[key]).flatten()
-                    sim_values = np.asarray(sim_data[key]).flatten()
-                    
-                    # Remove non-finite values
-                    exp_values = exp_values[np.isfinite(exp_values)]
-                    sim_values = sim_values[np.isfinite(sim_values)]
-                    
-                    if len(exp_values) == 0 or len(sim_values) < 10:
-                        return 1e6
-                    
-                    # Select bandwidth based on configuration
-                    if KDE_BANDWIDTH_CONFIG['method'] == 'scott':
-                        bandwidth = np.std(sim_values) * (len(sim_values) ** (-1/5))
-                        bandwidth = max(bandwidth, 0.1)  # Minimum to avoid numerical issues
-                    else:
-                        bandwidth = KDE_BANDWIDTH_CONFIG['fixed_value']
-                    
-                    kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth)
-                    kde.fit(sim_values.reshape(-1, 1))
-                    
-                    # Calculate likelihood
-                    log_densities = kde.score_samples(exp_values.reshape(-1, 1))
-                    
-                    # Robust KDE: Mix with uniform background to handle outliers
-                    # This prevents infinite NLL for data points far from simulation range
-                    # P(x) = (1 - epsilon) * KDE(x) + epsilon * P_background
-                    epsilon = 1e-3
-                    background_density = 1e-6
-                    
-                    densities = np.exp(log_densities)
-                    robust_densities = (1 - epsilon) * densities + epsilon * background_density
-                    log_densities = np.log(robust_densities)
-                    
-                    nll = -np.sum(log_densities)
-                    nll_total += nll
-            
-            return nll_total
+        initial_states = np.array([params['N1'], params['N2'], params['N3']])
+        n0_array = np.array(n0_list)
         
-        # Handle array input
-        else:
-            exp_values = np.asarray(exp_data).flatten()
-            sim_values = np.asarray(sim_data).flatten()
+        # Default optional params
+        k = None
+        n_inner = params['n_inner']
+        k_1 = None
+        k_max = None
+        burst_size = params.get('burst_size', 1.0)
+        
+        if base_mechanism == 'steric_hindrance':
+            k = params['k']
+        elif base_mechanism == 'fixed_burst_steric_hindrance':
+            k = params['k']
+            # burst_size already extracted above
+        elif base_mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
+            k_1 = calculate_k1_from_params(params)
+            k_max = params['k_max']
+        
+        # RUN INDEPENDENT SIMULATIONS FOR T12 AND T32
+        total_sims = 2 * num_simulations
             
-            exp_values = exp_values[np.isfinite(exp_values)]
-            sim_values = sim_values[np.isfinite(sim_values)]
-            
-            if len(exp_values) == 0 or len(sim_values) < 10:
-                return 1e6
-            
-            # Select bandwidth based on configuration
-            if KDE_BANDWIDTH_CONFIG['method'] == 'scott':
-                bandwidth = np.std(sim_values) * (len(sim_values) ** (-1/5))
-                bandwidth = max(bandwidth, 0.1)
-            else:
-                bandwidth = KDE_BANDWIDTH_CONFIG['fixed_value']
-            
-            kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth)
-            kde.fit(sim_values.reshape(-1, 1))
-            
-            log_densities = kde.score_samples(exp_values.reshape(-1, 1))
-            
-            # Robust KDE
-            epsilon = 1e-3
-            background_density = 1e-6
-            
-            densities = np.exp(log_densities)
-            robust_densities = (1 - epsilon) * densities + epsilon * background_density
-            log_densities = np.log(robust_densities)
-            
-            return -np.sum(log_densities)
-    
-    except Exception:
-        return 1e6
-
-
+        results = simulate_batch_feedback(
+            mechanism=base_mechanism,  # Pass base mechanism to simulator
+            initial_states=initial_states,
+            n0_lists=n0_array,
+            k=k,
+            n_inner=n_inner,
+            k_1=k_1,
+            k_max=k_max,
+            burst_size=burst_size,
+            num_simulations=total_sims
+        )
+        
+        # Split results for independent sampling
+        # Dataset A (for T12)
+        t1_A = results[:num_simulations, 0]
+        t2_A = results[:num_simulations, 1]
+        
+        # Dataset B (for T32)
+        t2_B = results[num_simulations:, 1]
+        t3_B = results[num_simulations:, 2]
+        
+        delta_t12_array = t1_A - t2_A
+        delta_t32_array = t3_B - t2_B
+        
+        return delta_t12_array, delta_t32_array
 
 
 def calculate_emd(exp_data, sim_data):
@@ -658,22 +456,6 @@ def calculate_emd(exp_data, sim_data):
 
 
 def calculate_wasserstein_p_value(sample1, sample2, num_permutations=1000, seed=None):
-    """
-    Calculate the p-value for the Wasserstein distance between two samples
-    using a permutation test.
-    
-    The null hypothesis is that the two samples are drawn from the same distribution.
-    A low p-value indicates that the distributions are significantly different.
-    
-    Args:
-        sample1 (array-like): First sample (e.g., experimental data)
-        sample2 (array-like): Second sample (e.g., simulation data)
-        num_permutations (int): Number of permutations to perform (default: 1000)
-        seed (int, optional): Random seed for reproducibility
-        
-    Returns:
-        tuple: (p_value, observed_distance)
-    """
     rng = np.random.default_rng(seed)
     
     # Ensure inputs are 1D numpy arrays and remove NaNs
@@ -726,14 +508,10 @@ def calculate_wasserstein_p_value(sample1, sample2, num_permutations=1000, seed=
 
 def get_parameter_bounds(mechanism):
     """
-    Get parameter bounds for optimization.
-    
-    Mechanism variants for time-varying models:
-    - Base mechanisms (e.g., time_varying_k): wide bounds for tau/beta_tau
-    - *_wfeedback: tight bounds for tau/beta_tau (with feedback constraint)
+    Get parameter bounds for time-varying mechanisms.
     
     Args:
-        mechanism (str): Mechanism name
+        mechanism (str): Mechanism name (must be time-varying)
     
     Returns:
         list: List of (min, max) tuples for each parameter
@@ -744,72 +522,54 @@ def get_parameter_bounds(mechanism):
     # Strip suffix to get base mechanism for classification
     base_mechanism = mechanism.replace('_wfeedback', '') if has_feedback_suffix else mechanism
     
-    is_simple = base_mechanism in ['simple', 'fixed_burst', 'steric_hindrance', 'fixed_burst_steric_hindrance']
-    is_time_varying = base_mechanism.startswith('time_varying_k')
+    # All mechanisms are time-varying
+    if not base_mechanism.startswith('time_varying_k'):
+        raise ValueError(f"Only time-varying mechanisms are supported. Got: {mechanism}")
     
     # Determine tau and beta bounds based on feedback variant
-    if is_time_varying:
-        if has_feedback_suffix:
-            # Tight bounds for feedback models
-            tau_bounds = (0.5, 5.0)
-            beta_tau_bounds = (1.0, 3.0)
-            beta_tau2_bounds = (1.0, 3.0)
-        else:
-            # Wide bounds for normal models (default)
-            tau_bounds = (2, 240)
-            beta_tau_bounds = (1.0, 10.0)
-            beta_tau2_bounds = (1.0, 20.0)
+    if has_feedback_suffix:
+        # Tight bounds for feedback models
+        tau_bounds = (0.5, 5.0)
+        beta_tau_bounds = (1.0, 3.0)
+        beta_tau2_bounds = (1.0, 3.0)
+    else:
+        # Wide bounds for normal models (default)
+        tau_bounds = (2, 240)
+        beta_tau_bounds = (1.0, 10.0)
+        beta_tau2_bounds = (1.0, 20.0)
     
-    # Base bounds: n2, N2, rate param, r21, r23, R21, R23
+    # Base bounds: n2, N2, k_max, tau, r21, r23, R21, R23
     bounds = [
         (0.0, 50.0),      # n2
         (50.0, 1000.0),   # N2
-        (0.001, 0.1),      # k or k_max
-    ]
-    
-    # Add tau for time-varying mechanisms (simple mechanisms don't have tau)
-    if is_time_varying:
-        bounds.append(tau_bounds)  # tau
-    
-    bounds.extend([
+        (0.001, 0.1),     # k_max
+        tau_bounds,       # tau
         (0.25, 4.0),      # r21
         (0.25, 4.0),      # r23
-        (0.4, 2.0),        # R21
+        (0.4, 2.0),       # R21
         (0.5, 5.0),       # R23
-    ])
+    ]
     
-    # Add mechanism-specific optional parameters (use base_mechanism for checks)
-    if base_mechanism in ['fixed_burst', 'fixed_burst_steric_hindrance', 
-                      'time_varying_k_fixed_burst', 'time_varying_k_combined']:
+    # Add mechanism-specific optional parameters
+    if base_mechanism in ['time_varying_k_fixed_burst', 'time_varying_k_combined']:
         bounds.append((1.0, 50.0))  # burst_size
-    if base_mechanism in ['steric_hindrance', 'fixed_burst_steric_hindrance',
-                      'time_varying_k_steric_hindrance', 'time_varying_k_combined']:
+    if base_mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
         bounds.append((1.0, 100.0))  # n_inner
     
-    # Add mutant parameter bounds
+    # Add mutant parameter bounds (all time-varying)
     bounds.append((0.1, 0.7))   # alpha
-    
-    if is_simple:
-        # Simple mechanisms now have 3 distinct beta_k parameters
-        bounds.extend([
-            (0.1, 1.0),   # beta_k1
-            (0.1, 1.0),   # beta_k2
-            (0.1, 1.0),   # beta_k3
-        ])
-    else:
-        # Time-varying mechanisms retain original beta_k + beta_tau parameters
-        bounds.extend([
-            (0.1, 1.0),   # beta_k (for k_max)
-            beta_tau_bounds,  # beta_tau
-            beta_tau2_bounds,  # beta_tau2
-        ])
+    bounds.extend([
+        (0.1, 1.0),         # beta_k (for k_max)
+        beta_tau_bounds,    # beta_tau
+        beta_tau2_bounds,   # beta_tau2
+    ])
     
     return bounds
 
 
 def get_parameter_names(mechanism):
     """
-    Get parameter names for a given mechanism (time-varying mechanisms only).
+    Get parameter names for time-varying mechanisms.
     
     Handles mechanism variants with _wfeedback suffix.
     
@@ -823,10 +583,6 @@ def get_parameter_names(mechanism):
     base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
     
     time_varying_params = {
-        'simple': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-        'fixed_burst': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-        'steric_hindrance': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
-        'fixed_burst_steric_hindrance': ['n2', 'N2', 'k', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k1', 'beta_k2', 'beta_k3'],
         'time_varying_k': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
         'time_varying_k_steric_hindrance': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
@@ -853,7 +609,6 @@ def parse_parameters(params_vector, mechanism):
     param_names = get_parameter_names(mechanism)
     param_dict = dict(zip(param_names, params_vector))
     
-    # Calculate derived parameters
     # Calculate derived parameters
     param_dict['n1'] = max(param_dict['r21'] * param_dict['n2'], 1)
     param_dict['n3'] = max(param_dict['r23'] * param_dict['n2'], 1)

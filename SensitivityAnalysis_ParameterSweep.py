@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""
-SensitivityAnalysis_ParameterSweep.py
-
-Performs parameter sweep sensitivity analysis by varying each parameter
-across its full bounds and observing the effect on model outputs.
-
-Method:
-1. Load optimized parameters as the baseline.
-2. For each parameter P:
-   - Sweep P across its full parameter bounds (e.g., 20 values from min to max).
-   - At each value, run simulations and calculate Mean(T12), Std(T12), Mean(T32), Std(T32).
-3. Plot dual y-axis graphs: Mean and Std vs Parameter value.
-4. Mark the optimized parameter value with a vertical line.
-5. Save all data to CSV for later analysis.
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -223,21 +207,6 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
         # Retrieve fits if attached
         fits = getattr(df_param, 'fits', None)
         
-        # Filter slope data for this parameter from all_slope_results
-        # Or just use the 'slope_data' we got from calculate_fits_and_slopes if we stored it?
-        # We didn't store per-param slope_data list, but we can filter all_slope_results
-        # Actually easier to just attach it to df_param like fits
-        
-        # Re-calculate or retrieve - wait, run_parameter_sweep is one big scope
-        # In the loop: fits, slope_data = calculate_fits_and_slopes...
-        # We need to access that 'slope_data' here. 
-        # But 'slope_data' variable is overwritten in each loop iteration.
-        # So we can't access it here easily unless we stored it.
-        # Let's verify where plot_parameter_sweep is called. 
-        # Ah, it's called in a separate loop AFTER all sweeps.
-        
-        # So we need to store slope_data associated with each param.
-        # Let's attach it to df_param too.
         current_slopes = [s for s in all_slope_results if s['Parameter'] == param_name]
         
         plot_parameter_sweep(df_param, param_name, optimized_val, mechanism, 
@@ -299,8 +268,6 @@ def calculate_fits_and_slopes(df, optimized_val, param_name, mechanism, params, 
     fits = {}
     slope_data = []
     
-    # Find index of optimized value (or closest if float issues, but we added it explicitly)
-    # Using small tolerance for float comparison
     idx_opt = np.argmin(np.abs(x - optimized_val))
     val_at_opt_check = x[idx_opt]
     
@@ -331,8 +298,6 @@ def calculate_fits_and_slopes(df, optimized_val, param_name, mechanism, params, 
         # Get the metric value at optimum for normalized sensitivity calculation
         y_at_opt = base_metrics[target]
         
-        # 0A. OAT Method: Run simulations at ±perturbation to calculate sensitivity
-        # This matches the implementation from SensitivityAnalysis_OAT.py
         try:
             print(f"    Running OAT for {param_name} -> {target}...")
             
@@ -490,9 +455,6 @@ def calculate_fits_and_slopes(df, optimized_val, param_name, mechanism, params, 
             ys = y_sweep[sort_idx]
             
             # Use UnivariateSpline with default smoothing (s=None)
-            # or try a small s if data is noisy. 
-            # Given we have Means from N=5000 simulations, data is relatively smooth but has stochasticity.
-            # Let's use s=None which tries to find a good smoothing factor automatically
             spl = UnivariateSpline(xs, ys)
             
             slope = spl.derivative()(optimized_val)

@@ -285,7 +285,7 @@ def create_tol_analysis_plots(mechanism, tol_values, results, save_plots=True):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f'tol_efficiency_emd_{mechanism}_{timestamp}.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
-        print(f"\n📊 Plot saved as: {filename}")
+        print(f"\n Plot saved as: {filename}")
     
     plt.close()
 
@@ -329,7 +329,7 @@ def create_summary_table(mechanism, tol_values, results, save_table=True):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f'tol_efficiency_summary_{mechanism}_{timestamp}.csv'
         df.to_csv(filename, index=False)
-        print(f"\n💾 Summary table saved as: {filename}")
+        print(f"\n Summary table saved as: {filename}")
     
     return df
 
@@ -353,7 +353,7 @@ def main():
     n_simulations = 10000
     max_iterations = 1000
     
-    print(f"\n📋 Configuration:")
+    print(f"\n Configuration:")
     print(f"   Mechanism: {mechanism}")
     print(f"   Tolerance values: {tol_values}")
     print(f"   K-folds: {k_folds}")
@@ -372,15 +372,15 @@ def main():
     end_time = datetime.now()
     duration = end_time - start_time
     
-    print(f"\n⏱️  Total analysis time: {duration}")
+    print(f"\n  Total analysis time: {duration}")
     
     # Create summary and visualizations
-    print(f"\n📊 Creating summary and visualizations...")
+    print(f"\n Creating summary and visualizations...")
     summary_df = create_summary_table(mechanism, tol_values, results, save_table=True)
     create_tol_analysis_plots(mechanism, tol_values, results, save_plots=True)
     
-    print(f"\n🎉 Tolerance analysis complete!")
-    print(f"\n💡 Recommendations:")
+    print(f"\n Tolerance analysis complete!")
+    print(f"\n Recommendations:")
     
     # Find best tolerance
     valid_tols = [(tol, results[tol]['mean_val_emd']) for tol in tol_values 
@@ -389,14 +389,14 @@ def main():
     if valid_tols:
         # Best = lowest Validation EMD among fully converged
         best_tol, best_val_emd = min(valid_tols, key=lambda x: x[1])
-        print(f"   🏆 Best tolerance: {best_tol} (Val EMD={best_val_emd:.2f}, 100% convergence)")
+        print(f"    Best tolerance: {best_tol} (Val EMD={best_val_emd:.2f}, 100% convergence)")
         
         # Fastest = fewest iterations among fully converged
         fastest_tol = min([tol for tol, _ in valid_tols], 
                          key=lambda t: results[t]['mean_iterations'])
-        print(f"   ⚡ Fastest tolerance: {fastest_tol} (Avg {results[fastest_tol]['mean_iterations']:.0f} iterations)")
+        print(f"    Fastest tolerance: {fastest_tol} (Avg {results[fastest_tol]['mean_iterations']:.0f} iterations)")
     else:
-        print(f"   ⚠️  No tolerance value achieved 100% convergence rate")
+        print(f"     No tolerance value achieved 100% convergence rate")
 
 
 if __name__ == "__main__":

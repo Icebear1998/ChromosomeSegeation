@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""
-Plot Feedback Impact Comparison
-
-This script compares specific models with and without feedback mechanisms,
-using Cross-Validation EMD results.
-
-Mechanism Naming Convention:
-- time_varying_k
-- time_varying_k_fixed_burst
-- time_varying_k_steric_hindrance
-- time_varying_k_combined
-"""
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -41,13 +28,13 @@ def load_data(feedback_files, no_feedback_files, load_all_fit=True):
     def process_file_list(file_list, group_label):
         for filepath in file_list:
             if not os.path.exists(filepath):
-                print(f"⚠️ Warning: File not found: {filepath}")
+                print(f" Warning: File not found: {filepath}")
                 continue
 
             try:
                 df = pd.read_csv(filepath)
                 if 'val_emd' not in df.columns:
-                    print(f"⚠️ Warning: 'val_emd' column missing in {filepath}")
+                    print(f" Warning: 'val_emd' column missing in {filepath}")
                     continue
 
                 # Derived mechanism name from filename
@@ -104,10 +91,10 @@ def load_data(feedback_files, no_feedback_files, load_all_fit=True):
                     'sem_emd': df['val_emd'].std() / np.sqrt(len(df)),
                     'params': params_list
                 })
-                print(f"✅ Loaded {mechanism}: Mean EMD = {df['val_emd'].mean():.2f}")
+                print(f" Loaded {mechanism}: Mean EMD = {df['val_emd'].mean():.2f}")
 
             except Exception as e:
-                print(f"❌ Error reading {filepath}: {e}")
+                print(f" Error reading {filepath}: {e}")
 
     print("Loading Feedback Models...")
     process_file_list(feedback_files, 'With Feedback')
@@ -133,16 +120,16 @@ def load_data(feedback_files, no_feedback_files, load_all_fit=True):
                         if all_fit_params:
                             result['all_fit_params'] = all_fit_params
                             total_emd = all_fit_params.get('total_emd', 'N/A')
-                            print(f"  ✅ Loaded all-fit for {display_name} (EMD: {total_emd})")
+                            print(f"   Loaded all-fit for {display_name} (EMD: {total_emd})")
                         else:
                             result['all_fit_params'] = None
-                            print(f"  ⚠️  Failed to load all-fit for {display_name}")
+                            print(f"    Failed to load all-fit for {display_name}")
                     except Exception as e:
                         result['all_fit_params'] = None
-                        print(f"  ❌ Error loading all-fit for {display_name}: {e}")
+                        print(f"   Error loading all-fit for {display_name}: {e}")
                 else:
                     result['all_fit_params'] = None
-                    print(f"  ⚠️  All-fit file not found for {display_name}: {filename}")
+                    print(f"    All-fit file not found for {display_name}: {filename}")
             else:
                 result['all_fit_params'] = None
 
@@ -215,7 +202,7 @@ def plot_mean_comparison(data):
     plt.tight_layout()
     save_path = 'ModelComparisonEMDResults/feedback_impact_mean_emd.pdf'
     plt.savefig(save_path, dpi=300)
-    print(f"\n📊 Mean plot saved to: {save_path}")
+    print(f"\n Mean plot saved to: {save_path}")
     plt.close()
 
 def plot_box_distribution(data):
@@ -284,7 +271,7 @@ def plot_box_distribution(data):
     plt.tight_layout()
     save_path = 'ModelComparisonEMDResults/feedback_impact_boxplot.pdf'
     plt.savefig(save_path, dpi=300)
-    print(f"📊 Box plot saved to: {save_path}")
+    print(f" Box plot saved to: {save_path}")
     plt.close()
 
 def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
@@ -304,7 +291,7 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     ]
     
     if not results_with_params:
-        print("⚠️  No parameter data available for any mechanism")
+        print("  No parameter data available for any mechanism")
         return
     
     # Sort by desired display order (matching mean EMD plot)
@@ -371,7 +358,7 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     n_params = len(params_to_plot)
     
     if n_params == 0:
-        print("⚠️  No parameters found to plot")
+        print("  No parameters found to plot")
         return
     
     # Create figure
@@ -423,7 +410,7 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     if save_plots:
         filename = 'ModelComparisonEMDResults/feedback_impact_matrix.pdf'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
-        print(f"\n📊 Parameter matrix saved as: {filename}")
+        print(f"\n Parameter matrix saved as: {filename}")
     
     plt.close()
 
@@ -734,7 +721,7 @@ def main():
     plot_box_distribution(data)
     plot_parameter_matrix(data)
     
-    print("\n✅ Done.")
+    print("\n Done.")
 
 if __name__ == "__main__":
     main()
