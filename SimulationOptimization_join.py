@@ -258,10 +258,9 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'popsize': 10,
         'workers': -1,
         'strategy': 'best1bin',
-        #'mutation': (0.7, 1.0),
-        #'recombination': 0.7,
+        #'mutation': (0.5, 1.0), #default is (0.5, 1.0)
+        #'recombination': 0.7, #default is 0.7
         'tol': 0.01,
-        #'atol': 1e-2,
         'disp': True
     }
 

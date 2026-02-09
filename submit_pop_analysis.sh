@@ -2,7 +2,7 @@
 #SBATCH --account=polya
 #SBATCH --partition=normal_q
 #SBATCH --qos=owl_normal_base
-#SBATCH --time=24:00:00
+#SBATCH --time=30:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=48
 #SBATCH --output=%j_pop_analysis.out

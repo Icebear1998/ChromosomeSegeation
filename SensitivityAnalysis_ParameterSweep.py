@@ -18,12 +18,13 @@ Method:
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from scipy.interpolate import UnivariateSpline
 import sys
 import os
 
 import simulation_utils
 
-def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat=3):
+def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat=3, oat_perturbation=0.10):
     """
     Run parameter sweep sensitivity analysis.
     
@@ -32,11 +33,13 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
         num_simulations (int): Number of simulations per evaluation.
         num_points (int): Number of points to sample across parameter bounds.
         n_repeat (int): Number of repeat simulations at each parameter value for confidence intervals.
+        oat_perturbation (float): Perturbation for OAT sensitivity (e.g., 0.10 for 10%).
     """
     print(f"--- Starting Parameter Sweep Analysis for '{mechanism}' ---")
     print(f"Simulations per evaluation: {num_simulations}")
     print(f"Sample points: {num_points} per parameter")
     print(f"Repeats per point: {n_repeat} (for confidence intervals)")
+    print(f"OAT Perturbation: {oat_perturbation*100}%")
     print()
     # 1. Load Optimized Parameters
     try:
@@ -81,6 +84,8 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
     os.makedirs(output_dir, exist_ok=True)
     
     all_results = []
+    all_slope_results = []
+
     
     for param_name in param_names:
         print(f"\n=== Sweeping {param_name} ===")
@@ -105,6 +110,10 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
             # Combine and sort
             sweep_values = np.sort(np.unique(np.concatenate([sweep_values, extra_points])))
             print(f"  Added {len(sweep_values) - num_points} extra points around n2={optimized_val:.2f}")
+        else:
+             # Ensure exact optimized value is included
+             sweep_values = np.sort(np.unique(np.append(sweep_values, optimized_val)))
+
             
         results = []
         
@@ -136,21 +145,41 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
                 std_t32_repeats.append(np.std(t32_arr))
             
             # Calculate mean and std across repeats
+            mean_t12_avg = np.mean(mean_t12_repeats)
+            mean_t12_std = np.std(mean_t12_repeats)
+            mean_t12_sem = mean_t12_std / np.sqrt(n_repeat)
+            
+            std_t12_avg = np.mean(std_t12_repeats)
+            std_t12_std = np.std(std_t12_repeats)
+            std_t12_sem = std_t12_std / np.sqrt(n_repeat)
+            
+            mean_t32_avg = np.mean(mean_t32_repeats)
+            mean_t32_std = np.std(mean_t32_repeats)
+            mean_t32_sem = mean_t32_std / np.sqrt(n_repeat)
+            
+            std_t32_avg = np.mean(std_t32_repeats)
+            std_t32_std = np.std(std_t32_repeats)
+            std_t32_sem = std_t32_std / np.sqrt(n_repeat)
+            
             results.append({
                 'Parameter': param_name,
                 'Value': value,
                 # Mean of T12 across repeats (in seconds)
-                'Mean_T12': np.mean(mean_t12_repeats),
-                'Mean_T12_std': np.std(mean_t12_repeats),  # Confidence interval
+                'Mean_T12': mean_t12_avg,
+                'Mean_T12_std': mean_t12_std,  # Variation across repeats
+                'Mean_T12_sem': mean_t12_sem,  # Standard Error of Mean
                 # Std of T12 across repeats (in seconds)
-                'Std_T12': np.mean(std_t12_repeats),
-                'Std_T12_std': np.std(std_t12_repeats),
+                'Std_T12': std_t12_avg,
+                'Std_T12_std': std_t12_std,
+                'Std_T12_sem': std_t12_sem,
                 # Mean of T32 across repeats (in seconds)
-                'Mean_T32': np.mean(mean_t32_repeats),
-                'Mean_T32_std': np.std(mean_t32_repeats),
+                'Mean_T32': mean_t32_avg,
+                'Mean_T32_std': mean_t32_std,
+                'Mean_T32_sem': mean_t32_sem,
                 # Std of T32 across repeats (in seconds)
-                'Std_T32': np.mean(std_t32_repeats),
-                'Std_T32_std': np.std(std_t32_repeats)
+                'Std_T32': std_t32_avg,
+                'Std_T32_std': std_t32_std,
+                'Std_T32_sem': std_t32_sem
             })
         
         print(f"\n  Completed sweep for {param_name}")
@@ -158,6 +187,24 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
         # Convert to DataFrame
         df_param = pd.DataFrame(results)
         all_results.append(df_param)
+        
+        # 3.2. Calculate Fits and Slopes
+        fits, slope_data = calculate_fits_and_slopes(
+            df_param, optimized_val, param_name, mechanism, params, 
+            num_simulations, oat_perturbation
+        )
+        
+        # Update slope data with Parameter Name
+        for item in slope_data:
+            item['Parameter'] = param_name
+        all_slope_results.extend(slope_data)
+        
+        # Save fit objects for plotting later (or plot directly)
+        # We need to store fits somewhere if we separate plotting loop
+        # But we can iterate over them in parallel because lists are ordered
+        # Let's attach fits to the DataFrame as metadata attribute (not standard pandas but works for passing around)
+        df_param.fits = fits 
+
     
     # 3.5. Compute global min/max for unified axes
     df_all = pd.concat(all_results, ignore_index=True)
@@ -172,14 +219,46 @@ def run_parameter_sweep(mechanism, num_simulations=5000, num_points=20, n_repeat
     for i, param_name in enumerate(param_names):
         df_param = all_results[i]
         optimized_val = params[param_name]
+        
+        # Retrieve fits if attached
+        fits = getattr(df_param, 'fits', None)
+        
+        # Filter slope data for this parameter from all_slope_results
+        # Or just use the 'slope_data' we got from calculate_fits_and_slopes if we stored it?
+        # We didn't store per-param slope_data list, but we can filter all_slope_results
+        # Actually easier to just attach it to df_param like fits
+        
+        # Re-calculate or retrieve - wait, run_parameter_sweep is one big scope
+        # In the loop: fits, slope_data = calculate_fits_and_slopes...
+        # We need to access that 'slope_data' here. 
+        # But 'slope_data' variable is overwritten in each loop iteration.
+        # So we can't access it here easily unless we stored it.
+        # Let's verify where plot_parameter_sweep is called. 
+        # Ah, it's called in a separate loop AFTER all sweeps.
+        
+        # So we need to store slope_data associated with each param.
+        # Let's attach it to df_param too.
+        current_slopes = [s for s in all_slope_results if s['Parameter'] == param_name]
+        
         plot_parameter_sweep(df_param, param_name, optimized_val, mechanism, 
-                           output_dir, n_repeat, global_limits)
+                           output_dir, n_repeat, global_limits, fits, current_slopes)
     
     # 4. Save All Data
     df_all = pd.concat(all_results, ignore_index=True)
     csv_path = f"{output_dir}/parameter_sweep_{mechanism}_full.csv"
     df_all.to_csv(csv_path, index=False)
     print(f"\n\nAll results saved to {csv_path}")
+    
+    # 5. Save Slopes Data
+    if all_slope_results:
+        df_slopes = pd.DataFrame(all_slope_results)
+        # Reorder columns
+        cols = ['Parameter', 'Metric', 'Method', 'Slope', 'Normalized_Slope', 'R2', 
+                'Value_at_Optimum', 'Metric_at_Optimum']
+        df_slopes = df_slopes[cols]
+        slope_path = f"{output_dir}/sensitivity_slopes_{mechanism}.csv"
+        df_slopes.to_csv(slope_path, index=False)
+        print(f"Sensitivity slopes saved to {slope_path}")
 
 
 def update_derived_params(params):
@@ -197,7 +276,258 @@ def update_derived_params(params):
         params['k_1'] = params['k_max'] / params['tau']
 
 
-def plot_parameter_sweep(df, param_name, optimized_val, mechanism, output_dir, n_repeat, global_limits=None):
+def calculate_fits_and_slopes(df, optimized_val, param_name, mechanism, params, num_simulations, oat_perturbation):
+    """
+    Fit multiple curves (Poly1-3, Spline) to Mean/Std data and calculate slopes at optimum.
+    
+    Args:
+        df: DataFrame with sweep data
+        optimized_val: Optimized parameter value
+        param_name: Name of parameter being varied
+        mechanism: Mechanism name
+        params: Full parameter dict
+        num_simulations: Number of simulations for OAT
+        oat_perturbation: Perturbation fraction for OAT (e.g., 0.10)
+    
+    Returns:
+        fits: dict of fitted functions/data for plotting
+        slopes: list of dicts with slope data (includes OAT, noFit, and fitted methods)
+    """
+    targets = ['Mean_T12', 'Std_T12', 'Mean_T32', 'Std_T32']
+    x = df['Value'].values
+    
+    fits = {}
+    slope_data = []
+    
+    # Find index of optimized value (or closest if float issues, but we added it explicitly)
+    # Using small tolerance for float comparison
+    idx_opt = np.argmin(np.abs(x - optimized_val))
+    val_at_opt_check = x[idx_opt]
+    
+    # Store the parameter value at optimum (not the metric value!)
+    param_val_at_opt = optimized_val
+    
+    # Get baseline metrics at optimum for OAT calculation
+    # We need to run baseline simulation
+    print(f"    Running OAT baseline simulation for {param_name}...")
+    params_base = params.copy()
+    update_derived_params(params_base)
+    n0_list_base = [params_base['n1'], params_base['n2'], params_base['n3']]
+    
+    t12_base, t32_base = simulation_utils.run_simulation_for_dataset(
+        mechanism, params_base, n0_list_base, num_simulations=num_simulations
+    )
+    
+    base_metrics = {
+        'Mean_T12': np.mean(t12_base),
+        'Std_T12': np.std(t12_base),
+        'Mean_T32': np.mean(t32_base),
+        'Std_T32': np.std(t32_base)
+    }
+    
+    for target in targets:
+        y_sweep = df[target].values  # Get the metric values from sweep data
+        
+        # Get the metric value at optimum for normalized sensitivity calculation
+        y_at_opt = base_metrics[target]
+        
+        # 0A. OAT Method: Run simulations at ±perturbation to calculate sensitivity
+        # This matches the implementation from SensitivityAnalysis_OAT.py
+        try:
+            print(f"    Running OAT for {param_name} -> {target}...")
+            
+            # Perturb +
+            params_plus = params.copy()
+            params_plus[param_name] = optimized_val * (1 + oat_perturbation)
+            update_derived_params(params_plus)
+            n0_list_plus = [params_plus['n1'], params_plus['n2'], params_plus['n3']]
+            
+            t12_p, t32_p = simulation_utils.run_simulation_for_dataset(
+                mechanism, params_plus, n0_list_plus, num_simulations=num_simulations
+            )
+            
+            metrics_plus = {
+                'Mean_T12': np.mean(t12_p),
+                'Std_T12': np.std(t12_p),
+                'Mean_T32': np.mean(t32_p),
+                'Std_T32': np.std(t32_p)
+            }
+            
+            # Perturb -
+            params_minus = params.copy()
+            params_minus[param_name] = optimized_val * (1 - oat_perturbation)
+            update_derived_params(params_minus)
+            n0_list_minus = [params_minus['n1'], params_minus['n2'], params_minus['n3']]
+            
+            t12_m, t32_m = simulation_utils.run_simulation_for_dataset(
+                mechanism, params_minus, n0_list_minus, num_simulations=num_simulations
+            )
+            
+            metrics_minus = {
+                'Mean_T12': np.mean(t12_m),
+                'Std_T12': np.std(t12_m),
+                'Mean_T32': np.mean(t32_m),
+                'Std_T32': np.std(t32_m)
+            }
+            
+            # Calculate OAT sensitivity coefficient
+            # Matches SensitivityAnalysis_OAT.py lines 170-181
+            y_base = base_metrics[target]
+            y_plus = metrics_plus[target]
+            y_minus = metrics_minus[target]
+            
+            if abs(y_base) < 1e-9:
+                oat_sensitivity = np.nan
+                oat_slope = np.nan
+            else:
+                # S = average of S+ and S-
+                # S+ = ((Y+ - Yb)/Yb) / perturbation
+                # S- = ((Y- - Yb)/Yb) / (-perturbation)
+                s_plus = ((y_plus - y_base) / y_base) / oat_perturbation
+                s_minus = ((y_minus - y_base) / y_base) / (-oat_perturbation)
+                oat_sensitivity = (s_plus + s_minus) / 2
+                
+                # Calculate equivalent absolute slope for comparison
+                # slope = dY/dX ≈ (Y+ - Y-) / (2 * ΔX)
+                delta_x = 2 * optimized_val * oat_perturbation
+                oat_slope = (y_plus - y_minus) / delta_x
+            
+            slope_data.append({
+                'Metric': target,
+                'Method': 'OAT',
+                'Slope': oat_slope,
+                'Normalized_Slope': oat_sensitivity,
+                'R2': np.nan,  # R² doesn't apply to OAT
+                'Value_at_Optimum': param_val_at_opt,
+                'Metric_at_Optimum': y_at_opt
+            })
+            
+        except Exception as e:
+            print(f"    OAT calculation failed for {target}: {e}")
+        
+        # 0B. No-Fit Method: Calculate empirical slope from raw data using finite differences
+        y_sweep = df[target].values  # Get the metric values from sweep data
+        try:
+            # Use central difference if possible, otherwise forward/backward
+            if idx_opt > 0 and idx_opt < len(x) - 1:
+                # Central difference: (y[i+1] - y[i-1]) / (x[i+1] - x[i-1])
+                dx = x[idx_opt + 1] - x[idx_opt - 1]
+                dy = y_sweep[idx_opt + 1] - y_sweep[idx_opt - 1]
+                nofit_slope = dy / dx if abs(dx) > 1e-10 else np.nan
+            elif idx_opt == 0:
+                # Forward difference: (y[i+1] - y[i]) / (x[i+1] - x[i])
+                dx = x[1] - x[0]
+                dy = y_sweep[1] - y_sweep[0]
+                nofit_slope = dy / dx if abs(dx) > 1e-10 else np.nan
+            else:
+                # Backward difference: (y[i] - y[i-1]) / (x[i] - x[i-1])
+                dx = x[-1] - x[-2]
+                dy = y_sweep[-1] - y_sweep[-2]
+                nofit_slope = dy / dx if abs(dx) > 1e-10 else np.nan
+            
+            # Calculate normalized sensitivity
+            if abs(y_at_opt) > 1e-10:
+                nofit_normalized_slope = nofit_slope * (param_val_at_opt / y_at_opt)
+            else:
+                nofit_normalized_slope = np.nan
+            
+            slope_data.append({
+                'Metric': target,
+                'Method': 'noFit',
+                'Slope': nofit_slope,
+                'Normalized_Slope': nofit_normalized_slope,
+                'R2': np.nan,  # R² doesn't apply to raw data
+                'Value_at_Optimum': param_val_at_opt,
+                'Metric_at_Optimum': y_at_opt
+            })
+        except Exception as e:
+            print(f"  noFit calculation failed for {target}: {e}")
+        
+        # 1. Polynomial Fits
+        poly_fits = {}
+        degrees = {1: 'Linear', 2: 'Quadratic', 3: 'Cubic'}
+        
+        for deg, name in degrees.items():
+            try:
+                # Fit polynomial
+                p = np.poly1d(np.polyfit(x, y_sweep, deg))
+                poly_fits[name] = p
+                
+                # Calculate slope at optimum (absolute)
+                slope = p.deriv()(optimized_val)
+                
+                # Calculate normalized sensitivity: (dY/dX) * (X0/Y0)
+                # This gives a dimensionless measure (elasticity)
+                # Represents: % change in output per % change in input
+                if abs(y_at_opt) > 1e-10:  # Avoid division by zero
+                    normalized_slope = slope * (param_val_at_opt / y_at_opt)
+                else:
+                    normalized_slope = np.nan
+                
+                # Calculate R-squared
+                y_pred = p(x)
+                ss_res = np.sum((y_sweep - y_pred) ** 2)
+                ss_tot = np.sum((y_sweep - np.mean(y_sweep)) ** 2)
+                r2 = 1 - (ss_res / ss_tot)
+                
+                slope_data.append({
+                    'Metric': target,
+                    'Method': name,
+                    'Slope': slope,
+                    'Normalized_Slope': normalized_slope,
+                    'R2': r2,
+                    'Value_at_Optimum': param_val_at_opt,
+                    'Metric_at_Optimum': y_at_opt
+                })
+            except Exception as e:
+                print(f"  Fit validation failed for {target} {name}: {e}")
+        
+        # 2. Spline Fit (Smoothing)
+        try:
+            # Sort x for spline (just in case, though df should be sorted)
+            sort_idx = np.argsort(x)
+            xs = x[sort_idx]
+            ys = y_sweep[sort_idx]
+            
+            # Use UnivariateSpline with default smoothing (s=None)
+            # or try a small s if data is noisy. 
+            # Given we have Means from N=5000 simulations, data is relatively smooth but has stochasticity.
+            # Let's use s=None which tries to find a good smoothing factor automatically
+            spl = UnivariateSpline(xs, ys)
+            
+            slope = spl.derivative()(optimized_val)
+            
+            # Calculate normalized sensitivity for spline too
+            if abs(y_at_opt) > 1e-10:
+                normalized_slope = slope * (param_val_at_opt / y_at_opt)
+            else:
+                normalized_slope = np.nan
+            
+            # For plotting, we need to generate dense points
+            x_dense = np.linspace(min(x), max(x), 200)
+            y_dense = spl(x_dense)
+            
+            poly_fits['Spline'] = (x_dense, y_dense)
+            
+            slope_data.append({
+                'Metric': target,
+                'Method': 'Spline',
+                'Slope': slope,
+                'Normalized_Slope': normalized_slope,
+                'R2': np.nan, # Harder to ensure consistent R2 for spline
+                'Value_at_Optimum': param_val_at_opt,
+                'Metric_at_Optimum': y_at_opt
+            })
+            
+        except Exception as e:
+            print(f"  Spline fit failed for {target}: {e}")
+            
+        fits[target] = poly_fits
+        
+    return fits, slope_data
+
+
+def plot_parameter_sweep(df, param_name, optimized_val, mechanism, output_dir, n_repeat, global_limits=None, fits=None, slope_data=None):
     """
     Plot dual y-axis figure: Mean and Std vs Parameter value with error bars.
     Creates 2 subplots: one for T12, one for T32.
@@ -210,6 +540,8 @@ def plot_parameter_sweep(df, param_name, optimized_val, mechanism, output_dir, n
         output_dir: Output directory
         global_limits: Dict with global min/max for unified axes (optional)
         n_repeat: Number of repeats (for documentation in title)
+        fits: Dict of fit functions/data calculated by calculate_fits_and_slopes
+        slope_data: List of dicts with slope information
     """
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     
@@ -246,9 +578,28 @@ def plot_parameter_sweep(df, param_name, optimized_val, mechanism, output_dir, n
     
     # Combined legend
     lns = [l1, l2, ax1.get_lines()[0]]  # errorbar objects + vertical line
-    labs = [l.get_label() if hasattr(l, 'get_label') else 'Mean T12' for l in lns]
     labs = ['Mean T12', 'Std T12', f'Optimized: {optimized_val:.3f}']
+    
+    # PLOT FITS for T12
+    if fits:
+        x_plot = np.linspace(df['Value'].min(), df['Value'].max(), 200)
+        colors_fit = {'Linear': 'gold', 'Quadratic': 'purple', 'Cubic': 'cyan', 'Spline': 'magenta'}
+        linestyles = {'Linear': ':', 'Quadratic': '--', 'Cubic': '-.', 'Spline': '-'}
+        
+        # Mean T12 Fits
+        for method, fit_obj in fits.get('Mean_T12', {}).items():
+            if method == 'Spline':
+                xs, ys = fit_obj
+                l, = ax1.plot(xs, ys, color=colors_fit.get(method, 'black'), alpha=0.8, 
+                              linestyle=linestyles.get(method, '-'), linewidth=1.5, label=method)
+            else:
+                l, = ax1.plot(x_plot, fit_obj(x_plot), color=colors_fit.get(method, 'black'), alpha=0.8, 
+                              linestyle=linestyles.get(method, '-'), linewidth=1.5, label=method)
+            lns.append(l)
+            labs.append(method)
+            
     ax1.legend(lns, labs, loc='best', framealpha=0.9)
+
     
     # T32 subplot
     ax3 = axes[1]
@@ -282,7 +633,57 @@ def plot_parameter_sweep(df, param_name, optimized_val, mechanism, output_dir, n
     
     lns2 = [l3, l4, ax3.get_lines()[0]]
     labs2 = ['Mean T32', 'Std T32', f'Optimized: {optimized_val:.3f}']
+    
+    # PLOT FITS for T32
+    if fits:
+        x_plot = np.linspace(df['Value'].min(), df['Value'].max(), 200)
+        
+        # Mean T32 Fits (same style logic)
+        for method, fit_obj in fits.get('Mean_T32', {}).items():
+            if method == 'Spline':
+                xs, ys = fit_obj
+                l32, = ax3.plot(xs, ys, color=colors_fit.get(method, 'black'), alpha=0.8, 
+                                linestyle=linestyles.get(method, '-'), linewidth=1.5, label=method)
+            else:
+                l32, = ax3.plot(x_plot, fit_obj(x_plot), color=colors_fit.get(method, 'black'), alpha=0.8, 
+                                linestyle=linestyles.get(method, '-'), linewidth=1.5, label=method)
+            lns2.append(l32)
+            labs2.append(method)
+
     ax3.legend(lns2, labs2, loc='best', framealpha=0.9)
+    
+    # Add Text Box with Slopes
+    if slope_data:
+        slope_text = "Slopes at Opt:\n"
+        # Organization: Metric -> [Method:Slope]
+        
+        metrics_map = {'Mean_T12': 'M12', 'Std_T12': 'S12', 'Mean_T32': 'M32', 'Std_T32': 'S32'}
+        metrics_map = {'Mean_T12': 'M12', 'Std_T12': 'S12', 'Mean_T32': 'M32', 'Std_T32': 'S32'}
+        methods_to_show = ['Quadratic', 'Spline'] # Show these two as representatives
+        
+        # Group by metric
+        from collections import defaultdict
+        metric_slopes = defaultdict(dict)
+        for item in slope_data:
+            metric_slopes[item['Metric']][item['Method']] = item['Slope']
+            
+        for metric, label in metrics_map.items():
+            if metric in metric_slopes:
+                vals = []
+                for m in methods_to_show:
+                    if m in metric_slopes[metric]:
+                        s = metric_slopes[metric][m]
+                        vals.append(f"{m}={s:.2e}")
+                
+                if vals:
+                    slope_text += f"{label}: {', '.join(vals)}\n"
+        
+        # Place text box in the first subplot (T12) or spread?
+        # Let's put it on the T32 plot (right side) top right corner
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        ax3.text(1.1, 0.98, slope_text, transform=ax3.transAxes, fontsize=8, 
+                verticalalignment='top', bbox=props)
+
     
     # Overall title with note about repeats
     fig.suptitle(f'Parameter Sweep: {param_name} ({mechanism}) - {n_repeat} repeats per point', 
@@ -313,5 +714,7 @@ if __name__ == "__main__":
     num_simulations = 10000  # Simulations per point
     num_points = 30  # Points to sample across parameter range
     n_repeat = 10  # Number of repeats per point for confidence intervals
+    oat_perturbation = 0.10  # OAT perturbation (10%)
     
-    run_parameter_sweep(mechanism, num_simulations, num_points, n_repeat)
+    run_parameter_sweep(mechanism, num_simulations, num_points, n_repeat, oat_perturbation)
+

@@ -1,0 +1,76 @@
+================================================================================
+SIMULATION-BASED OPTIMIZATION RESULTS
+================================================================================
+
+OPTIMIZATION OVERVIEW
+--------------------------------------------------------------------------------
+Mechanism: time_varying_k
+Optimization Method: Differential Evolution
+Objective Metric: Earth Mover's Distance (EMD)
+Converged: True
+Status: Converged successfully
+Optimization Time: 00:02:46.789 (166.79 seconds)
+Iterations Used: 139
+
+OBJECTIVE SCORES
+--------------------------------------------------------------------------------
+Total EMD: 57.130703
+
+Per-Dataset EMD Breakdown:
+  degrade: 8.6601
+  degradeAPC: 12.8513
+  threshold: 7.5742
+  velcade: 25.2706
+  wildtype: 4.4188
+
+OPTIMIZATION SETTINGS
+--------------------------------------------------------------------------------
+Number of Simulations per Evaluation: 10000
+Selected Strains: all datasets
+Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade
+
+Differential Evolution Settings:
+  maxiter: 1000
+  popsize: 10
+  workers: -1
+  strategy: best1bin
+  tol: 0.01
+  disp: True
+
+PARAMETER BOUNDS
+--------------------------------------------------------------------------------
+n2             : [    0.000000,    50.000000]
+N2             : [   50.000000,  1000.000000]
+k_max          : [    0.001000,     0.100000]
+tau            : [    2.000000,   240.000000]
+r21            : [    0.250000,     4.000000]
+r23            : [    0.250000,     4.000000]
+R21            : [    0.400000,     2.000000]
+R23            : [    0.500000,     5.000000]
+alpha          : [    0.100000,     0.700000]
+beta_k         : [    0.100000,     1.000000]
+beta_tau       : [    1.000000,    10.000000]
+beta_tau2      : [    1.000000,    20.000000]
+
+OPTIMIZED PARAMETERS
+--------------------------------------------------------------------------------
+n2              = 1.626729
+N2              = 510.065217
+k_max           = 0.059073
+tau             = 187.572783
+r21             = 0.663160
+r23             = 2.237157
+R21             = 0.513169
+R23             = 3.373047
+alpha           = 0.422895
+beta_k          = 0.428937
+beta_tau        = 3.399490
+beta_tau2       = 15.425011
+
+Derived Parameters:
+n1              = 1.078782
+n3              = 3.639249
+N1              = 261.749511
+N3              = 1720.473967
+
+================================================================================

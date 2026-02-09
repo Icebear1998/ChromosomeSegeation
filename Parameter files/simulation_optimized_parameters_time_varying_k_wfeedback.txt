@@ -1,0 +1,76 @@
+================================================================================
+SIMULATION-BASED OPTIMIZATION RESULTS
+================================================================================
+
+OPTIMIZATION OVERVIEW
+--------------------------------------------------------------------------------
+Mechanism: time_varying_k_wfeedback
+Optimization Method: Differential Evolution
+Objective Metric: Earth Mover's Distance (EMD)
+Converged: True
+Status: Converged successfully
+Optimization Time: 00:02:38.213 (158.21 seconds)
+Iterations Used: 132
+
+OBJECTIVE SCORES
+--------------------------------------------------------------------------------
+Total EMD: 126.851430
+
+Per-Dataset EMD Breakdown:
+  degrade: 5.7742
+  degradeAPC: 17.4201
+  threshold: 13.7165
+  velcade: 76.3291
+  wildtype: 14.2051
+
+OPTIMIZATION SETTINGS
+--------------------------------------------------------------------------------
+Number of Simulations per Evaluation: 10000
+Selected Strains: all datasets
+Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade
+
+Differential Evolution Settings:
+  maxiter: 1000
+  popsize: 10
+  workers: -1
+  strategy: best1bin
+  tol: 0.01
+  disp: True
+
+PARAMETER BOUNDS
+--------------------------------------------------------------------------------
+n2             : [    0.000000,    50.000000]
+N2             : [   50.000000,  1000.000000]
+k_max          : [    0.001000,     0.100000]
+tau            : [    0.500000,     5.000000]
+r21            : [    0.250000,     4.000000]
+r23            : [    0.250000,     4.000000]
+R21            : [    0.400000,     2.000000]
+R23            : [    0.500000,     5.000000]
+alpha          : [    0.100000,     0.700000]
+beta_k         : [    0.100000,     1.000000]
+beta_tau       : [    1.000000,     3.000000]
+beta_tau2      : [    1.000000,     3.000000]
+
+OPTIMIZED PARAMETERS
+--------------------------------------------------------------------------------
+n2              = 1.803010
+N2              = 244.095334
+k_max           = 0.035709
+tau             = 0.874837
+r21             = 1.548963
+r23             = 2.912224
+R21             = 1.181528
+R23             = 4.290090
+alpha           = 0.682569
+beta_k          = 0.664177
+beta_tau        = 1.588655
+beta_tau2       = 1.425577
+
+Derived Parameters:
+n1              = 2.792796
+n3              = 5.250768
+N1              = 288.405364
+N3              = 1047.190942
+
+================================================================================

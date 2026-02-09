@@ -200,7 +200,7 @@ def load_optimized_parameters(mechanism, filename=None):
 
 
 
-def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_k1=None, beta_k2=None, beta_k3=None, beta_tau=None, beta_tau2=None):
+def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_tau=None, beta_tau2=None):
     """
     Apply mutant-specific parameter modifications for both simple and time-varying mechanisms.
     

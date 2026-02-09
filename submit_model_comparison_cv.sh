@@ -3,9 +3,9 @@
 #SBATCH --partition=normal_q
 #SBATCH --qos=owl_normal_base
 #SBATCH --job-name=cv_emd_comparison
-#SBATCH --array=0-7
-#SBATCH --cpus-per-task=96
-#SBATCH --time=30:00:00
+#SBATCH --array=0-3
+#SBATCH --cpus-per-task=48
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --output=logs/cv_emd_%A_%a.out
 #SBATCH --error=logs/cv_emd_%A_%a.err
@@ -24,13 +24,6 @@ mkdir -p logs
 # Define all mechanisms to test (THIS IS WHERE ALL 8 MECHANISMS ARE SPECIFIED)
 # The array index ($SLURM_ARRAY_TASK_ID) selects which mechanism this job runs
 mechanisms=(
-    "simple"                          # Array index 0
-    "fixed_burst"                     # Array index 1
-    "feedback_onion"                  # Array index 2
-    "fixed_burst_feedback_onion"      # Array index 3
-    "time_varying_k"                  # Array index 4
-    "time_varying_k_fixed_burst"      # Array index 5
-    "time_varying_k_feedback_onion"   # Array index 6
    "time_varying_k_combined"         # Array index 7
 )
 
