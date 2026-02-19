@@ -10,14 +10,14 @@ from simulation_utils import get_parameter_names, get_parameter_bounds, load_opt
 
 # Mapping from mechanism+feedback status to all-fit parameter files
 ALL_FIT_FILES = {
-    ('time_varying_k', False): 'simulation_optimized_parameters_time_varying_k.txt',
-    ('time_varying_k', True): 'simulation_optimized_parameters_time_varying_k_wfeedback.txt',
-    ('time_varying_k_fixed_burst', False): 'simulation_optimized_parameters_time_varying_k_fixed_burst.txt',
-    ('time_varying_k_fixed_burst', True): 'simulation_optimized_parameters_time_varying_k_fixed_burst_wfeedback.txt',
-    ('time_varying_k_steric_hindrance', False): 'simulation_optimized_parameters_time_varying_k_steric_hindrance.txt',
-    ('time_varying_k_steric_hindrance', True): 'simulation_optimized_parameters_time_varying_k_steric_hindrance_wfeedback.txt',
-    ('time_varying_k_combined', False): 'simulation_optimized_parameters_time_varying_k_combined.txt',
-    ('time_varying_k_combined', True): 'simulation_optimized_parameters_time_varying_k_combined_wfeedback.txt',
+    ('time_varying_k', False): 'ParameterFiles/simulation_optimized_parameters_time_varying_k.txt',
+    ('time_varying_k', True): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_wfeedback.txt',
+    ('time_varying_k_fixed_burst', False): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_fixed_burst.txt',
+    ('time_varying_k_fixed_burst', True): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_fixed_burst_wfeedback.txt',
+    ('time_varying_k_steric_hindrance', False): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_steric_hindrance.txt',
+    ('time_varying_k_steric_hindrance', True): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_steric_hindrance_wfeedback.txt',
+    ('time_varying_k_combined', False): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_combined.txt',
+    ('time_varying_k_combined', True): 'ParameterFiles/simulation_optimized_parameters_time_varying_k_combined_wfeedback.txt',
 }
 
 def load_data(feedback_files, no_feedback_files, load_all_fit=True):
@@ -320,11 +320,11 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
     # Note: Some parameters have different bounds for feedback vs non-feedback
     # so we split them into separate rows
     param_order = [
-        'n2', 'N2', 'k/k_max',
+        'n2', 'N2', 'k_max',
         'tau (no feedback)', 'tau (with feedback)',
         'r21', 'r23', 'R21', 'R23',
         'burst_size', 'n_inner', 'alpha',
-        'beta_k', 'beta_k1', 'beta_k2', 'beta_k3',
+        'beta_k',
         'beta_tau (no feedback)', 'beta_tau (with feedback)',
         'beta_tau2 (no feedback)', 'beta_tau2 (with feedback)',
         'n1/N1', 'n2/N2', 'n3/N3'
@@ -336,9 +336,7 @@ def plot_parameter_matrix(all_results, run_id=None, save_plots=True):
         try:
             param_names = get_parameter_names(result['mechanism'])
             for name in param_names:
-                # Map k/k_max
-                display_name = 'k/k_max' if name in ['k', 'k_max'] else name
-                all_params.add(display_name)
+                all_params.add(name)
         except:
             continue
     
@@ -442,13 +440,9 @@ def _extract_single_param_value(param_name, param_dict):
                 return param_dict['n3'] / param_dict['N3']
         return None
     
-    # Handle k/k_max
-    if base_param_name == 'k/k_max':
-        if 'k' in param_dict:
-            return param_dict['k']
-        elif 'k_max' in param_dict:
-            return param_dict['k_max']
-        return None
+    # Handle k_max
+    if base_param_name == 'k_max':
+        return param_dict.get('k_max')
     
     # Regular parameters
     if base_param_name in param_dict:
@@ -613,12 +607,8 @@ def _extract_param_values(param_name, param_names, params):
         return None
     
     # Handle regular parameters
-    if base_param_name == 'k/k_max':
-        # Try k then k_max
-        vals = get_col('k')
-        if vals is None:
-            vals = get_col('k_max')
-        return vals
+    if base_param_name == 'k_max':
+        return get_col('k_max')
     else:
         # Direct lookup (e.g. tau, beta_tau, n_inner)
         return get_col(base_param_name)

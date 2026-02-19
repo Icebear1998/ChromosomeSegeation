@@ -181,10 +181,9 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
 
 def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=500, selected_strains=None, objective_metric='emd'):
     """
-    Run joint optimization for all mechanism types.
+    Run joint optimization for time-varying mechanism types.
     
-    Handles both simple mechanisms ('simple', 'fixed_burst', 'steric_hindrance', 'fixed_burst_steric_hindrance')
-    and time-varying mechanisms ('time_varying_k' and variants).
+    Supports time-varying mechanisms ('time_varying_k' and variants).
     
     Args:
         mechanism (str): Mechanism name

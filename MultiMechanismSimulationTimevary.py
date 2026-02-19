@@ -17,12 +17,12 @@ class MultiMechanismSimulationTimevary:
         Initialize the simulation.
 
         Args:
-            mechanism (str): 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined'
+            mechanism (str): 'time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_steric_hindrance', 'time_varying_k_combined'
             initial_state_list (list): Initial cohesin counts [N1, N2, N3].
             rate_params (dict): 
                 For 'time_varying_k': {'k_1': k_1, 'k_max': k_max} (optional k_max for maximum rate).
                 For 'time_varying_k_fixed_burst': {'k_1': k_1, 'k_max': k_max, 'burst_size': b}.
-                For 'time_varying_k_feedback_onion': {'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner}.
+                For 'time_varying_k_steric_hindrance': {'k_1': k_1, 'k_max': k_max, 'n_inner': n_inner}.
                 For 'time_varying_k_combined': {'k_1': k_1, 'k_max': k_max, 'burst_size': b, 'n_inner': n_inner}.
             n0_list (list): Threshold counts [n01, n02, n03].
             max_time (float): Maximum expected simulation time.
@@ -42,7 +42,7 @@ class MultiMechanismSimulationTimevary:
     
     def _validate_parameters(self):
         """Check that all required parameters are present."""
-        valid_mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_feedback_onion', 'time_varying_k_combined']
+        valid_mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_steric_hindrance', 'time_varying_k_combined']
         if self.mechanism not in valid_mechanisms:
             raise ValueError(f"Mechanism must be one of: {valid_mechanisms}")
         
@@ -53,8 +53,8 @@ class MultiMechanismSimulationTimevary:
         if self.mechanism == 'time_varying_k_fixed_burst' and 'burst_size' not in self.rate_params:
             raise ValueError("time_varying_k_fixed_burst mechanism requires 'burst_size' in rate_params.")
         
-        if self.mechanism == 'time_varying_k_feedback_onion' and 'n_inner' not in self.rate_params:
-            raise ValueError("time_varying_k_feedback_onion mechanism requires 'n_inner' in rate_params.")
+        if self.mechanism == 'time_varying_k_steric_hindrance' and 'n_inner' not in self.rate_params:
+            raise ValueError("time_varying_k_steric_hindrance mechanism requires 'n_inner' in rate_params.")
         
         if self.mechanism == 'time_varying_k_combined':
             if 'burst_size' not in self.rate_params:
@@ -75,7 +75,7 @@ class MultiMechanismSimulationTimevary:
                 return self.rate_params['burst_size']
             return fixed_burst
         
-        elif self.mechanism == 'time_varying_k_feedback_onion':
+        elif self.mechanism == 'time_varying_k_steric_hindrance':
             def single_cohesin_feedback():
                 return 1.0
             return single_cohesin_feedback
@@ -92,8 +92,8 @@ class MultiMechanismSimulationTimevary:
                 return [k_t * max(state, 0) for state in states]
             return standard_propensities
         
-        elif self.mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
-            def feedback_onion_propensities(k_t, states):
+        elif self.mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
+            def steric_hindrance_propensities(k_t, states):
                 propensities = []
                 for i, state in enumerate(states):
                     n_inner = self.rate_params['n_inner']
@@ -107,14 +107,14 @@ class MultiMechanismSimulationTimevary:
                     propensity = k_t * W_m * max(state, 0)
                     propensities.append(propensity)
                 return propensities
-            return feedback_onion_propensities
+            return steric_hindrance_propensities
         
         else:
             raise ValueError(f"Unknown mechanism: {self.mechanism}")
     
     def _calculate_effective_total_state(self, states):
         """Calculate the effective total state for time calculations."""
-        if self.mechanism in ['time_varying_k_feedback_onion', 'time_varying_k_combined']:
+        if self.mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
             total_effective_state = 0
             for i, state in enumerate(states):
                 n_inner = self.rate_params['n_inner']
@@ -290,7 +290,7 @@ class MultiMechanismSimulationTimevary:
         return [
             'time_varying_k', 
             'time_varying_k_fixed_burst', 
-            'time_varying_k_feedback_onion', 
+            'time_varying_k_steric_hindrance', 
             'time_varying_k_combined'
         ]
     
@@ -308,14 +308,14 @@ class MultiMechanismSimulationTimevary:
                 'description': 'Fixed burst sizes with time-varying rate',
                 'parameters': 'k_1 (initial rate), k_max (max rate), burst_size (burst size)'
             },
-            'time_varying_k_feedback_onion': {
-                'name': 'Time-Varying k + Onion Feedback',
-                'description': 'Single cohesin with time-varying rate and onion feedback',
+            'time_varying_k_steric_hindrance': {
+                'name': 'Time-Varying k + Steric Hindrance',
+                'description': 'Single cohesin with time-varying rate and steric hindrance feedback',
                 'parameters': 'k_1 (initial rate), k_max (max rate), n_inner (inner threshold)'
             },
             'time_varying_k_combined': {
-                'name': 'Time-Varying k + Burst + Onion Feedback',
-                'description': 'Combined: time-varying rate, fixed bursts, and onion feedback',
+                'name': 'Time-Varying k + Burst + Steric Hindrance',
+                'description': 'Combined: time-varying rate, fixed bursts, and steric hindrance feedback',
                 'parameters': 'k_1 (initial rate), k_max (max rate), burst_size (burst size), n_inner (inner threshold)'
             }
         }

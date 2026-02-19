@@ -93,17 +93,13 @@ def objective_function(params_vector, mechanism, train_data, n_simulations=2000)
         
         for name in dataset_names:
             # Apply mutant params (logic from simulation_utils/Analyze script)
-            # Apply mutant params (logic from simulation_utils/Analyze script)
             alpha = param_dict.get('alpha', 1.0)
             beta_k = param_dict.get('beta_k', None)
-            beta_k1 = param_dict.get('beta_k1', None)
-            beta_k2 = param_dict.get('beta_k2', None)
-            beta_k3 = param_dict.get('beta_k3', None)
             beta_tau = param_dict.get('beta_tau', None)
             beta_tau2 = param_dict.get('beta_tau2', None)
             
             mutant_params, n0_list = apply_mutant_params(
-                param_dict, name, alpha, beta_k, beta_k1, beta_k2, beta_k3, beta_tau, beta_tau2
+                param_dict, name, alpha, beta_k, beta_tau, beta_tau2
             )
             
             if name == 'threshold':

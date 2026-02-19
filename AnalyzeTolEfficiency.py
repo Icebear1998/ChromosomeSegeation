@@ -344,10 +344,10 @@ def main():
     sys.stdout.flush()
     
     # Configuration
-    mechanism = 'simple'  # Can be changed to test other mechanisms
+    mechanism = 'time_varying_k'  # Can be changed to test other mechanisms
     
     # Test range: 0.05 to 0.001
-    tol_values = [0.05, 0.01, 0.005]#, 0.003, 0.001]
+    tol_values = [0.05, 0.01, 0.005, 0.003, 0.001]
     
     k_folds = 5
     n_simulations = 10000

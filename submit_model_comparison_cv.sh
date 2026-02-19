@@ -3,7 +3,7 @@
 #SBATCH --partition=normal_q
 #SBATCH --qos=owl_normal_base
 #SBATCH --job-name=cv_emd_comparison
-#SBATCH --array=0-3
+#SBATCH --array=0-7
 #SBATCH --cpus-per-task=48
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
@@ -15,16 +15,23 @@
 # 
 # Key SLURM Parameters Explained:
 # --array=0-7         : Creates 8 parallel jobs (indices 0 through 7)
-# --cpus-per-task=96  : Each job gets 96 CPUs for parallel optimization
-# Lines 23-30 below   : Define which mechanism each array index runs
+# --cpus-per-task=48  : Each job gets 48 CPUs for parallel optimization
+# Lines below          : Define which mechanism each array index runs
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
-# Define all mechanisms to test (THIS IS WHERE ALL 8 MECHANISMS ARE SPECIFIED)
+# Define all mechanisms to test (8 mechanisms: 4 standard + 4 feedback variants)
 # The array index ($SLURM_ARRAY_TASK_ID) selects which mechanism this job runs
 mechanisms=(
-   "time_varying_k_combined"         # Array index 7
+   "time_varying_k"                            # Array index 0
+   "time_varying_k_fixed_burst"                # Array index 1
+   "time_varying_k_steric_hindrance"           # Array index 2
+   "time_varying_k_combined"                   # Array index 3
+   "time_varying_k_wfeedback"                  # Array index 4
+   "time_varying_k_fixed_burst_wfeedback"      # Array index 5
+   "time_varying_k_steric_hindrance_wfeedback" # Array index 6
+   "time_varying_k_combined_wfeedback"         # Array index 7
 )
 
 # Get mechanism for this specific array task

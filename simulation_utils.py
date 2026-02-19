@@ -104,7 +104,7 @@ def load_optimized_parameters(mechanism, filename=None):
         dict: Optimized parameters including both ratio and derived parameters, plus 'total_emd' if found
     """
     if filename is None:
-        filename = f"simulation_optimized_parameters_{mechanism}.txt"
+        filename = f"ParameterFiles/simulation_optimized_parameters_{mechanism}.txt"
     
     try:
         params = {}
@@ -303,7 +303,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
     base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
     
     # Check if we can use the fast Beta method
-    use_beta_method = base_mechanism in ['simple', 'fixed_burst', 'time_varying_k', 'time_varying_k_fixed_burst']
+    use_beta_method = base_mechanism in ['time_varying_k', 'time_varying_k_fixed_burst']
     
     if use_beta_method:
         from FastBetaSimulation import simulate_batch
@@ -312,7 +312,6 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         initial_states = np.array([params['N1'], params['N2'], params['N3']])
         n0_array = np.array(n0_list)
         
-        k = None
         burst_size = params.get('burst_size', 1.0)
         k_1 = calculate_k1_from_params(params)
         k_max = params['k_max']
@@ -320,10 +319,9 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         total_sims = 2 * num_simulations
         
         results = simulate_batch(
-            mechanism=base_mechanism,  # Pass base mechanism to simulator
+            mechanism=base_mechanism,
             initial_states=initial_states,
             n0_lists=n0_array,
-            k=k,
             burst_size=burst_size,
             k_1=k_1,
             k_max=k_max,
@@ -348,8 +346,7 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         return delta_t12_array, delta_t32_array
 
     # Check if we can use the fast Feedback method (Vectorized Sum of Exponentials)
-    use_feedback_method = base_mechanism in ['steric_hindrance', 'fixed_burst_steric_hindrance', 
-                                        'time_varying_k_steric_hindrance', 'time_varying_k_combined']
+    use_feedback_method = base_mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']
     
     if use_feedback_method:
         from FastFeedbackSimulation import simulate_batch_feedback
@@ -357,30 +354,18 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         initial_states = np.array([params['N1'], params['N2'], params['N3']])
         n0_array = np.array(n0_list)
         
-        # Default optional params
-        k = None
         n_inner = params['n_inner']
-        k_1 = None
-        k_max = None
         burst_size = params.get('burst_size', 1.0)
-        
-        if base_mechanism == 'steric_hindrance':
-            k = params['k']
-        elif base_mechanism == 'fixed_burst_steric_hindrance':
-            k = params['k']
-            # burst_size already extracted above
-        elif base_mechanism in ['time_varying_k_steric_hindrance', 'time_varying_k_combined']:
-            k_1 = calculate_k1_from_params(params)
-            k_max = params['k_max']
+        k_1 = calculate_k1_from_params(params)
+        k_max = params['k_max']
         
         # RUN INDEPENDENT SIMULATIONS FOR T12 AND T32
         total_sims = 2 * num_simulations
             
         results = simulate_batch_feedback(
-            mechanism=base_mechanism,  # Pass base mechanism to simulator
+            mechanism=base_mechanism,
             initial_states=initial_states,
             n0_lists=n0_array,
-            k=k,
             n_inner=n_inner,
             k_1=k_1,
             k_max=k_max,

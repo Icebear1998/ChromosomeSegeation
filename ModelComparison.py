@@ -139,17 +139,16 @@ def create_comparison_plots(all_results, save_plots=True):
     
     # Define mechanism ordering (by complexity/number of additional mechanisms)
     mechanism_order = [
-        'simple',  # Base model
-        # One additional mechanism
-        'fixed_burst',
-        'steric_hindrance', 
+        # Standard time-varying mechanisms
         'time_varying_k',
-        # Two additional mechanisms
-        'fixed_burst_steric_hindrance',
         'time_varying_k_fixed_burst',
         'time_varying_k_steric_hindrance',
-        # All three additional mechanisms
-        'time_varying_k_combined'
+        'time_varying_k_combined',
+        # Feedback variants
+        'time_varying_k_wfeedback',
+        'time_varying_k_fixed_burst_wfeedback',
+        'time_varying_k_steric_hindrance_wfeedback',
+        'time_varying_k_combined_wfeedback'
     ]
     
     # Create DataFrame for plotting
