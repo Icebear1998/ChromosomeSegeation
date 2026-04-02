@@ -7,7 +7,10 @@ A computational framework for modeling the stochastic cleavage of cohesin comple
 Sister chromatids are held together by cohesin complexes and separate once enough cohesins have been cleaved by separase. This project models that process as an **inhomogeneous Poisson process** with a time-dependent cleavage rate that ramps linearly to a maximum value _k_<sub>max</sub> over a timescale _τ_:
 
 $$
-k(t) = \begin{cases} k_{\max}\,\frac{t}{\tau}, & 0 \le t \le \tau \\ k_{\max}, & t > \tau \end{cases}
+k(t) = \begin{cases}
+  k_{\max}\,\frac{t}{\tau}, & 0 \le t \le \tau \\
+  k_{\max}, & t > \tau
+\end{cases}
 $$
 
 Each of the three fission-yeast chromosomes starts with _N<sub>i</sub>_ cohesins and separates when its count falls to a threshold _n<sub>i</sub>_. The model outputs two pairwise separation-time differences, **ΔT₁₂ = T₁ − T₂** and **ΔT₃₂ = T₃ − T₂**, which are compared to experimental distributions.
