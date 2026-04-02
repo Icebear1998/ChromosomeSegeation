@@ -4,23 +4,24 @@ A computational framework for modeling the stochastic cleavage of cohesin comple
 
 ## Overview
 
-Sister chromatids are held together by cohesin complexes and separate once enough cohesins have been cleaved by separase. This project models that process as an **inhomogeneous Poisson process** with a time-dependent cleavage rate that ramps linearly to a maximum value *k*<sub>max</sub> over a timescale *τ*:
+Sister chromatids are held together by cohesin complexes and separate once enough cohesins have been cleaved by separase. This project models that process as an **inhomogeneous Poisson process** with a time-dependent cleavage rate that ramps linearly to a maximum value _k_<sub>max</sub> over a timescale _τ_:
 
 $$
-k(t) = \begin{cases} k_{\max}\,\frac{t}{\tau}, & 0 \le t \le \tau \\[4pt] k_{\max}, & t > \tau \end{cases}
+k(t) = \begin{cases} k_{\max}\,\frac{t}{\tau}, & 0 \le t \le \tau \\ k_{\max}, & t > \tau \end{cases}
 $$
 
-Each of the three fission-yeast chromosomes starts with *N<sub>i</sub>* cohesins and separates when its count falls to a threshold *n<sub>i</sub>*. The model outputs two pairwise separation-time differences, **ΔT₁₂ = T₁ − T₂** and **ΔT₃₂ = T₃ − T₂**, which are compared to experimental distributions.
+Each of the three fission-yeast chromosomes starts with _N<sub>i</sub>_ cohesins and separates when its count falls to a threshold _n<sub>i</sub>_. The model outputs two pairwise separation-time differences, **ΔT₁₂ = T₁ − T₂** and **ΔT₃₂ = T₃ − T₂**, which are compared to experimental distributions.
 
 ### Mechanistic Variants
 
-| Model | Extra Feature | Extra Parameters |
-|---|---|---|
-| **Basic** | — | — |
-| **Processive separase action** | Fixed burst size *b* cohesins removed per event | *b* |
-| **Steric hindrance** | Effective rate scales with surface-to-volume ratio of remaining cohesin sphere | *n*<sub>inner</sub> |
+| Model                          | Extra Feature                                                                  | Extra Parameters    |
+| ------------------------------ | ------------------------------------------------------------------------------ | ------------------- |
+| **Basic**                      | —                                                                              | —                   |
+| **Processive separase action** | Fixed burst size _b_ cohesins removed per event                                | _b_                 |
+| **Steric hindrance**           | Effective rate scales with surface-to-volume ratio of remaining cohesin sphere | _n_<sub>inner</sub> |
 
 Each variant is tested with two separase activity ramp regimes:
+
 - **Slow ramp**: 2 < τ < 240 s
 - **Fast ramp** (separase auto-activation): 0.5 < τ < 5 s
 
@@ -40,7 +41,7 @@ ChromosomeSegregation/
 │   └── ..._wfeedback.txt variants
 │
 │── Simulation Engine ──────────────────────────────────────────────────
-├── MultiMechanismSimulationTimevary.py    # Gillespie simulation 
+├── MultiMechanismSimulationTimevary.py    # Gillespie simulation
 ├── FastBetaSimulation.py                  # O(1) fast simulation via order statistics
 ├── FastFeedbackSimulation.py              # Vectorized simulation for steric hindrance
 ├── simulation_utils.py                    # Shared utilities (data loading, EMD, parameter handling)
@@ -78,22 +79,22 @@ A modified Gillespie algorithm that handles the time-dependent cleavage rate via
 
 ### 2. Fast Simulation — Order Statistics (`FastBetaSimulation.py`)
 
-For models **without** steric hindrance, individual cohesin cleavage events are independent. The separation time equals the (*n*+1)-th order statistic of *N* i.i.d. waiting times, which follows a **Beta distribution**. Each chromosome's separation time is sampled in **O(1)** by:
+For models **without** steric hindrance, individual cohesin cleavage events are independent. The separation time equals the (_n_+1)-th order statistic of _N_ i.i.d. waiting times, which follows a **Beta distribution**. Each chromosome's separation time is sampled in **O(1)** by:
 
-1. Drawing one sample from Beta(*N* − *n*, *n* + 1)
+1. Drawing one sample from Beta(_N_ − _n_, _n_ + 1)
 2. Transforming through the inverse CDF of the cleavage-time distribution
 
-This provides a **100×–1000× speedup** over the Gillespie algorithm. The processive separase model is handled by transforming to effective counts: *N'* = ⌈*N*/*b*⌉.
+This provides a **100×–1000× speedup** over the Gillespie algorithm. The processive separase model is handled by transforming to effective counts: _N'_ = ⌈_N_/_b_⌉.
 
 ### 3. Fast Simulation — Vectorized (`FastFeedbackSimulation.py`)
 
-For the **steric hindrance** model, cleavage events are state-dependent and not independent. The simulation is accelerated by **vectorizing across *M* independent trajectories**, computing the next-event time for all simulations simultaneously at each step.
+For the **steric hindrance** model, cleavage events are state-dependent and not independent. The simulation is accelerated by **vectorizing across _M_ independent trajectories**, computing the next-event time for all simulations simultaneously at each step.
 
 ## Parameter Estimation
 
 ### Objective Metric — Earth Mover's Distance (EMD)
 
-Model fit is assessed using the **Wasserstein-1 distance** (EMD) between experimental and simulated distributions of ΔT₁₂ and ΔT₃₂. The aggregate EMD sums over five experimental conditions (wildtype, MBC, separase mutant, APC/C mutant, velcade). Each evaluation generates *M* = 10,000 simulated samples.
+Model fit is assessed using the **Wasserstein-1 distance** (EMD) between experimental and simulated distributions of ΔT₁₂ and ΔT₃₂. The aggregate EMD sums over five experimental conditions (wildtype, MBC, separase mutant, APC/C mutant, velcade). Each evaluation generates _M_ = 10,000 simulated samples.
 
 ### Optimizer — Differential Evolution + Local Refinement
 
@@ -116,6 +117,7 @@ python SimulationOptimization.py <mechanism>
 ```
 
 Available mechanisms:
+
 - `time_varying_k` — Basic model
 - `time_varying_k_fixed_burst` — Processive separase action
 - `time_varying_k_steric_hindrance` — Steric hindrance
@@ -174,15 +176,14 @@ pip install -r requirements.txt
 
 ### Dependencies
 
-| Package | Purpose |
-|---|---|
-| NumPy | Array operations, random sampling |
-| SciPy | Optimization (`differential_evolution`, `L-BFGS-B`), Wasserstein distance |
-| Pandas | Data I/O and tabulation |
-| openpyxl | Reading experimental Excel data |
-| Matplotlib | Plotting |
-| Seaborn | Enhanced statistical plots |
-| PyTorch | (Optional) GPU-accelerated operations |
+| Package    | Purpose                                                                   |
+| ---------- | ------------------------------------------------------------------------- |
+| NumPy      | Array operations, random sampling                                         |
+| SciPy      | Optimization (`differential_evolution`, `L-BFGS-B`), Wasserstein distance |
+| Pandas     | Data I/O and tabulation                                                   |
+| openpyxl   | Reading experimental Excel data                                           |
+| Matplotlib | Plotting                                                                  |
+| Seaborn    | Enhanced statistical plots                                                |
 
 ## HPC Usage
 

@@ -6,12 +6,6 @@ import time
 from scipy.optimize import differential_evolution
 from simulation_utils import *
 
-import warnings
-warnings.filterwarnings('ignore')
-
-
-
-
 
 MECHANISM_PARAM_NAMES = {
     # Time-varying mechanisms (wide bounds)
@@ -47,8 +41,6 @@ MECHANISM_PARAM_NAMES = {
         'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
     ],
 }
-
-
 
 
 def unpack_mechanism_params(params_vector, mechanism):

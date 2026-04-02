@@ -2,9 +2,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
-import warnings
-warnings.filterwarnings('ignore')
-import sys
 import os
 import glob
 
@@ -337,7 +334,7 @@ def main():
     all_results = load_cv_results(csv_files)
     
     if not all_results:
-        print(f"\n❌ No results could be loaded!")
+        print(f"\n No results could be loaded!")
         return
     
     print(f"\n Successfully loaded {len(all_results)} mechanism results")

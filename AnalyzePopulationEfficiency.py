@@ -346,7 +346,7 @@ def main():
     max_iterations = 1000
     tol = 0.01  # Use efficient tolerance found from previous analysis
     
-    print(f"\n📋 Configuration:")
+    print(f"\n Configuration:")
     print(f"   Mechanism: {mechanism}")
     print(f"   Population sizes: {popsize_values}")
     print(f"   K-folds: {k_folds}")

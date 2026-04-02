@@ -8,8 +8,6 @@ import numpy as np
 from sklearn.neighbors import KernelDensity
 from scipy.stats import wasserstein_distance
 import warnings
-import sys
-import os
 
 warnings.filterwarnings('ignore')
 

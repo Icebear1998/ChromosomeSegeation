@@ -215,7 +215,7 @@ def create_comparison_plots(all_results, save_plots=True):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f'ModelComparisonEMDResults/model_comparison_cv_emd_{timestamp}.pdf'
         plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
-        print(f"\n📊 Plot saved as: {filename}")
+        print(f"\n Plot saved as: {filename}")
     
     plt.close()
 
@@ -273,7 +273,7 @@ def create_summary_table(all_results, save_table=True):
         best_emd = df_summary.loc[best_idx, 'Mean Val EMD']
         best_std = df_summary.loc[best_idx, 'Std Val EMD']
         
-        print(f"🏆 Best Model: {best_mechanism}")
+        print(f" Best Model: {best_mechanism}")
         print(f"   Validation EMD: {best_emd} ± {best_std} minutes")
         print(f"   Parameters: {df_summary.loc[best_idx, 'Parameters']}")
     
@@ -281,7 +281,7 @@ def create_summary_table(all_results, save_table=True):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f'ModelComparisonEMDResults/model_comparison_cv_summary_{timestamp}.csv'
         df_summary.to_csv(filename, index=False)
-        print(f"\n💾 Summary table saved as: {filename}")
+        print(f"\n Summary table saved as: {filename}")
     
     return df_summary
 
@@ -369,7 +369,7 @@ def main():
     sys.stdout.flush()
     datasets = load_experimental_data()
     if not datasets:
-        print("❌ Error: Could not load experimental data!")
+        print(" Error: Could not load experimental data!")
         sys.stdout.flush()
         return
     
@@ -430,7 +430,7 @@ def main():
             
             mechanism_end = datetime.now()
             mechanism_duration = mechanism_end - mechanism_start
-            print(f"⏱  Mechanism {mechanism} completed in: {mechanism_duration}")
+            print(f"  Mechanism {mechanism} completed in: {mechanism_duration}")
             
             # Estimate remaining time
             avg_time_per_mechanism = (mechanism_end - start_time) / i
