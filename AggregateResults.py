@@ -111,7 +111,7 @@ def load_cv_results(csv_files):
             print(f" Loaded: {mechanism} (n={len(df)} folds, Val EMD={result['mean_val_emd']:.2f})")
             
         except Exception as e:
-            print(f"❌ Error loading {csv_file}: {e}")
+            print(f"ERROR loading {csv_file}: {e}")
             continue
     
     return all_results

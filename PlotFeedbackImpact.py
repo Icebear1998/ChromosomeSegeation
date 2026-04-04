@@ -704,7 +704,7 @@ def main():
     data = load_data(FEEDBACK_FILES, NO_FEEDBACK_FILES)
     
     if not data:
-        print("❌ No data loaded. Check paths.")
+        print("ERROR: No data loaded. Check paths.")
         return
 
     plot_mean_comparison(data)

@@ -10,7 +10,6 @@
 
 # Usage: sbatch submit_job.sh [mechanism]
 # Example: sbatch submit_job.sh simple
-# Example: sbatch submit_job.sh time_varying_k
 # Default mechanism: simple
 
 # Load Python environment

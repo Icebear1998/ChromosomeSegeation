@@ -399,7 +399,7 @@ def main():
         'time_varying_k_steric_hindrance_wfeedback'
     ]
     
-    print(f"\n🔬 Comparing {len(mechanisms)} mechanisms:")
+    print(f"\nComparing {len(mechanisms)} mechanisms:")
     for i, mech in enumerate(mechanisms, 1):
         param_count = get_parameter_count(mech)
         print(f"  {i}. {mech} ({param_count} parameters)")

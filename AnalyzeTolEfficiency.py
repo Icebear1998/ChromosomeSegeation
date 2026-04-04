@@ -142,10 +142,10 @@ def analyze_tol_efficiency(mechanism, tol_values, k_folds=5, n_simulations=10000
                 fold_converged.append(fold_result['converged'])
                 fold_iterations.append(fold_result['n_iterations'])
                 
-                status_icon = "✓" if fold_result['converged'] else "○"
+                status_icon = "[OK]" if fold_result['converged'] else "[~]"
                 print(f"{status_icon} Train EMD={fold_result['train_emd']:.2f}, Val EMD={fold_result['val_emd']:.2f}, iter={fold_result['n_iterations']}")
             else:
-                print(f"✗ Failed: {fold_result['message']}")
+                print(f"[FAIL] Failed: {fold_result['message']}")
             
             sys.stdout.flush()
         
