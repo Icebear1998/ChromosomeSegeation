@@ -48,17 +48,16 @@ def load_data(feedback_files, no_feedback_files, load_all_fit=True):
                     mechanism = 'time_varying_k_combined'
                     display_name = 'time_varying_k_combined'
                 elif 'time_varying_k_fixed_burst_wfeedback' in basename:
-                    mechanism = 'time_varying_k_combined' # Uses combined logic? Or specific? Old code said combined.
+                    mechanism = 'time_varying_k_fixed_burst' 
                     display_name = 'time_varying_k_fixed_burst (with feedback)'
                 elif 'time_varying_k_steric_hindrance_normal' in basename:
-                     # User put this in both groups, handling it as distinct
                      mechanism = 'time_varying_k_steric_hindrance'
                      display_name = 'time_varying_k_steric_hindrance'
                 elif 'time_varying_k_steric_hindrance_wfeedback' in basename:
                     mechanism = 'time_varying_k_steric_hindrance'
                     display_name = 'time_varying_k_steric_hindrance (with feedback)'
                 elif 'time_varying_k_wfeedback' in basename:
-                    mechanism = 'time_varying_k_steric_hindrance'
+                    mechanism = 'time_varying_k'
                     display_name = 'time_varying_k (with feedback)'
                 elif 'time_varying_k_fixed_burst_normal' in basename or 'time_varying_k_fixed_burst' in basename:
                     mechanism = 'time_varying_k_fixed_burst'
@@ -173,7 +172,7 @@ def plot_mean_comparison(data):
                 
             # Only add label once for legend (logic: first of its group)
             # Group 1 indices: 0, 1. Group 2 indices: 2, 3.
-            lbl = label if (i == 0 or i == 2) else ""
+            lbl = label if (i == 0 or i == 4) else ""
             
             ax.errorbar(i, entry['mean_emd'], 
                         yerr=entry['sem_emd'], fmt='o', 

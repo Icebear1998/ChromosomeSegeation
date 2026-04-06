@@ -103,7 +103,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         num_simulations: Number of simulations per evaluation
         selected_strains: Optional list of strain names to include in fitting
         return_breakdown: If True, return dict with per-dataset scores instead of total
-        objective_metric: 'nll' or 'emd' (default: 'nll')
+        objective_metric: 'nll' or 'emd' (default: 'emd')
         
     Returns:
         float: Total score (NLL or EMD)
@@ -256,7 +256,8 @@ def run_optimization(mechanism, datasets, max_iterations=500, num_simulations=50
         'success': True,  # Always treat as success to save results
         'converged': result.success,  # Track actual convergence status
         'params': param_dict,
-        'nll': result.fun,  # Keep for backwards compatibility
+        'nll': result.fun, 
+        'objective': result.fun,
         'score': result.fun,  # Generic score value
         'per_dataset_score': per_dataset_score,  # Per-dataset breakdown
         'result': result,

@@ -620,7 +620,6 @@ def plot_parameter_sweep(df, param_name, optimized_val, mechanism, output_dir, n
         # Organization: Metric -> [Method:Slope]
         
         metrics_map = {'Mean_T12': 'M12', 'Std_T12': 'S12', 'Mean_T32': 'M32', 'Std_T32': 'S32'}
-        metrics_map = {'Mean_T12': 'M12', 'Std_T12': 'S12', 'Mean_T32': 'M32', 'Std_T32': 'S32'}
         methods_to_show = ['Quadratic', 'Spline'] # Show these two as representatives
         
         # Group by metric

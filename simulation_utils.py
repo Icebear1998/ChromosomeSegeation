@@ -621,7 +621,7 @@ def save_optimization_results(mechanism, results, filename=None, selected_strain
         with open(filename, 'w') as f:
             f.write("Simulation-based Optimization Results\n")
             f.write(f"Mechanism: {mechanism}\n")
-            f.write(f"Negative Log-Likelihood: {results['fun']:.6f}\n")
+            f.write(f"EMD: {results['fun']:.6f}\n")
             f.write(f"Converged: {results['success']}\n")
             f.write(f"Status: {results.get('message', 'Unknown')}\n")
             

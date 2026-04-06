@@ -101,13 +101,6 @@ def objective_function(params_vector, mechanism, train_data, n_simulations=2000)
             mutant_params, n0_list = apply_mutant_params(
                 param_dict, name, alpha, beta_k, beta_tau, beta_tau2
             )
-            
-            if name == 'threshold':
-                n1_th = max(param_dict['n1'] * alpha, 1)
-                n2_th = max(param_dict['n2'] * alpha, 1)
-                n3_th = max(param_dict['n3'] * alpha, 1)
-                mutant_params['n1'], mutant_params['n2'], mutant_params['n3'] = n1_th, n2_th, n3_th
-                n0_list = [n1_th, n2_th, n3_th]
                 
             t12, t32 = run_simulation_for_dataset(mechanism, mutant_params, n0_list, num_simulations=n_simulations)
             

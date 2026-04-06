@@ -67,7 +67,7 @@ echo "Working directory: $(pwd)"
 echo "================================================================"
 
 # Run cross-validation for single mechanism
-python model_comparison_cv_emd.py \
+python ModelComparison.py \
     --mechanism "$mechanism" \
     --run-id "$RUN_ID" \
     --k-folds 5 \

@@ -128,153 +128,6 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         return [], []
 
 
-def create_comparison_plot(mechanism, params, experimental_data, num_simulations=500):
-    """
-    Create comparison plots between experimental data and simulation results.
-    
-    Args:
-        mechanism (str): Mechanism name
-        params (dict): Optimized parameters
-        experimental_data (dict): Experimental datasets
-        num_simulations (int): Number of simulations per dataset
-    """
-    fig, axes = plt.subplots(2, 5, figsize=(20, 8))
-    fig.suptitle(f'Simulation vs Experimental Data: {mechanism.upper()}', fontsize=16, y=0.98)
-    
-    dataset_names = ['wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade']
-    dataset_titles = ['Wildtype', 'Threshold', 'Separase', 'APC', 'Velcade']
-    
-    alpha = params['alpha']
-    beta_k = params.get('beta_k', None)
-    beta_tau = params.get('beta_tau', None)
-    beta_tau2 = params.get('beta_tau2', None)
-    
-    for i, (dataset_name, title) in enumerate(zip(dataset_names, dataset_titles)):
-        if dataset_name not in experimental_data:
-            continue
-        
-        # Get experimental data
-        exp_delta_t12 = experimental_data[dataset_name]['delta_t12']
-        exp_delta_t32 = experimental_data[dataset_name]['delta_t32']
-        
-        # Run simulations
-        print(f"Running simulations for {dataset_name}...")
-        sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-            mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, num_simulations
-        )
-        
-        if not sim_delta_t12 or not sim_delta_t32:
-            continue
-        
-        # Save raw data to CSV
-        csv_data = {
-            'exp_delta_t12': exp_delta_t12,
-            'exp_delta_t32': exp_delta_t32,
-            'sim_delta_t12': sim_delta_t12,
-            'sim_delta_t32': sim_delta_t32
-        }
-        # Create DataFrame with padding for unequal lengths
-        max_len = max(len(exp_delta_t12), len(exp_delta_t32), len(sim_delta_t12), len(sim_delta_t32))
-        csv_df = pd.DataFrame({
-            'exp_delta_t12': pd.Series(exp_delta_t12).reindex(range(max_len)),
-            'exp_delta_t32': pd.Series(exp_delta_t32).reindex(range(max_len)),
-            'sim_delta_t12': pd.Series(sim_delta_t12).reindex(range(max_len)),
-            'sim_delta_t32': pd.Series(sim_delta_t32).reindex(range(max_len))
-        })
-        csv_filename = f'simulation_data_{mechanism}_{dataset_name}.csv'
-        csv_df.to_csv(csv_filename, index=False)
-        print(f"  Saved data to {csv_filename}")
-        
-        # Set up x_grid for PDF plotting
-        x_min, x_max = -140, 140  # Default range for all mechanisms
-        if dataset == "velcade":
-            x_min, x_max = -350, 350
-        if dataset in ["wildtype", "threshold"]:
-            x_min, x_max = -100, 100    
-        x_grid = np.linspace(x_min, x_max, 401)
-        # Plot T1-T2 (top row) - matching TestDataPlot.py style
-        # Calculate bins centered on 0 (edges at ±3.5, ±10.5, etc.)
-        bin_width = 7.0
-        all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
-        bins_12 = create_centered_bins(all_data_12, bin_width=bin_width)
-        
-        ax_12 = axes[0, i]
-        ax_12.hist(exp_delta_t12, bins=bins_12, alpha=0.7, label='Experimental data', color='lightblue', density=True, rwidth=0.9)
-        ax_12.hist(sim_delta_t12, bins=bins_12, alpha=0.4, label='Simulated data', color='orange', density=True, rwidth=0.9)
-        ax_12.set_xlim(x_min - 20, x_max + 20)
-        ax_12.set_title(f'{title}')  # Only dataset name
-        ax_12.set_xlabel('Time Difference (T1-T2)')
-        ax_12.set_ylabel('Percentage of cells')
-        ax_12.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
-        
-        # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
-        # Use larger interval for Velcade due to wider range
-        tick_interval = 56 if dataset_name == 'velcade' else 28
-        ax_12.xaxis.set_major_locator(MultipleLocator(tick_interval))
-        
-        ax_12.legend(fontsize=8)
-        ax_12.grid(True, alpha=0.3)
-        
-        # Calculate EMD and Wasserstein p-value for T1-T2
-        p_value_12, emd_12 = calculate_wasserstein_p_value(exp_delta_t12, sim_delta_t12, num_permutations=1000)
-        
-        # Add statistics with EMD and p-value
-        exp_mean_12 = np.mean(exp_delta_t12)
-        sim_mean_12 = np.mean(sim_delta_t12)
-        ax_12.axvline(exp_mean_12, color='blue', linestyle='--', alpha=0.8)
-        ax_12.axvline(sim_mean_12, color='red', linestyle='--', alpha=0.8)
-        stats_text12 = f'Exp: μ={exp_mean_12:.1f}, σ={np.std(exp_delta_t12):.1f}\nSim: μ={sim_mean_12:.1f}, σ={np.std(sim_delta_t12):.1f}\nEMD={emd_12:.2f}, p={p_value_12:.3f}\nN={num_simulations}'
-        ax_12.text(0.02, 0.98, stats_text12, transform=ax_12.transAxes, 
-                   verticalalignment='top', fontsize=7,
-                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        # Plot T3-T2 (bottom row) - matching TestDataPlot.py style
-        # Calculate bins centered on 0 (same width as T1-T2)
-        all_data_32 = np.concatenate([exp_delta_t32, sim_delta_t32])
-        bins_32 = create_centered_bins(all_data_32, bin_width=bin_width)
-        
-        ax_32 = axes[1, i]
-        ax_32.hist(exp_delta_t32, bins=bins_32, alpha=0.7, label='Experimental data', color='lightblue', density=True, rwidth=0.9)
-        ax_32.hist(sim_delta_t32, bins=bins_32, alpha=0.4, label='Simulated data', color='orange', density=True, rwidth=0.9)
-        ax_32.set_xlim(x_min- 20, x_max + 20)
-        ax_32.set_title('')  # No subtitle for bottom row
-        ax_32.set_xlabel('Time Difference (T3-T2)')
-        ax_32.set_ylabel('Percentage of cells')
-        ax_32.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
-        
-        # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
-        tick_interval = 56 if dataset_name == 'velcade' else 28
-        ax_32.xaxis.set_major_locator(MultipleLocator(tick_interval))
-        
-        ax_32.legend(fontsize=8)
-        ax_32.grid(True, alpha=0.3)
-        
-        # Calculate EMD and Wasserstein p-value for T3-T2
-        p_value_32, emd_32 = calculate_wasserstein_p_value(exp_delta_t32, sim_delta_t32, num_permutations=1000)
-        
-        # Add statistics with EMD and p-value
-        exp_mean_32 = np.mean(exp_delta_t32)
-        sim_mean_32 = np.mean(sim_delta_t32)
-        ax_32.axvline(exp_mean_32, color='blue', linestyle='--', alpha=0.8)
-        ax_32.axvline(sim_mean_32, color='red', linestyle='--', alpha=0.8)
-        stats_text32 = f'Exp: μ={exp_mean_32:.1f}, σ={np.std(exp_delta_t32):.1f}\nSim: μ={sim_mean_32:.1f}, σ={np.std(sim_delta_t32):.1f}\nEMD={emd_32:.2f}, p={p_value_32:.3f}\nN={num_simulations}'
-        ax_32.text(0.02, 0.98, stats_text32, transform=ax_32.transAxes, 
-                   verticalalignment='top', fontsize=7,
-                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.93)  # Adjusted for title space
-    
-    # Save plot
-    filename = f'simulation_fit_{mechanism}.pdf'
-    plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
-    filename = f'simulation_fit_{mechanism}.svg'
-    plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
-    print(f"Plot saved as: {filename}")
-    
-    plt.show()
-
-
 def create_single_dataset_plot(mechanism, params, experimental_data, dataset_name, num_simulations=500):
     """
     Create a single dataset comparison plot (2 subplots: T1-T2 and T3-T2).
@@ -326,9 +179,9 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     
     # Set up x_grid for PDF plotting
     x_min, x_max = -140, 140  # Default range for all mechanisms
-    if dataset == "velcade":
+    if dataset_name == "velcade":
         x_min, x_max = -350, 350
-    if dataset in ["wildtype", "threshold"]:
+    if dataset_name in ["wildtype", "threshold"]:
         x_min, x_max = -100, 100    
     x_grid = np.linspace(x_min, x_max, 401)
     
@@ -348,7 +201,7 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     
     # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
     # Use larger interval for Velcade due to wider range
-    tick_interval = 56 if dataset == 'velcade' else 28
+    tick_interval = 56 if dataset_name == 'velcade' else 28
     ax1.xaxis.set_major_locator(MultipleLocator(tick_interval))
     
     ax1.legend()
@@ -377,7 +230,7 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     ax2.set_title('chromosome II vs. III')  # No subtitle
     
     # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
-    tick_interval = 56 if dataset == 'velcade' else 28
+    tick_interval = 56 if dataset_name == 'velcade' else 28
     ax2.xaxis.set_major_locator(MultipleLocator(tick_interval))
     
     ax2.legend()
@@ -493,70 +346,23 @@ def print_parameter_summary(mechanism, params):
             print(f"  Velcade: modifier={beta_tau2_value:.3f}")
 
 
-def main():
-    """
-    Main testing and plotting routine.
-    """
-    print("Testing Simulation-based Optimization Results")
+if __name__ == "__main__":
+    mechanism = 'time_varying_k'  # Choose mechanism to test
+    filename = 'ParameterFiles/simulation_optimized_parameters_time_varying_k.txt'
+    dataset = 'velcade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
+    
+    print(f"Testing single dataset: {dataset} with mechanism: {mechanism}")
     print("=" * 50)
     
     # Load experimental data
     experimental_data = load_experimental_data()
     if not experimental_data:
         print("Error: Could not load experimental data!")
-        return
-    
-    # Test available mechanisms
-    mechanisms = ['time_varying_k', 'time_varying_k_fixed_burst', 'time_varying_k_steric_hindrance', 'time_varying_k_combined']
-    
-    for mechanism in mechanisms:
-        print(f"\n{'-' * 50}")
-        print(f"Testing {mechanism}")
-        
-        # Load optimized parameters
-        params = load_optimized_parameters(mechanism)
-        if not params:
-            print(f"Skipping {mechanism} - no parameters found")
-            continue
-        
-        # Print parameter summary
-        print_parameter_summary(mechanism, params)
-        
-        # Create comparison plots
-        try:
-            create_comparison_plot(mechanism, params, experimental_data, num_simulations=200)
-        except Exception as e:
-            print(f"Error creating plots for {mechanism}: {e}")
-            continue
-    
-    print(f"\n{'=' * 50}")
-    print("Testing complete!")
-
-
-if __name__ == "__main__":
-    # ========== CONFIGURATION ==========
-    run_all_mechanisms = False  # Set to True to test all mechanisms
-    
-    # Single dataset configuration (only used if run_single_dataset = True)
-    mechanism = 'time_varying_k'  # Choose mechanism to test
-    filename = 'simulation_optimized_parameters_time_varying_k.txt'
-    dataset = 'wildtype'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
-    
-    if run_all_mechanisms:
-        main()
     else:
-        print(f"Testing single dataset: {dataset} with mechanism: {mechanism}")
-        print("=" * 50)
-        
-        # Load experimental data
-        experimental_data = load_experimental_data()
-        if not experimental_data:
-            print("Error: Could not load experimental data!")
+        # Load optimized parameters
+        params = load_optimized_parameters(mechanism, filename)
+        if params:
+            print_parameter_summary(mechanism, params)
+            create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=500)
         else:
-            # Load optimized parameters
-            params = load_optimized_parameters(mechanism, filename)
-            if params:
-                print_parameter_summary(mechanism, params)
-                create_single_dataset_plot(mechanism, params, experimental_data, dataset, num_simulations=500)
-            else:
-                print(f"Could not load parameters for {mechanism}") 
+            print(f"Could not load parameters for {mechanism}") 

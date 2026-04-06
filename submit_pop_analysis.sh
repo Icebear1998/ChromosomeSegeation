@@ -16,7 +16,7 @@ source activate $HOME/.conda/envs/simulationOptimizationEnv
 
 
 echo "=========================================="
-echo "Population Efficiency Analysis (MoM)"
+echo "Population Efficiency Analysis"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Start time: $(date)"
 echo "Node: $SLURM_NODELIST"
@@ -24,7 +24,7 @@ echo "CPUs: $SLURM_CPUS_PER_TASK"
 echo "=========================================="
 
 # Run the analysis script
-python AnalyzePopulationEfficiency_EMD.py
+python AnalyzePopulationEfficiency.py
 
 echo "=========================================="
 echo "Job completed at: $(date)"

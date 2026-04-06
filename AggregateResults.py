@@ -275,7 +275,7 @@ def create_comparison_plots_with_runid(all_results, run_id=None, save_plots=True
                 filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}.pdf'
             else:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{run_id}.pdf'
+                filename2 = f'ModelComparisonEMDResults/model_comparison_boxplot_emd_{timestamp}.pdf'
             plt.savefig(filename2, dpi=300, bbox_inches='tight', format='pdf')
             #plt.savefig(filename2, dpi=300, bbox_inches='tight', format='svg')
             print(f" Boxplot distribution saved as: {filename2}")
