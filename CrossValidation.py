@@ -43,14 +43,15 @@ def create_folds(data_dict, k_folds=5, seed=42):
     for name in dataset_names:
         # Get data arrays
         t12 = data_dict[name]['delta_t12']
-        t32 = data_dict[name]['delta_t32']
+        t32 = data_dict[name]['delta_t32']  # may be None for mis4N2
+        has_t32 = t32 is not None and len(t32) > 0
         
         # Split t12
         indices_12 = np.random.permutation(len(t12))
         fold_indices_12 = np.array_split(indices_12, k_folds)
         
-        # Split t32
-        if len(t32) > 0:
+        # Split t32 (only when available)
+        if has_t32:
             indices_32 = np.random.permutation(len(t32))
             fold_indices_32 = np.array_split(indices_32, k_folds)
         else:
@@ -63,20 +64,20 @@ def create_folds(data_dict, k_folds=5, seed=42):
             
             # Training indices (concatenate all other folds)
             train_idx_12 = np.concatenate([fold_indices_12[j] for j in range(k_folds) if j != k])
-            if len(t32) > 0:
+            if has_t32:
                 train_idx_32 = np.concatenate([fold_indices_32[j] for j in range(k_folds) if j != k])
             else:
                 train_idx_32 = []
             
-            # Assign to folds
+            # Assign to folds — preserve None for delta_t32 when not available
             folds[k]['val'][name] = {
                 'delta_t12': t12[val_idx_12],
-                'delta_t32': t32[val_idx_32] if len(t32) > 0 else []
+                'delta_t32': t32[val_idx_32] if has_t32 else None
             }
             
             folds[k]['train'][name] = {
                 'delta_t12': t12[train_idx_12],
-                'delta_t32': t32[train_idx_32] if len(t32) > 0 else []
+                'delta_t32': t32[train_idx_32] if has_t32 else None
             }
                 
     return folds
@@ -93,21 +94,35 @@ def objective_function(params_vector, mechanism, train_data, n_simulations=2000)
         
         for name in dataset_names:
             # Apply mutant params (logic from simulation_utils/Analyze script)
-            alpha = param_dict.get('alpha', 1.0)
-            beta_k = param_dict.get('beta_k', None)
-            beta_tau = param_dict.get('beta_tau', None)
+            alpha    = param_dict.get('alpha',    1.0)
+            beta_k   = param_dict.get('beta_k',   None)
+            beta_tau  = param_dict.get('beta_tau',  None)
             beta_tau2 = param_dict.get('beta_tau2', None)
+            gamma_N2  = param_dict.get('gamma_N2',  None)
             
             mutant_params, n0_list = apply_mutant_params(
-                param_dict, name, alpha, beta_k, beta_tau, beta_tau2
+                param_dict, name, alpha, beta_k, beta_tau, beta_tau2, gamma_N2
             )
                 
             t12, t32 = run_simulation_for_dataset(mechanism, mutant_params, n0_list, num_simulations=n_simulations)
             
             if t12 is None:
                 return 1e6
-                
-            emd = calculate_emd(train_data[name], {'delta_t12': t12, 'delta_t32': t32})
+            
+            exp_fold = train_data[name]
+            exp_dict = {}
+            sim_dict = {}
+            if exp_fold['delta_t12'] is not None and len(exp_fold['delta_t12']) > 0:
+                exp_dict['delta_t12'] = exp_fold['delta_t12']
+                sim_dict['delta_t12'] = t12
+            if exp_fold['delta_t32'] is not None and len(exp_fold['delta_t32']) > 0:
+                exp_dict['delta_t32'] = exp_fold['delta_t32']
+                sim_dict['delta_t32'] = t32
+            
+            if not exp_dict:
+                continue  # no usable data for this dataset in this fold
+            
+            emd = calculate_emd(exp_dict, sim_dict)
             total_emd += emd
             
         return total_emd
@@ -143,8 +158,6 @@ def run_cross_validation(mechanism, k_folds=5, n_simulations=2000, max_iter=1000
             maxiter=max_iter,     # Limited iterations for standard timeframe
             popsize=10,     # Smaller popsize for speed
             tol=tol,
-            mutation=(0.5, 1),
-            recombination=0.7,
             disp=False,
             workers=-1
         )

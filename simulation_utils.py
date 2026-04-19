@@ -34,14 +34,15 @@ def load_experimental_data():
                 'threshold': ('threshold12', 'threshold32'),
                 'degrade': ('degRade12', 'degRade32'),
                 'degradeAPC': ('degRadeAPC12', 'degRadeAPC32'),
-                'velcade': ('degRadeVel12', 'degRadeVel32')
+                'velcade': ('degRadeVel12', 'degRadeVel32'),
+                'mis4N2': ('mis4N2_12', None),  # only delta_t12 available
             }
             
             for dataset_name, (col_12, col_32) in dataset_mapping.items():
-                if col_12 in df.columns and col_32 in df.columns:
+                if col_12 in df.columns:
                     datasets[dataset_name] = {
                         'delta_t12': df[col_12].dropna().values,
-                        'delta_t32': df[col_32].dropna().values
+                        'delta_t32': df[col_32].dropna().values if col_32 is not None and col_32 in df.columns else None
                     }
             return datasets
             
@@ -71,14 +72,15 @@ def load_experimental_data():
                 'threshold': ('threshold12', 'threshold32'),
                 'degrade': ('degRade12', 'degRade32'),
                 'degradeAPC': ('degRadeAPC12', 'degRadeAPC32'),
-                'velcade': ('degRadeVel12', 'degRadeVel32')
+                'velcade': ('degRadeVel12', 'degRadeVel32'),
+                'mis4N2': ('mis4N2_12', None),  # only delta_t12 available
             }
             
             for dataset_name, (col_12, col_32) in dataset_mapping.items():
-                if col_12 in data_cols and col_32 in data_cols:
+                if col_12 in data_cols:
                     datasets[dataset_name] = {
                         'delta_t12': data_cols[col_12],
-                        'delta_t32': data_cols[col_32]
+                        'delta_t32': data_cols[col_32] if col_32 is not None and col_32 in data_cols else None
                     }
             return datasets
 
@@ -198,17 +200,18 @@ def load_optimized_parameters(mechanism, filename=None):
 
 
 
-def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_tau=None, beta_tau2=None):
+def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_tau=None, beta_tau2=None, gamma_N2=None):
     """
     Apply mutant-specific parameter modifications for time-varying mechanisms.
     
     Args:
         base_params (dict): Base wildtype parameters
-        mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade')
+        mutant_type (str): Type of mutant ('wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade', 'mis4N2')
         alpha (float): Multiplier for threshold counts (threshold mutant)
         beta_k (float): Multiplier for k_max - degradation rate (degrade mutant)
         beta_tau (float): Multiplier for tau (APC mutant) - tau becomes 2-3 times larger
         beta_tau2 (float): Multiplier for tau (velcade mutant) - similar to APC but separate parameter
+        gamma_N2 (float): Multiplier for N2 (mis4N2 mutant) - extra cohesin loading on chr2
     
     Returns:
         tuple: (modified_params, modified_n0_list)
@@ -254,6 +257,11 @@ def apply_mutant_params(base_params, mutant_type, alpha, beta_k=None, beta_tau=N
             # Modify k_1 to achieve the tau scaling
             current_tau = params['k_max'] / params['k_1']
             params['k_1'] = params['k_max'] / (beta_tau2 * current_tau)
+    
+    elif mutant_type == 'mis4N2':
+        if gamma_N2 is None:
+            raise ValueError("gamma_N2 required for 'mis4N2' mutant")
+        N2 = gamma_N2 * N2
     
     # Update the modified parameters
     params['n1'], params['n2'], params['n3'] = n1, n2, n3
@@ -546,6 +554,7 @@ def get_parameter_bounds(mechanism):
         beta_tau_bounds,    # beta_tau
         beta_tau2_bounds,   # beta_tau2
     ])
+    bounds.append((1.0, 5.0))
     
     return bounds
 
@@ -566,10 +575,10 @@ def get_parameter_names(mechanism):
     base_mechanism = mechanism.replace('_wfeedback', '') if mechanism.endswith('_wfeedback') else mechanism
     
     time_varying_params = {
-        'time_varying_k': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
-        'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
-        'time_varying_k_steric_hindrance': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
-        'time_varying_k_combined': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'],
+        'time_varying_k': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'],
+        'time_varying_k_fixed_burst': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'],
+        'time_varying_k_steric_hindrance': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'],
+        'time_varying_k_combined': ['n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'],
     }
     
     if base_mechanism not in time_varying_params:

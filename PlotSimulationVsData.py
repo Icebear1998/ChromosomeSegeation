@@ -44,7 +44,7 @@ def create_centered_bins(data, bin_width=7.0):
 
 
 
-def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, beta_tau2=None, num_simulations=500):
+def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, beta_tau, beta_tau2=None, gamma_N2=None, num_simulations=500):
     """
     Run simulations with given parameters for a specific mutant type.
     
@@ -56,6 +56,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         beta_k (float): Separase mutant modifier
         beta_tau (float): APC mutant modifier
         beta_tau2 (float): Velcade mutant modifier (optional)
+        gamma_N2 (float): Mis4-tethered-to-chr2 cohesin scale factor (optional)
         num_simulations (int): Number of simulations
     
     Returns:
@@ -92,7 +93,7 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
             base_params['n_inner'] = params['n_inner']
         
         # Apply mutant modifications
-        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau, beta_tau2)
+        mutant_params, n0_list = apply_mutant_params(base_params, mutant_type, alpha, beta_k, beta_tau, beta_tau2, gamma_N2)
         
         # Extract rate parameters
         initial_state = [mutant_params['N1'], mutant_params['N2'], mutant_params['N3']]
@@ -128,9 +129,11 @@ def run_simulation_with_params(mechanism, params, mutant_type, alpha, beta_k, be
         return [], []
 
 
-def create_single_dataset_plot(mechanism, params, experimental_data, dataset_name, num_simulations=500):
+def create_single_dataset_plot(mechanism, params, experimental_data, dataset_name, num_simulations=2000):
     """
-    Create a single dataset comparison plot (2 subplots: T1-T2 and T3-T2).
+    Create a single dataset comparison plot.
+    For datasets with both ΔT₁₂ and ΔT₃₂ (wildtype, threshold, degrade, degradeAPC, velcade)
+    two subplots are shown. For mis4N2 (ΔT₁₂ only) a single subplot is shown.
     
     Args:
         mechanism (str): Mechanism name
@@ -143,50 +146,106 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
         print(f"Dataset {dataset_name} not found in experimental data")
         return
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f'{dataset_name.title()}', fontsize=14)  # Only dataset name in main title
-    
     # Get experimental data
     exp_delta_t12 = experimental_data[dataset_name]['delta_t12']
-    exp_delta_t32 = experimental_data[dataset_name]['delta_t32']
+    exp_delta_t32 = experimental_data[dataset_name]['delta_t32']  # None for mis4N2
+    has_t32 = exp_delta_t32 is not None
     
-    alpha = params['alpha']
-    beta_k = params.get('beta_k', None)
-    beta_tau = params.get('beta_tau', None)
+    alpha   = params['alpha']
+    beta_k  = params.get('beta_k',  None)
+    beta_tau  = params.get('beta_tau',  None)
     beta_tau2 = params.get('beta_tau2', None)
+    gamma_N2  = params.get('gamma_N2',  None)
     
     # Run simulations
     print(f"Running {num_simulations} simulations for {dataset_name}...")
     sim_delta_t12, sim_delta_t32 = run_simulation_with_params(
-        mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, num_simulations
+        mechanism, params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, gamma_N2, num_simulations
     )
     
-    if not sim_delta_t12 or not sim_delta_t32:
+    if not sim_delta_t12:
         print(f"Failed to generate simulation data for {dataset_name}")
         return
     
     # Save raw data to CSV
-    max_len = max(len(exp_delta_t12), len(exp_delta_t32), len(sim_delta_t12), len(sim_delta_t32))
-    csv_df = pd.DataFrame({
-        'exp_delta_t12': pd.Series(exp_delta_t12).reindex(range(max_len)),
-        'exp_delta_t32': pd.Series(exp_delta_t32).reindex(range(max_len)),
-        'sim_delta_t12': pd.Series(sim_delta_t12).reindex(range(max_len)),
-        'sim_delta_t32': pd.Series(sim_delta_t32).reindex(range(max_len))
-    })
+    if has_t32:
+        max_len = max(len(exp_delta_t12), len(exp_delta_t32), len(sim_delta_t12), len(sim_delta_t32))
+        csv_df = pd.DataFrame({
+            'exp_delta_t12': pd.Series(exp_delta_t12).reindex(range(max_len)),
+            'exp_delta_t32': pd.Series(exp_delta_t32).reindex(range(max_len)),
+            'sim_delta_t12': pd.Series(sim_delta_t12).reindex(range(max_len)),
+            'sim_delta_t32': pd.Series(sim_delta_t32).reindex(range(max_len))
+        })
+    else:
+        max_len = max(len(exp_delta_t12), len(sim_delta_t12))
+        csv_df = pd.DataFrame({
+            'exp_delta_t12': pd.Series(exp_delta_t12).reindex(range(max_len)),
+            'sim_delta_t12': pd.Series(sim_delta_t12).reindex(range(max_len))
+        })
     csv_filename = f'simulation_data_{mechanism}_{dataset_name}.csv'
     csv_df.to_csv(csv_filename, index=False)
     print(f"Saved simulation data to {csv_filename}")
     
-    # Set up x_grid for PDF plotting
-    x_min, x_max = -140, 140  # Default range for all mechanisms
+    # Set up x range
+    x_min, x_max = -140, 140
     if dataset_name == "velcade":
         x_min, x_max = -350, 350
     if dataset_name in ["wildtype", "threshold"]:
-        x_min, x_max = -100, 100    
+        x_min, x_max = -100, 100
     x_grid = np.linspace(x_min, x_max, 401)
     
-    # Calculate bins centered on 0 (edges at ±3.5, ±10.5, etc.)
     bin_width = 7.0
+    tick_interval = 56 if dataset_name == 'velcade' else 28
+    
+    # ── mis4N2: single subplot (ΔT₁₂ only) ──────────────────────────────────
+    if not has_t32:
+        fig, ax1 = plt.subplots(1, 1, figsize=(7, 5))
+        fig.suptitle(f'{dataset_name} — Mis4 tethered to Chr2', fontsize=14)
+        
+        all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
+        bins_12 = create_centered_bins(all_data_12, bin_width=bin_width)
+        
+        ax1.hist(exp_delta_t12, bins=bins_12, density=True, alpha=0.9,
+                 label='Experimental data', color='lightgrey', rwidth=0.9)
+        ax1.hist(sim_delta_t12, bins=bins_12, density=True, alpha=0.6,
+                 label='Simulated data', color='lightskyblue', rwidth=0.9)
+        ax1.set_xlim(x_min - 20, x_max + 20)
+        ax1.set_xlabel(r'$t_{ChrI} - t_{ChrII}$ (sec)')
+        ax1.set_ylabel('Percentage of cells')
+        ax1.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
+        ax1.set_title('chromosome I vs. II')
+        ax1.xaxis.set_major_locator(MultipleLocator(tick_interval))
+        ax1.legend()
+        ax1.spines['top'].set_visible(False)
+        ax1.spines['right'].set_visible(False)
+        
+        p_value_12, emd_12 = calculate_wasserstein_p_value(exp_delta_t12, sim_delta_t12, num_permutations=1000)
+        stats_text12 = (
+            f'Exp: \u03bc={np.mean(exp_delta_t12):.1f}, \u03c3={np.std(exp_delta_t12):.1f}\n'
+            f'Sim: \u03bc={np.mean(sim_delta_t12):.1f}, \u03c3={np.std(sim_delta_t12):.1f}\n'
+            f'EMD={emd_12:.2f}, p={p_value_12:.3f}\nN={num_simulations}'
+        )
+        ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
+                 verticalalignment='top', fontsize=9,
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        
+        plt.tight_layout()
+        for fmt in ('pdf', 'svg'):
+            plt.savefig(f'simulation_fit_{mechanism}_{dataset_name}.{fmt}',
+                        dpi=300, bbox_inches='tight', format=fmt)
+        plt.show()
+        
+        print(f"\nStatistics for {dataset_name} dataset:")
+        print(f"Experimental T1-T2 - Mean: {np.mean(exp_delta_t12):.2f}, Std: {np.std(exp_delta_t12):.2f}")
+        print(f"Simulated T1-T2   - Mean: {np.mean(sim_delta_t12):.2f}, Std: {np.std(sim_delta_t12):.2f}")
+        print(f"(T3-T2 not measured for {dataset_name})")
+        return
+    
+    # ── All other datasets: two subplots ─────────────────────────────────────
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(f'{dataset_name.title()}', fontsize=14)
+    
+    # Calculate bins centered on 0 (edges at ±3.5, ±10.5, etc.)
     all_data_12 = np.concatenate([exp_delta_t12, sim_delta_t12])
     bins_12 = create_centered_bins(all_data_12, bin_width=bin_width)
     
@@ -197,22 +256,15 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     ax1.set_xlabel(r'$t_{ChrI} - t_{ChrII}$ (sec)')
     ax1.set_ylabel('Percentage of cells')
     ax1.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
-    ax1.set_title('chromosome I vs. II')  # No subtitle - dataset name is in main title
-    
-    # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
-    # Use larger interval for Velcade due to wider range
-    tick_interval = 56 if dataset_name == 'velcade' else 28
+    ax1.set_title('chromosome I vs. II')
     ax1.xaxis.set_major_locator(MultipleLocator(tick_interval))
-    
     ax1.legend()
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
     
     # Calculate EMD and Wasserstein p-value for T1-T2
     p_value_12, emd_12 = calculate_wasserstein_p_value(exp_delta_t12, sim_delta_t12, num_permutations=1000)
-    
-    # Add statistics for Chrom1 - Chrom2 with EMD and p-value
-    stats_text12 = f'Exp: μ={np.mean(exp_delta_t12):.1f}, σ={np.std(exp_delta_t12):.1f}\nSim: μ={np.mean(sim_delta_t12):.1f}, σ={np.std(sim_delta_t12):.1f}\nEMD={emd_12:.2f}, p={p_value_12:.3f}\nN={num_simulations}'
+    stats_text12 = f'Exp: \u03bc={np.mean(exp_delta_t12):.1f}, \u03c3={np.std(exp_delta_t12):.1f}\nSim: \u03bc={np.mean(sim_delta_t12):.1f}, \u03c3={np.std(sim_delta_t12):.1f}\nEMD={emd_12:.2f}, p={p_value_12:.3f}\nN={num_simulations}'
     ax1.text(0.02, 0.98, stats_text12, transform=ax1.transAxes,
              verticalalignment='top', fontsize=9, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
@@ -227,32 +279,23 @@ def create_single_dataset_plot(mechanism, params, experimental_data, dataset_nam
     ax2.set_xlabel(r'$t_{ChrIII} - t_{ChrII}$ (sec)')
     ax2.set_ylabel('Percentage of cells')
     ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'{y*100:.1f}'))
-    ax2.set_title('chromosome II vs. III')  # No subtitle
-    
-    # Set x-axis ticks to multiples of 28 or 56 depending on dataset range
-    tick_interval = 56 if dataset_name == 'velcade' else 28
+    ax2.set_title('chromosome II vs. III')
     ax2.xaxis.set_major_locator(MultipleLocator(tick_interval))
-    
     ax2.legend()
     ax2.spines['top'].set_visible(False)
     ax2.spines['right'].set_visible(False)
-
     
     # Calculate EMD and Wasserstein p-value for T3-T2
     p_value_32, emd_32 = calculate_wasserstein_p_value(exp_delta_t32, sim_delta_t32, num_permutations=1000)
-    
-    # Add statistics for Chrom3 - Chrom2 with EMD and p-value
-    stats_text32 = f'Exp: μ={np.mean(exp_delta_t32):.1f}, σ={np.std(exp_delta_t32):.1f}\nSim: μ={np.mean(sim_delta_t32):.1f}, σ={np.std(sim_delta_t32):.1f}\nEMD={emd_32:.2f}, p={p_value_32:.3f}\nN={num_simulations}'
+    stats_text32 = f'Exp: \u03bc={np.mean(exp_delta_t32):.1f}, \u03c3={np.std(exp_delta_t32):.1f}\nSim: \u03bc={np.mean(sim_delta_t32):.1f}, \u03c3={np.std(sim_delta_t32):.1f}\nEMD={emd_32:.2f}, p={p_value_32:.3f}\nN={num_simulations}'
     ax2.text(0.02, 0.98, stats_text32, transform=ax2.transAxes,
              verticalalignment='top', fontsize=9, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     plt.tight_layout()
     
-    filename = f'simulation_fit_{mechanism}_{dataset_name}.pdf'
-    plt.savefig(filename, dpi=300, bbox_inches='tight', format='pdf')
-    filename = f'simulation_fit_{mechanism}_{dataset_name}.svg'
-    plt.savefig(filename, dpi=300, bbox_inches='tight', format='svg')
-    
+    for fmt in ('pdf', 'svg'):
+        plt.savefig(f'simulation_fit_{mechanism}_{dataset_name}.{fmt}',
+                    dpi=300, bbox_inches='tight', format=fmt)
     plt.show()
     
     # Print statistics
@@ -344,12 +387,15 @@ def print_parameter_summary(mechanism, params):
             print(f"  Velcade: k_1={effective_k1_vel:.6f}")
         else:
             print(f"  Velcade: modifier={beta_tau2_value:.3f}")
+    if 'gamma_N2' in params:
+        effective_N2 = params['gamma_N2'] * params['N2']
+        print(f"  Mis4 (gamma_N2): {params['gamma_N2']:.3f}  →  N2={effective_N2:.1f} (wildtype N2={params['N2']:.1f})")
 
 
 if __name__ == "__main__":
     mechanism = 'time_varying_k'  # Choose mechanism to test
-    filename = 'ParameterFiles/simulation_optimized_parameters_time_varying_k.txt'
-    dataset = 'velcade'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade'
+    filename = 'simulation_optimized_parameters_time_varying_k_1.txt'
+    dataset = 'mis4N2'  # Choose: 'wildtype', 'threshold', 'degrade', 'degradeAPC', 'velcade', 'mis4N2'
     
     print(f"Testing single dataset: {dataset} with mechanism: {mechanism}")
     print("=" * 50)

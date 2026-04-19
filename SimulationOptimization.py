@@ -10,35 +10,35 @@ from simulation_utils import *
 MECHANISM_PARAM_NAMES = {
     # Time-varying mechanisms (wide bounds)
     'time_varying_k': [
-        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     'time_varying_k_fixed_burst': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     'time_varying_k_steric_hindrance': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     'time_varying_k_combined': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     # Feedback variants (tight bounds for tau/beta)
     'time_varying_k_wfeedback': [
-        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     'time_varying_k_fixed_burst_wfeedback': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'burst_size', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     'time_varying_k_steric_hindrance_wfeedback': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
     'time_varying_k_combined_wfeedback': [
         'n2', 'N2', 'k_max', 'tau', 'r21', 'r23', 'R21', 'R23',
-        'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2'
+        'burst_size', 'n_inner', 'alpha', 'beta_k', 'beta_tau', 'beta_tau2', 'gamma_N2'
     ],
 }
 
@@ -90,8 +90,9 @@ def unpack_mechanism_params(params_vector, mechanism):
     beta_k = params.get('beta_k')
     beta_tau = params.get('beta_tau')
     beta_tau2 = params.get('beta_tau2')
+    gamma_N2 = params.get('gamma_N2')
     
-    return base_params, alpha, beta_k, beta_tau, beta_tau2
+    return base_params, alpha, beta_k, beta_tau, beta_tau2, gamma_N2
 
 
 def joint_objective(params_vector, mechanism, datasets, num_simulations=500, selected_strains=None, return_breakdown=False, objective_metric='emd'):
@@ -111,7 +112,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
     """
     try:
         # Unpack parameters based on mechanism
-        base_params, alpha, beta_k, beta_tau, beta_tau2 = unpack_mechanism_params(params_vector, mechanism)
+        base_params, alpha, beta_k, beta_tau, beta_tau2, gamma_N2 = unpack_mechanism_params(params_vector, mechanism)
         
         # Check constraints
         if base_params['n1'] >= base_params['N1'] or \
@@ -128,7 +129,7 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
         for dataset_name, data_dict in datasets.items():
             # Apply mutant modifications for time-varying mechanisms
             params, n0_list = apply_mutant_params(
-                base_params, dataset_name, alpha, beta_k, beta_tau, beta_tau2
+                base_params, dataset_name, alpha, beta_k, beta_tau, beta_tau2, gamma_N2
             )
             
             # Run simulations
@@ -141,9 +142,16 @@ def joint_objective(params_vector, mechanism, datasets, num_simulations=500, sel
                     return {'total': 1e6, 'per_dataset': {}}
                 return 1e6
             
-            # Calculate objective metric
-            exp_data = {'delta_t12': data_dict['delta_t12'], 'delta_t32': data_dict['delta_t32']}
-            sim_data = {'delta_t12': sim_delta_t12, 'delta_t32': sim_delta_t32}
+            # Build exp/sim data dicts — only include keys where experimental data exists.
+            # mis4N2 has delta_t12 only; all other conditions have both.
+            exp_data = {}
+            sim_data = {}
+            if data_dict['delta_t12'] is not None:
+                exp_data['delta_t12'] = data_dict['delta_t12']
+                sim_data['delta_t12'] = sim_delta_t12
+            if data_dict['delta_t32'] is not None:
+                exp_data['delta_t32'] = data_dict['delta_t32']
+                sim_data['delta_t32'] = sim_delta_t32
             
             if objective_metric == 'emd':
                  score = calculate_emd(exp_data, sim_data)
@@ -355,7 +363,7 @@ def save_results(mechanism, results, filename=None, selected_strains=None, objec
         selected = opt_settings.get('selected_strains', 'all')
         if selected == 'all':
             f.write(f"Selected Strains: all datasets\n")
-            f.write(f"Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade\n")
+            f.write(f"Available Datasets: wildtype, threshold, degrade, degradeAPC, velcade, mis4N2\n")
         else:
             f.write(f"Selected Strains: {', '.join(selected) if isinstance(selected, list) else selected}\n")
         
