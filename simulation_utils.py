@@ -394,6 +394,80 @@ def run_simulation_for_dataset(mechanism, params, n0_list, num_simulations=500):
         return delta_t12_array, delta_t32_array
 
 
+def run_simulation_raw(mechanism, params, n0_list, num_simulations=500):
+    """
+    Run simulations and return the raw per-chromosome separation times
+    (T₁, T₂, T₃) rather than the pairwise differences.
+
+    Unlike run_simulation_for_dataset — which runs 2×num_simulations in two
+    independent batches to avoid covariance when computing ΔT₁₂ and ΔT₃₂
+    simultaneously — this function runs a single batch of num_simulations and
+    returns all three columns directly.  This is the right thing to do when
+    you want E[Tᵢ] and SD[Tᵢ] for each chromosome individually.
+
+    Args:
+        mechanism      (str):  Mechanism name (may include _wfeedback suffix)
+        params         (dict): Parameter dictionary
+        n0_list        (list): [n01, n02, n03] threshold values
+        num_simulations (int): Number of simulations
+
+    Returns:
+        tuple: (t1, t2, t3) as numpy arrays of shape (num_simulations,),
+               or (None, None, None) on failure.
+    """
+    base_mechanism = (
+        mechanism.replace('_wfeedback', '')
+        if mechanism.endswith('_wfeedback') else mechanism
+    )
+
+    # ── Beta method (time_varying_k / time_varying_k_fixed_burst) ────────────
+    if base_mechanism in ['time_varying_k', 'time_varying_k_fixed_burst']:
+        from FastBetaSimulation import simulate_batch
+
+        initial_states = np.array([params['N1'], params['N2'], params['N3']])
+        n0_array       = np.array(n0_list)
+        burst_size     = params.get('burst_size', 1.0)
+        k_1            = calculate_k1_from_params(params)
+        k_max          = params['k_max']
+
+        results = simulate_batch(
+            mechanism=base_mechanism,
+            initial_states=initial_states,
+            n0_lists=n0_array,
+            burst_size=burst_size,
+            k_1=k_1,
+            k_max=k_max,
+            num_simulations=num_simulations,
+        )
+        return results[:, 0], results[:, 1], results[:, 2]
+
+    # ── Feedback method (steric_hindrance / combined) ────────────────────────
+    if base_mechanism in ['time_varying_k_steric_hindrance',
+                          'time_varying_k_combined']:
+        from FastFeedbackSimulation import simulate_batch_feedback
+
+        initial_states = np.array([params['N1'], params['N2'], params['N3']])
+        n0_array       = np.array(n0_list)
+        n_inner        = params['n_inner']
+        burst_size     = params.get('burst_size', 1.0)
+        k_1            = calculate_k1_from_params(params)
+        k_max          = params['k_max']
+
+        results = simulate_batch_feedback(
+            mechanism=base_mechanism,
+            initial_states=initial_states,
+            n0_lists=n0_array,
+            n_inner=n_inner,
+            k_1=k_1,
+            k_max=k_max,
+            burst_size=burst_size,
+            num_simulations=num_simulations,
+        )
+        return results[:, 0], results[:, 1], results[:, 2]
+
+    return None, None, None
+
+
 def calculate_emd(exp_data, sim_data):
     """
     Calculate Earth Mover's Distance (Wasserstein Distance) between experimental and simulation data.
@@ -537,8 +611,13 @@ def get_parameter_bounds(mechanism):
         tau_bounds,       # tau
         (0.25, 4.0),      # r21
         (0.25, 4.0),      # r23
+        # (1, 1),      # r21
+        # (1, 1),      # r23
         (0.4, 2.0),       # R21
-        (0.5, 5.0),       # R23
+        (0.5, 5.0),
+        # (1, 1),       # R21
+        # (1, 1),       # R23
+
     ]
     
     # Add mechanism-specific optional parameters
